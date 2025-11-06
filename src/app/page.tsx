@@ -1,24 +1,10 @@
 // app/page.tsx
 "use client";
-import { signIn, signOut, useSession } from "next-auth/react";
-
+import Link from "next/link";
 // src/app/page.tsx
 export default function Home() {
   return (
     <main className="min-h-dvh bg-base-100 bg-hillfinder-gradient">
-      {/* Navbar */}
-      <nav className="bg-navbar-gradient shadow-md">
-        <div className="navbar max-w-6xl mx-auto px-4">
-          <div className="flex-1">
-            <a className="text-2xl font-bold">Hillfinder</a>
-          </div>
-          <div className="flex-none space-x-2">
-            <a className="btn btn-ghost">Login</a>
-            <a className="btn btn-primary">Sign Up</a>
-          </div>
-        </div>
-      </nav>
-
       {/* Hero */}
       <section className="container mx-auto px-4 py-16 md:py-24">
         <div className="grid md:grid-cols-2 items-start gap-10">

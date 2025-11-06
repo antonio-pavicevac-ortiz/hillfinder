@@ -50,10 +50,7 @@ export default function SignupForm() {
         placeholder="Password"
         className="border p-2 rounded w-full"
       />
-      <button
-        type="submit"
-        className="bg-blue-600 text-white p-2 rounded w-full"
-      >
+      <button type="submit" className="btn-green text-white p-2 rounded w-full">
         Sign Up
       </button>
       {message && <p className="text-sm text-red-600">{message}</p>}
