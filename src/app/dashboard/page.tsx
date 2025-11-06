@@ -2,9 +2,25 @@
 
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
+import { useState } from "react";
+
+// TypeScript interface for route responses
+interface RouteResponse {
+  _id?: string;
+  name?: string;
+  start?: { lat: number; lng: number };
+  end?: { lat: number; lng: number };
+  elevationGain?: number;
+  elevationLoss?: number;
+  userId?: string;
+  message?: string;
+  error?: string;
+}
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
+  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState<RouteResponse | null>(null); // ✅ declare response state
 
   // 🧭 1️⃣ While loading — glowing compass animation
   if (status === "loading") {
@@ -34,15 +50,56 @@ export default function DashboardPage() {
   }
 
   // 🧩 3️⃣ Logged in
+  const handleAddRoute = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/routes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Central Park Slope Ride",
+          start: { lat: 40.785091, lng: -73.968285 },
+          end: { lat: 40.774987, lng: -73.963154 },
+          elevationGain: 12,
+          elevationLoss: 48,
+        }),
+      });
+      const data = await res.json();
+      setResponse(data);
+    } catch (err) {
+      setResponse({ message: "Error creating route", error: String(err) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🧩 3️⃣ Logged in
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient">
       <h1 className="text-3xl font-bold mb-2">Welcome, {session.user?.name}</h1>
       <p className="text-gray-700 mb-8">
         You’re now signed in with {session.user?.email}.
       </p>
+
+      <button
+        onClick={handleAddRoute}
+        className={`btn btn-green mb-4 ${
+          loading ? "opacity-60 cursor-not-allowed" : ""
+        }`}
+        disabled={loading}
+      >
+        {loading ? "Saving..." : "Add Test Route"}
+      </button>
+
+      {response && (
+        <pre className="bg-white/70 p-4 rounded text-sm max-w-md overflow-auto shadow">
+          {JSON.stringify(response, null, 2)}
+        </pre>
+      )}
+
       <button
         onClick={() => signOut({ callbackUrl: "/" })}
-        className="btn btn-green"
+        className="btn btn-green mt-6"
       >
         Sign out
       </button>
