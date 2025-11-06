@@ -1,40 +1,43 @@
 {
   "compilerOptions": {
-    "target": "ES2017", // Emit JS compatible with ES2017 (async/await, etc.). Next handles further transforms.
-    "lib": ["dom", "dom.iterable", "esnext"], // Browser DOM APIs + iterable DOM collections + latest ES features.
-
-    "baseUrl": ".", // Make project root the base for non-relative imports (pairs with "paths").
-    "allowJs": true, // Type-check .js files too (useful while migrating to TS).
-    "skipLibCheck": true, // Skip type-checking of .d.ts in node_modules → faster builds.
-    "strict": true, // Enable all strict TS checks (best practice; catches undefined/null issues).
-    "noEmit": true, // Don’t output JS from tsc; Next/SWC handles emitting/bundling.
-    "esModuleInterop": true, // Smooth interop with CommonJS default imports (e.g., import x from 'pkg').
-
-    "module": "esnext", // Keep native ESM syntax; bundler decides final format.
-    "moduleResolution": "bundler", // Resolve modules like modern bundlers (exports/conditions-aware).
-    "resolveJsonModule": true, // Allow `import data from './file.json'`.
-    "isolatedModules": true, // Compile files independently (required by SWC/Next single-file transforms).
-    "jsx": "preserve", // Leave JSX as-is for Next/SWC to transform.
-    "incremental": true, // Cache type-check info for faster subsequent runs.
-
+    "target": "esnext",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    // 👇 These two lines are the missing keys
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": [
+        "*"
+      ]
+    },
     "plugins": [
       {
-        "name": "next" // Next.js TypeScript plugin: framework-aware diagnostics/hints.
+        "name": "next"
       }
-    ],
-
-    "paths": {
-      "@/*": ["./src/*"] // Alias "@/..." -> "src/..." for cleaner imports.
-    }
+    ]
   },
-
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "**/*.d.ts",
+    "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
-
-  "exclude": ["node_modules"] // Don’t type-check dependencies.
+  "exclude": [
+    "node_modules"
+  ]
 }
