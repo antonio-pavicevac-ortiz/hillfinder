@@ -6,7 +6,6 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const signupSchema = z.object({
   name: z
     .string()
-    .trim()
     .min(2, { message: "Name must be at least 2 characters long" })
     .max(50, { message: "Name cannot exceed 50 characters" }),
   email: z
@@ -16,7 +15,6 @@ export const signupSchema = z.object({
     .regex(emailRegex, { message: "Please enter a valid email address" }),
   password: z
     .string()
-    .trim()
     .min(8, { message: "Password must be at least 8 characters long" })
     .max(64, { message: "Password cannot exceed 64 characters" })
     .regex(/[A-Za-z]/, { message: "Password must contain at least one letter" })
@@ -29,10 +27,7 @@ export const signinSchema = z.object({
     .trim()
     .toLowerCase()
     .regex(emailRegex, { message: "Please enter a valid email address" }),
-  password: z
-    .string()
-    .trim()
-    .min(8, { message: "Password must be at least 8 characters long" }),
+  password: z.string().min(8, { message: "Password must be at least 8 characters long" }),
 });
 
 export type SignupData = z.infer<typeof signupSchema>;

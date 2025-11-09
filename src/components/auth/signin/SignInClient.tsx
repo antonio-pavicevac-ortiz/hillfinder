@@ -1,62 +1,68 @@
 "use client";
 
-import { ClientSafeProvider, signIn } from "next-auth/react";
+import { signInSchema, type SigninData } from "@/lib/validation/authSchemas";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 
 type SignInClientProps = {
-  providers: Record<string, ClientSafeProvider> | null;
+  providers: Record<string, any> | null;
 };
 
 export default function SignInClient({ providers }: SignInClientProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  return (
-    <>
-      <h1 className="text-2xl font-semibold mb-6 text-gray-800 text-center">
-        Sign in to Hillfinder
-      </h1>
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SigninData>({
+    resolver: zodResolver(signInSchema),
+  });
 
-      {providers?.credentials && (
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setError("");
-            const result = await signIn("credentials", {
-              email,
-              password,
-              callbackUrl: "/dashboard",
-            });
-            if (result?.error) {
-              setError(result.error);
-            }
-          }}
-          className="space-y-3 text-left mt-1"
+  async function onSubmit(data: SigninData) {
+    setError("");
+    const result = await signIn("credentials", {
+      ...data,
+      redirect: false,
+    });
+    if (result?.error) setError(result.error);
+  }
+
+  return (
+    <div className="bg-white rounded-xl w-full max-w-sm text-center">
+      <h1 className="text-2xl font-semibold mb-6">Sign in to Hillfinder</h1>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+        <input
+          type="email"
+          placeholder="Email"
+          {...register("email")}
+          className="border p-2 rounded w-full"
+        />
+        {errors.email && <p className="text-sm text-red-600">{errors.email.message}</p>}
+
+        <input
+          type="password"
+          placeholder="Password"
+          {...register("password")}
+          className="border p-2 rounded w-full"
+        />
+        {errors.password && (
+          <p className="text-sm text-red-600">{errors.password.message}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="btn btn-green text-white w-full rounded p-2"
         >
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="border p-2 rounded w-full focus:ring-2 focus:ring-green-400 focus:outline-none"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="border p-2 rounded w-full focus:ring-2 focus:ring-green-400 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="btn btn-green text-white w-full rounded p-2 font-medium hover:bg-green-700 transition"
-          >
-            Sign in
-          </button>
-          {error && <p className="text-sm text-red-600 text-center">{error}</p>}
-        </form>
-      )}
+          {isSubmitting ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
+
+      {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
 
       <div className="flex items-center my-4">
         <div className="flex-grow h-px bg-gray-200"></div>
@@ -67,11 +73,11 @@ export default function SignInClient({ providers }: SignInClientProps) {
       {providers?.google && (
         <button
           onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          className="w-full bg-green-600 text-white py-2 rounded-md hover:bg-green-700 transition"
+          className="w-full bg-green-600 text-white py-2 rounded-md hover:bg-green-700"
         >
           Continue with Google
         </button>
       )}
-    </>
+    </div>
   );
 }
