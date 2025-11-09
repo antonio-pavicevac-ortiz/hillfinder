@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function SignupForm() {
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function SignupForm() {
           callbackUrl: "/dashboard",
         });
       }
-    } catch (err) {
+    } catch {
       setMessage("An unexpected error occurred.");
     } finally {
       setLoading(false);
@@ -46,55 +46,17 @@ export default function SignupForm() {
 
   return (
     <>
-      {loading && message.startsWith("✅") && (
-        <div className="fixed inset-0 bg-gradient-to-br from-green-200 via-green-400 to-green-600 flex flex-col items-center justify-center z-50 animated-gradient">
-          <div className="loader ease-linear rounded-full border-8 border-t-8 border-green-100 border-t-green-500 h-16 w-16 mb-4"></div>
-          <p className="text-white text-lg font-semibold text-center">
-            Logging you in...
-          </p>
-          <style jsx>{`
-            .animated-gradient {
-              background-size: 400% 400%;
-              animation: gradientShift 15s ease infinite;
-            }
-            @keyframes gradientShift {
-              0% {
-                background-position: 0% 50%;
-              }
-              50% {
-                background-position: 100% 50%;
-              }
-              100% {
-                background-position: 0% 50%;
-              }
-            }
-            .loader {
-              border-top-color: #16a34a;
-              animation: spin 1s linear infinite;
-            }
-            @keyframes spin {
-              0% {
-                transform: rotate(0deg);
-              }
-              100% {
-                transform: rotate(360deg);
-              }
-            }
-          `}</style>
-        </div>
-      )}
-
-      <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
+      <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
         Create your Hillfinder account
       </h1>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-3 text-left mt-1">
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Name"
-          className="border p-2 rounded w-full"
+          className="border p-2 rounded w-full focus:ring-2 focus:ring-green-400 focus:outline-none"
           required
         />
         <input
@@ -102,7 +64,7 @@ export default function SignupForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
-          className="border p-2 rounded w-full"
+          className="border p-2 rounded w-full focus:ring-2 focus:ring-green-400 focus:outline-none"
           required
         />
         <input
@@ -110,15 +72,14 @@ export default function SignupForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          className="border p-2 rounded w-full"
+          className="border p-2 rounded w-full focus:ring-2 focus:ring-green-400 focus:outline-none"
           required
         />
-
         <button
           type="submit"
           disabled={loading}
-          className={`btn-green text-white p-2 rounded w-full transition ${
-            loading ? "opacity-60 cursor-not-allowed" : ""
+          className={`btn-green text-white p-2 rounded w-full font-medium transition ${
+            loading ? "opacity-60 cursor-not-allowed" : "hover:bg-green-700"
           }`}
         >
           {loading ? "Creating Account..." : "Sign Up"}

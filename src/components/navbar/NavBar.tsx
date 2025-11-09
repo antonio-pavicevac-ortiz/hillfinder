@@ -1,18 +1,16 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
 export default function NavBar() {
   const { data: session } = useSession();
   const pathname = usePathname(); // ← get current route
-
   const isSigninPage = pathname === "/auth/signin";
   const isSignupPage = pathname === "/auth/signup";
 
   return (
-    <nav className="bg-navbar-gradient shadow-md backdrop-blur-sm border-b border-green-100">
+    <nav className="bg-navbar-gradient border-b border-green-100 shadow-[0_2px_8px_rgba(0,0,0,0.3)] sticky top-0 z-50">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
         {/* Left: Brand */}
         <Link
