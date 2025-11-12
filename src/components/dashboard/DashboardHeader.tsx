@@ -1,5 +1,6 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import { ReactNode, useState } from "react";
 import DashboardMenu from "./DashboardMenu";
 
@@ -9,12 +10,16 @@ interface DashboardHeaderProps {
 
 export default function DashboardHeader({ children }: DashboardHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: session } = useSession();
+
+  const fullName = session?.user?.name || "";
+  const firstName = fullName.split(" ")[0] || "";
 
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between px-6 py-1 bg-white/60 backdrop-blur-md shadow-sm border-b border-green-100">
       {/* Left side: App title or greeting */}
       <h1 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-        Welcome back, Antonio 👋
+        {firstName ? `Welcome back, ${firstName} 👋` : "Welcome back 👋"}{" "}
       </h1>
 
       {/* Right side: Avatar / user menu */}

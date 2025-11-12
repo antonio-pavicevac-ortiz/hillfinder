@@ -1,3 +1,9 @@
+export const metadata = {
+  title: "Welcome to Hillfinder!",
+  description:
+    "Discover scenic downhill routes near you. Whether you’re biking, skateboarding, or just exploring — Hillfinder helps you find your perfect ride.",
+};
+
 export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient text-center">

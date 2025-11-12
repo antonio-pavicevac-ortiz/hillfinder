@@ -58,7 +58,20 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
-          <label className="text-green-700 text-sm cursor-pointer hover:underline">
+          <label
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.currentTarget.querySelector("input")?.click();
+              }
+            }}
+            className="text-green-700 text-sm cursor-pointer hover:underline focus:outline-none focus:ring-2 focus:ring-green-500 inline-flex items-center gap-1"
+            aria-label="Upload a new profile photo"
+          >
+            <span className="sr-only">Upload a new profile photo</span>
+            <span aria-hidden="true">📸</span>
             Change photo
             <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
           </label>
