@@ -32,6 +32,7 @@ const handler = NextAuth({
   ],
   pages: {
     signIn: "/auth/signin",
+    signOut: "/auth/signout", // 👈 new override
   },
   secret: process.env.NEXTAUTH_SECRET,
 });

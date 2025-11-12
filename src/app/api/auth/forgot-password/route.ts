@@ -23,17 +23,25 @@ export async function POST(req: Request) {
 
     // 🧩 3. Generate reset token + expiry
     const resetToken = crypto.randomBytes(32).toString("hex");
-    const resetTokenExpiry = Date.now() + 1000 * 60 * 60; // 1 hour
-    // 🧩 4. Store it on the user (hashed for security)
-    user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
-    user.resetPasswordExpires = resetTokenExpiry;
+    const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 1000 * 60 * 60; // 1 hour
+
+    // 🧠 Debug logging
+    console.log("Generated token (plain):", resetToken);
+    console.log("Generated token (hashed):", hashedToken);
+    console.log("Saving to user:", {
+      email: user.email,
+      resetPasswordToken: user.resetPasswordToken,
+      resetPasswordExpires: user.resetPasswordExpires,
+    });
+
     await user.save();
 
-    // 🧩 5. Create reset link
+    // 🧩 4. Create reset link with plain token (for email)
     const resetLink = `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password?token=${resetToken}`;
 
-    // 🧩 6. Configure nodemailer transport
-    console.log("ENV CHECK", process.env.EMAIL_SERVER_USER, process.env.EMAIL_FROM);
+    // 🧩 5. Configure and send reset email
     const transporter = nodemailer.createTransport({
       host: process.env.EMAIL_SERVER_HOST,
       port: Number(process.env.EMAIL_SERVER_PORT),
@@ -43,7 +51,6 @@ export async function POST(req: Request) {
       },
     });
 
-    // 🧩 7. Send the email
     const mailOptions = {
       from: process.env.EMAIL_FROM,
       to: email,
@@ -52,6 +59,7 @@ export async function POST(req: Request) {
         <p>Hi there,</p>
         <p>You requested to reset your password. Click the link below to create a new one:</p>
         <a href="${resetLink}" style="color:#007bff;">Reset Password</a>
+        <p>This link will expire in 1 hour.</p>
         <p>If you did not request this, please ignore this email.</p>
         <p>– The Hillfinder Team</p>
       `,

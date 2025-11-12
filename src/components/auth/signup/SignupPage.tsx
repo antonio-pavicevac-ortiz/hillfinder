@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-export function SignupForm() {
+export function SignupPage() {
   const [message, setMessage] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -119,14 +119,15 @@ export function SignupForm() {
                   : "border-gray-300 focus:ring-green-600"
               )}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute top-2 right-3 text-gray-500 hover:text-gray-700"
+            >
+              {showPassword ? "👁️" : "🙈"}
+            </button>
           </motion.div>
-          <button
-            type="button"
-            onClick={() => setShowPassword((prev) => !prev)}
-            className="absolute top-2 right-3 text-gray-500 hover:text-gray-700"
-          >
-            {showPassword ? "👁️" : "🙈"}
-          </button>
+
           {errors.password && (
             <p className="text-sm text-left text-red-600 mt-1">{errors.password.message}</p>
           )}
@@ -150,14 +151,15 @@ export function SignupForm() {
                   : "border-gray-300 focus:ring-green-600"
               )}
             />
+
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((prev) => !prev)}
+              className="absolute top-2 right-3 text-gray-500 hover:text-gray-700"
+            >
+              {showConfirmPassword ? "👁️" : "🙈"}
+            </button>
           </motion.div>
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword((prev) => !prev)}
-            className="absolute top-2 right-3 text-gray-500 hover:text-gray-700"
-          >
-            {showConfirmPassword ? "👁️" : "🙈"}
-          </button>
           {errors.confirmPassword && (
             <p className="text-sm text-left text-red-600 mt-1">{errors.confirmPassword.message}</p>
           )}

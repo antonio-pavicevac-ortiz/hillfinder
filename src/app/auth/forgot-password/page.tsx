@@ -1,5 +1,7 @@
-import { ForgotPasswordForm } from "@/components/auth/forgot-password/ForgotPasswordForm";
+import { ForgotPasswordPage } from "@/components/auth/forgot-password/ForgotPasswordPage";
 
-export default function ForgotPassword() {
-  return <ForgotPasswordForm />;
-}
+export const metadata = {
+  title: "Forgot Password - Hillfinder",
+};
+
+export default async () => <ForgotPasswordPage />;

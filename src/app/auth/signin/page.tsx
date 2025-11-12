@@ -1,4 +1,4 @@
-import { SignInForm } from "@/components/auth/signin/SignInForm";
+import { SignInPage as SignInPageComponent } from "@/components/auth/signin/SignInPage";
 import { getProviders } from "next-auth/react";
 
 export const metadata = {
@@ -9,5 +9,5 @@ export const metadata = {
 
 export default async function SignInPage() {
   const providers = await getProviders();
-  return <SignInForm providers={providers ?? {}} />;
+  return <SignInPageComponent providers={providers ?? {}} />;
 }

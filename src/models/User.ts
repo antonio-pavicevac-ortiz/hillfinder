@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, models } from "mongoose";
+import mongoose, { Document, models } from "mongoose";
 
 // 🧩 1️⃣ Define a TypeScript interface
 export interface IUser extends Document {
@@ -10,14 +10,14 @@ export interface IUser extends Document {
 }
 
 // 🧱 2️⃣ Define the Mongoose Schema
-const UserSchema = new Schema<IUser>(
-  {
-    name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true },
-    password: { type: String, required: true },
-  },
-  { timestamps: true }
-);
+const UserSchema = new mongoose.Schema({
+  name: { type: String },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  image: { type: String },
+  resetPasswordToken: { type: String }, // ✅ Add this
+  resetPasswordExpires: { type: Date }, // ✅ And this
+});
 
 // 🔁 3️⃣ Prevent model recompilation in dev mode
 const User = models.User || mongoose.model<IUser>("User", UserSchema);

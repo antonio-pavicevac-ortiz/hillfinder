@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-export function SignInForm({ providers }: { providers?: Record<string, any> | null }) {
+export function SignInPage({ providers }: { providers?: Record<string, any> | null }) {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();

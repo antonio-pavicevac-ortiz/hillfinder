@@ -1,7 +1,8 @@
 "use client";
 
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import { motion } from "framer-motion";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useState } from "react";
 // TypeScript interface for route responses
@@ -42,11 +43,14 @@ export default function DashboardPage() {
         className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
       >
         <h1 className="text-lg text-gray-700 mb-4">You’re not logged in!</h1>
-        <Link href="/auth/signin" className="btn btn-primary mt-4">
-          Sign in
+        <Link
+          href="/auth/signin"
+          className="mt-4 px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md shadow-sm transition-colors duration-200"
+        >
+          Sign In
         </Link>
       </motion.div>
     );
@@ -79,45 +83,39 @@ export default function DashboardPage() {
   // 🧩 3️⃣ Logged in
   return (
     <motion.div
-      className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient"
+      className="min-h-screen flex flex-col bg-hillfinder-gradient"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
     >
-      <h1 className="text-3xl font-bold mb-2">
-        Welcome back, {session.user?.name?.split(" ")[0] || "Explorer"} 👋
-      </h1>
-      <p className="text-gray-700 mb-8">You’re now signed in with {session.user?.email}.</p>
+      {/* Navbar / Header */}
+      <DashboardHeader>
+        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-green-600 text-white font-semibold">
+          {session?.user?.name?.charAt(0).toUpperCase() ?? "?"}
+        </div>
+      </DashboardHeader>
+      {/* Content section */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4">
+        <button
+          onClick={handleAddRoute}
+          className={`btn btn-green mb-4 ${loading ? "opacity-60 cursor-not-allowed" : ""}`}
+          disabled={loading}
+        >
+          {loading ? (
+            <span className="animate-pulse text-green-700 font-medium">
+              🧭 Calculating route details...
+            </span>
+          ) : (
+            "➕ Add Test Route"
+          )}
+        </button>
 
-      <button
-        onClick={handleAddRoute}
-        className={`btn btn-green mb-4 ${loading ? "opacity-60 cursor-not-allowed" : ""}`}
-        disabled={loading}
-      >
-        {loading ? (
-          <span className="animate-pulse text-green-700 font-medium">
-            🧭 Calculating route details...
-          </span>
-        ) : (
-          "➕ Add Test Route"
+        {response && (
+          <pre className="bg-white/70 p-4 rounded text-sm max-w-md overflow-auto shadow">
+            {JSON.stringify(response, null, 2)}
+          </pre>
         )}
-      </button>
-
-      {response && (
-        <pre className="bg-white/70 p-4 rounded text-sm max-w-md overflow-auto shadow">
-          {JSON.stringify(response, null, 2)}
-        </pre>
-      )}
-
-      <motion.button
-        onClick={() => signOut({ callbackUrl: "/" })}
-        className="btn btn-green mt-6"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 300, damping: 15 }}
-      >
-        Sign out
-      </motion.button>
+      </main>
     </motion.div>
   );
 }

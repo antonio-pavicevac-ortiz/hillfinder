@@ -1,5 +1,7 @@
-import ResetPasswordForm from "@/components/auth/reset-password/ResetPasswordForm";
+import ResetPasswordPage from "@/components/auth/reset-password/ResetPasswordPage";
 
-export default function ResetPasswordPage() {
-  return <ResetPasswordForm />;
-}
+export const metadata = {
+  title: "Reset Password - Hillfinder",
+};
+
+export default async () => <ResetPasswordPage />;
