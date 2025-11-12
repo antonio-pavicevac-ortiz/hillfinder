@@ -1,9 +1,10 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import { motion } from "framer-motion";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useState } from "react";
-
 // TypeScript interface for route responses
 interface RouteResponse {
   _id?: string;
@@ -30,9 +31,7 @@ export default function DashboardPage() {
           <div className="absolute inset-0 rounded-full border-4 border-green-400 opacity-40 animate-ping" />
           <div className="absolute inset-0 rounded-full border-4 border-green-600 animate-spin border-t-transparent" />
         </div>
-        <p className="text-gray-600 font-medium animate-pulse">
-          Checking your session...
-        </p>
+        <p className="text-gray-600 font-medium animate-pulse">Checking your session...</p>
       </div>
     );
   }
@@ -40,12 +39,20 @@ export default function DashboardPage() {
   // 🧩 2️⃣ If not logged in
   if (!session) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-hillfinder-gradient">
+      <motion.div
+        className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
         <h1 className="text-lg text-gray-700 mb-4">You’re not logged in!</h1>
-        <Link href="/auth/signin" className="btn btn-primary mt-4">
-          Sign in
+        <Link
+          href="/auth/signin"
+          className="mt-4 px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md shadow-sm transition-colors duration-200"
+        >
+          Sign In
         </Link>
-      </div>
+      </motion.div>
     );
   }
 
@@ -75,34 +82,40 @@ export default function DashboardPage() {
 
   // 🧩 3️⃣ Logged in
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient">
-      <h1 className="text-3xl font-bold mb-2">Welcome, {session.user?.name}</h1>
-      <p className="text-gray-700 mb-8">
-        You’re now signed in with {session.user?.email}.
-      </p>
+    <motion.div
+      className="min-h-screen flex flex-col bg-hillfinder-gradient"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
+      {/* Navbar / Header */}
+      <DashboardHeader>
+        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-green-600 text-white font-semibold">
+          {session?.user?.name?.charAt(0).toUpperCase() ?? "?"}
+        </div>
+      </DashboardHeader>
+      {/* Content section */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4">
+        <button
+          onClick={handleAddRoute}
+          className={`btn btn-green mb-4 ${loading ? "opacity-60 cursor-not-allowed" : ""}`}
+          disabled={loading}
+        >
+          {loading ? (
+            <span className="animate-pulse text-green-700 font-medium">
+              🧭 Calculating route details...
+            </span>
+          ) : (
+            "➕ Add Test Route"
+          )}
+        </button>
 
-      <button
-        onClick={handleAddRoute}
-        className={`btn btn-green mb-4 ${
-          loading ? "opacity-60 cursor-not-allowed" : ""
-        }`}
-        disabled={loading}
-      >
-        {loading ? "Saving..." : "Add Test Route"}
-      </button>
-
-      {response && (
-        <pre className="bg-white/70 p-4 rounded text-sm max-w-md overflow-auto shadow">
-          {JSON.stringify(response, null, 2)}
-        </pre>
-      )}
-
-      <button
-        onClick={() => signOut({ callbackUrl: "/" })}
-        className="btn btn-green mt-6"
-      >
-        Sign out
-      </button>
-    </div>
+        {response && (
+          <pre className="bg-white/70 p-4 rounded text-sm max-w-md overflow-auto shadow">
+            {JSON.stringify(response, null, 2)}
+          </pre>
+        )}
+      </main>
+    </motion.div>
   );
 }

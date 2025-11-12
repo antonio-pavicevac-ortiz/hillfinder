@@ -1,30 +1,29 @@
-import { MongoClient } from "mongodb";
+import mongoose from "mongoose";
 
-const uri = process.env.MONGODB_URI as string;
-const options = {};
+const MONGODB_URI = process.env.MONGODB_URI!;
 
-if (!uri) {
-  throw new Error("❌ Please add your Mongo URI to .env.local");
+if (!MONGODB_URI) {
+  throw new Error("❌ Missing MONGODB_URI in environment variables");
 }
 
-// In dev mode, use a global variable so we don’t create a new client every reload.
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+// Maintain a cached connection across hot reloads in dev
+let isConnected = false;
 
-declare global {
-  // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
-}
-
-if (process.env.NODE_ENV === "development") {
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
+export const connectToDB = async () => {
+  if (isConnected) {
+    console.log("🟢 MongoDB: Using existing connection");
+    return;
   }
-  clientPromise = global._mongoClientPromise;
-} else {
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
-}
 
-export default clientPromise;
+  try {
+    const db = await mongoose.connect(MONGODB_URI, {
+      dbName: process.env.MONGODB_DB || "hillfinder",
+    });
+
+    isConnected = !!db.connections[0].readyState;
+    console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err);
+    throw err;
+  }
+};

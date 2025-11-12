@@ -1,13 +1,13 @@
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+import AuthNavbar from "@/components/auth/AuthNavbar";
+import type { ReactNode } from "react";
+
+type AuthLayoutProps = { children: ReactNode };
+
+export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-100 via-yellow-50 to-green-200">
-      <div className="w-full max-w-md bg-white/80 backdrop-blur-md rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.1)] p-8 mx-4">
-        {children}
-      </div>
-    </main>
+    <div className="min-h-screen flex flex-col hillfinder-gradient">
+      <AuthNavbar />
+      <main className="flex-1 flex items-center justify-center px-4">{children}</main>
+    </div>
   );
 }

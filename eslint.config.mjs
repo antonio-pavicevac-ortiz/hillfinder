@@ -1,25 +1,63 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+// eslint.config.mjs
+import nextPlugin from "@next/eslint-plugin-next";
+import unusedImports from "eslint-plugin-unused-imports";
+import tseslint from "typescript-eslint";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+export default [
+  // 1) Ignore generated / external stuff
   {
     ignores: [
-      "node_modules/**",
+      // build output
       ".next/**",
-      "out/**",
+      "dist/**",
       "build/**",
+
+      // dependencies
+      "node_modules/**",
+
+      // type definition / env files
+      "*.d.ts",
       "next-env.d.ts",
+
+      // config / tooling files we don't care to lint right now
+      "postcss.config.mjs",
+      "tailwind.config.ts",
+      "next.config.ts",
+      "test-mongo.js",
     ],
   },
-];
 
-export default eslintConfig;
+  // 2) Main project config for TS/JS source files
+  {
+    files: ["**/*.{ts,tsx,js,jsx}"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+      },
+    },
+    plugins: {
+      "@next/next": nextPlugin,
+      "unused-imports": unusedImports,
+    },
+    rules: {
+      // Let TS handle types, we just want some niceties
+      "no-var": "error",
+
+      // App Router: disable page-routes rule
+      "@next/next/no-html-link-for-pages": "off",
+
+      // Unused imports / vars via eslint-plugin-unused-imports
+      "unused-imports/no-unused-imports": "warn",
+      "unused-imports/no-unused-vars": [
+        "warn",
+        {
+          args: "after-used",
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+];
