@@ -1,39 +1,37 @@
 "use client";
 
-import { useSession } from "next-auth/react";
-import { ReactNode, useState } from "react";
-import DashboardMenu from "./DashboardMenu";
+import { User } from "lucide-react";
+import { useState } from "react";
 
-interface DashboardHeaderProps {
-  children?: ReactNode;
-}
-
-export default function DashboardHeader({ children }: DashboardHeaderProps) {
+export default function DashboardHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { data: session } = useSession();
-
-  const fullName = session?.user?.name || "";
-  const firstName = fullName.split(" ")[0] || "";
 
   return (
-    <header className="sticky top-0 z-40 flex items-center justify-between px-6 py-1 bg-white/60 backdrop-blur-md shadow-sm border-b border-green-100">
-      {/* Left side: App title or greeting */}
-      <h1 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-        {firstName ? `Welcome back, ${firstName} 👋` : "Welcome back 👋"}{" "}
-      </h1>
+    <header className="w-full bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 border-b border-black/10 px-4 py-3 flex items-center justify-between z-30">
+      {/* Greeting */}
+      <h1 className="text-lg font-semibold text-gray-900">Welcome back, Antonio 👋</h1>
 
-      {/* Right side: Avatar / user menu */}
+      {/* Profile Menu Button */}
       <div className="relative">
         <button
-          onClick={() => setMenuOpen((prev) => !prev)}
-          className="flex items-center gap-2 px-3 py-2 rounded-full bg-green-100 hover:bg-green-200 transition"
+          onClick={() => setMenuOpen(!menuOpen)}
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 text-white"
         >
-          {children}
+          <User size={18} />
         </button>
 
+        {/* Dropdown */}
         {menuOpen && (
-          <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-100 rounded-lg shadow-md">
-            <DashboardMenu />
+          <div className="absolute right-0 mt-2 w-40 bg-white shadow-lg rounded-lg border border-gray-100 py-2 z-50">
+            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700">
+              Profile
+            </button>
+            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700">
+              Settings
+            </button>
+            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 text-red-600">
+              Sign Out
+            </button>
           </div>
         )}
       </div>

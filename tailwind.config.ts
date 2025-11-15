@@ -2,10 +2,7 @@ import daisyui from "daisyui";
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: [
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  content: ["./src/app/**/*.{js,ts,jsx,tsx,mdx}", "./src/components/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       keyframes: {
@@ -19,7 +16,8 @@ const config: Config = {
       },
       backgroundImage: {
         "hillfinder-gradient": "linear-gradient(to bottom, #E1F5C4, #EDE574)",
-        "navbar-gradient": "linear-gradient(to bottom, white,#E1F5C4)",
+        "navbar-gradient":
+          "w-full py-4 flex justify-center bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/50 border-t border-black/10",
       },
       colors: {
         brandGreen: {
