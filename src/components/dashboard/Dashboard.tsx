@@ -5,49 +5,66 @@ import DashboardMap, { DashboardMapRef } from "@/components/dashboard/DashboardM
 import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
 import SearchDestination from "@/components/dashboard/SearchDestination";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function Dashboard() {
-  const mapRef = useRef<DashboardMapRef | null>(null);
+  // ✅ USE ONLY ONE MAP REF
+  const dashboardMapRef = useRef<DashboardMapRef | null>(null);
   const [qaOpen, setQaOpen] = useState(false);
 
+  /** When map finishes loading… */
+  const handleMapReady = useCallback(() => {
+    console.log("Map ready — requesting geolocation…");
+
+    if (!navigator.geolocation) {
+      console.error("Geolocation not supported in this browser.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        console.log("GEO SUCCESS:", lat, lng);
+
+        dashboardMapRef.current?.addUserPin(lat, lng);
+      },
+      (err) => {
+        console.error("GEO ERROR:", err);
+      }
+    );
+  }, []);
+
+  useEffect(() => {
+    (window as any).dashboardMapRef = dashboardMapRef;
+  }, []);
+
   return (
-    <div className="min-h-screen w-full flex flex-col relative">
+    <div className="relative h-screen w-full overflow-hidden bg-white">
       {/* HEADER */}
-      {/* FLOATING HEADER */}
-      <div className="absolute top-0 inset-x-0 z-40 pointer-events-none">
+      <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
         <div className="pointer-events-auto">
           <DashboardHeader />
         </div>
       </div>
-      <div className="absolute top-0 left-0 right-0 mt-20 z-30 pointer-events-auto">
+
+      {/* SEARCH BAR — stable fixed layer */}
+      <div className="fixed top-[4.5rem] left-0 right-0 z-[60] flex justify-center px-4">
         <SearchDestination
           onSelectLocation={(loc) => {
-            mapRef.current?.flyTo(loc.lat, loc.lng);
+            console.log("Selected location:", loc);
+            dashboardMapRef.current?.addPin(loc.lat, loc.lng);
           }}
         />
       </div>
-      {/* Map fills remaining height */}
-      <DashboardMap ref={mapRef} />
 
-      {/* 🔹 FROSTED BOTTOM NAVBAR – NOW OVER THE MAP */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
-        <div className="mx-auto w-full max-w ">
-          <div
-            className="
-                    bg-white/30
-                    backdrop-blur-3xl
-                    border-t border-white/40
-                    shadow-[0_-10px_30px_rgba(0,0,0,0.15)]
-                    flex justify-center items-center
-                    py-3
-                    pointer-events-auto
-                  "
-          >
-            <div className="inline-block">
-              <QuickActionsTrigger onOpen={() => setQaOpen(true)} />
-            </div>
-          </div>
+      {/* MAP */}
+      <DashboardMap ref={dashboardMapRef} onReady={handleMapReady} />
+
+      {/* BOTTOM BAR */}
+      <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none">
+        <div className="pointer-events-auto bg-white/30 backdrop-blur-3xl border-t border-white/40 shadow-[0_-10px_30px_rgba(0,0,0,0.15)] py-3 flex justify-center">
+          <QuickActionsTrigger onOpen={() => setQaOpen(true)} />
         </div>
       </div>
 
@@ -55,7 +72,18 @@ export default function Dashboard() {
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
-        onUseLocation={() => mapRef.current?.flyTo(40.715, -73.761)}
+        onUseLocation={() => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              dashboardMapRef.current?.addUserPin(pos.coords.latitude, pos.coords.longitude); // ✅ FIXED
+            },
+            (err) => {
+              console.error("Geolocation error:", err);
+              alert("Unable to get your location.");
+            },
+            { enableHighAccuracy: true }
+          );
+        }}
         onStartRoute={() => console.log("Start Route")}
         onViewSaved={() => console.log("View Saved")}
       />

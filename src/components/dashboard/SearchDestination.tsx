@@ -10,18 +10,23 @@ interface Props {
 export default function SearchDestination({ onSelectLocation }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [justSelected, setJustSelected] = useState(false);
 
-  // Fetch suggestions from Mapbox
+  // Fetch suggestions
   useEffect(() => {
+    if (justSelected) {
+      setShowDropdown(false);
+      return setJustSelected(false);
+    }
+
     if (!query.trim()) {
       setResults([]);
+      setShowDropdown(false);
       return;
     }
 
     const delay = setTimeout(async () => {
-      setIsTyping(true);
-
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
         query
       )}.json?access_token=${process.env.NEXT_PUBLIC_MAPBOX_TOKEN}&limit=5`;
@@ -30,8 +35,8 @@ export default function SearchDestination({ onSelectLocation }: Props) {
       const data = await res.json();
 
       setResults(data.features || []);
-      setIsTyping(false);
-    }, 300); // debounce
+      setShowDropdown(true);
+    }, 300);
 
     return () => clearTimeout(delay);
   }, [query]);
@@ -55,36 +60,53 @@ export default function SearchDestination({ onSelectLocation }: Props) {
             type="text"
             placeholder="Search destination"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-gray-800 placeholder-gray-500"
+            onChange={(e) => {
+              setQuery(e.target.value); // <-- typing works again
+            }}
+            className="
+              flex-1 bg-transparent text-gray-800 placeholder-gray-500
+              outline-none focus:outline-none focus:ring-0
+            "
           />
         </div>
 
         {/* Results Dropdown */}
-        {results.length > 0 && (
+        {showDropdown && results.length > 0 && (
           <div
-            className="
-            bg-white/20
-            backdrop-blur-2xl
-            supports-[backdrop-filter]:bg-white/10
-            border border-white/30
-            rounded-xl
-            shadow-lg
-            mt-1 max-h-60 overflow-auto
-          "
+            className={`
+     bg-white/20 backdrop-blur-2xl
+    supports-[backdrop-filter]:bg-white/10
+    border border-white/30
+    rounded-xl shadow-lg mt-3 max-h-60
+    overflow-y-auto overflow-x-visible
+    px-2 pt-3 pb-6
+    transform transition-all duration-200 ease-out
+            `}
           >
             {results.map((place) => (
               <button
                 key={place.id}
-                className="p-3 text-left w-full hover:bg-gray-100 text-gray-700"
+                className="
+                  p-3 text-left w-full text-gray-700
+                  hover:bg-green-100
+                  focus:outline-none
+                  focus-visible:ring-2
+focus-visible:ring-green-600
+focus-visible:ring-offset-2
+focus-visible:ring-offset-white
+                  rounded-lg
+                "
                 onClick={() => {
                   onSelectLocation({
                     name: place.place_name,
                     lat: place.center[1],
                     lng: place.center[0],
                   });
-                  setResults([]);
-                  setQuery(place.place_name);
+
+                  setQuery(place.place_name); // keep value in input
+                  setJustSelected(true);
+                  setResults([]); // hide results instantly
+                  setShowDropdown(false);
                 }}
               >
                 {place.place_name}
