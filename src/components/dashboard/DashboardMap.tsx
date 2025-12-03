@@ -1,5 +1,5 @@
 "use client";
-
+import type { Difficulty } from "@/lib/hillfinder/difficulty";
 import mapboxgl from "mapbox-gl";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
@@ -9,6 +9,9 @@ export interface DashboardMapRef {
   flyTo: (lat: number, lng: number) => void;
   addPin: (lat: number, lng: number) => void;
   addUserPin: (lat: number, lng: number) => void;
+  getUserLocation: () => { lat: number; lng: number } | null;
+  getDestination: () => { lat: number; lng: number } | null;
+  drawRoute: (coords: [number, number][], difficulty: Difficulty) => void;
 }
 
 interface Props {
@@ -90,6 +93,52 @@ function DashboardMapInner({ onReady }: Props, ref: React.Ref<DashboardMapRef>) 
         mapRef.current.flyTo({
           center: [lng, lat],
           zoom: 14,
+        });
+      },
+
+      getUserLocation() {
+        if (!userMarkerRef.current) return null;
+        const pos = userMarkerRef.current.getLngLat();
+        return { lat: pos.lat, lng: pos.lng };
+      },
+
+      getDestination() {
+        if (!destMarkerRef.current) return null;
+        const pos = destMarkerRef.current.getLngLat();
+        return { lat: pos.lat, lng: pos.lng };
+      },
+
+      drawRoute(coords, difficulty) {
+        if (!mapRef.current) return;
+
+        const map = mapRef.current;
+
+        if (map.getLayer("route-line")) map.removeLayer("route-line");
+        if (map.getSource("route-line")) map.removeSource("route-line");
+
+        const color =
+          difficulty === "easy" ? "#22c55e" : difficulty === "medium" ? "#eab308" : "#ef4444"; // frisco
+
+        map.addSource("route-line", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates: coords.map(([lat, lng]) => [lng, lat]),
+            },
+          },
+        });
+
+        map.addLayer({
+          id: "route-line",
+          type: "line",
+          source: "route-line",
+          paint: {
+            "line-color": color,
+            "line-width": 5,
+          },
         });
       },
     }),

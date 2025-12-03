@@ -5,10 +5,12 @@ import DashboardMap, { DashboardMapRef } from "@/components/dashboard/DashboardM
 import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
 import SearchDestination from "@/components/dashboard/SearchDestination";
+import useRouteElevation from "@/hooks/useRouteElevation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function Dashboard() {
   // ✅ USE ONLY ONE MAP REF
+  const { loading: routeLoading, computeRoute } = useRouteElevation();
   const dashboardMapRef = useRef<DashboardMapRef | null>(null);
   const [qaOpen, setQaOpen] = useState(false);
 
@@ -34,6 +36,38 @@ export default function Dashboard() {
       }
     );
   }, []);
+
+  const handleStartRoute = async () => {
+    const map = dashboardMapRef.current;
+    if (!map) return;
+
+    // 1. Read user pin
+    const user = map.getUserLocation?.();
+    if (!user) {
+      alert("Your location was not detected yet.");
+      return;
+    }
+
+    // 2. Read destination
+    const dest = map.getDestination?.();
+    if (!dest) {
+      alert("Please search for a destination first.");
+      return;
+    }
+
+    console.log("Starting route from:", user, "→", dest);
+
+    // 3. Compute route (convert objects → tuples)
+    const result = await computeRoute([user.lat, user.lng], [dest.lat, dest.lng]);
+
+    console.log("Route result:", result);
+
+    // 4. Use the FIRST route in the scored list
+    const best = result[0];
+
+    // 5. Draw geometry on map
+    map.drawRoute(best.route.geometry.coordinates, best.difficulty);
+  };
 
   useEffect(() => {
     (window as any).dashboardMapRef = dashboardMapRef;
@@ -84,7 +118,7 @@ export default function Dashboard() {
             { enableHighAccuracy: true }
           );
         }}
-        onStartRoute={() => console.log("Start Route")}
+        onStartRoute={handleStartRoute}
         onViewSaved={() => console.log("View Saved")}
       />
     </div>
