@@ -4,8 +4,9 @@ import { signupSchema, type SignupData } from "@/lib/validation/authSchemas";
 import { zodResolver } from "@hookform/resolvers/zod";
 import clsx from "clsx";
 import { motion } from "framer-motion";
-import { signIn } from "next-auth/react";
-import { useState } from "react";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -13,6 +14,15 @@ export function SignupPage() {
   const [message, setMessage] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/dashboard");
+    }
+  }, [status]);
 
   const {
     register,

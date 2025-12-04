@@ -1,6 +1,9 @@
+@import "mapbox-gl/dist/mapbox-gl.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 html {
   overflow-y: scroll;
 }
@@ -50,6 +53,21 @@ body {
 }
 .eye-btn {
   @apply absolute right-3 top-2.5 text-gray-500 hover:text-gray-700 transition;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.12s ease-out;
 }
 
 /* Hide the built-in Next.js DevTools overlay badge */

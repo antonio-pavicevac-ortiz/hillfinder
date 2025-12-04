@@ -14,7 +14,6 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    // 👇 These two lines are the missing keys
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
