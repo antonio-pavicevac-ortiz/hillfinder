@@ -1,6 +1,5 @@
 "use client";
 
-import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import DashboardMap, { DashboardMapRef } from "@/components/dashboard/DashboardMap";
 import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
@@ -32,7 +31,15 @@ export default function Dashboard() {
         dashboardMapRef.current?.addUserPin(lat, lng);
       },
       (err) => {
-        console.error("GEO ERROR:", err);
+        if (!err) {
+          console.error("GEO ERROR: Unknown geolocation error");
+          return;
+        }
+
+        console.error("GEO ERROR:", {
+          code: err.code,
+          message: err.message,
+        });
       }
     );
   }, []);
@@ -75,13 +82,6 @@ export default function Dashboard() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-white">
-      {/* HEADER */}
-      <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
-        <div className="pointer-events-auto">
-          <DashboardHeader />
-        </div>
-      </div>
-
       {/* SEARCH BAR — stable fixed layer */}
       <div className="fixed top-[4.5rem] left-0 right-0 z-[60] flex justify-center px-4">
         <SearchDestination

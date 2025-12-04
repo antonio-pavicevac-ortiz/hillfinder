@@ -145,7 +145,7 @@ function DashboardMapInner({ onReady }: Props, ref: React.Ref<DashboardMapRef>) 
     []
   );
 
-  return <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />;
+  return <div ref={mapContainerRef} className="absolute inset-0 w-full h-full bg-[#e5e3df]" />;
 }
 
 export default forwardRef(DashboardMapInner);

@@ -1,10 +1,20 @@
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "./api/auth/[...nextauth]/route";
+
 export const metadata = {
   title: "Welcome to Hillfinder!",
   description:
     "Discover scenic downhill routes near you. Whether you’re biking, skateboarding, or just exploring — Hillfinder helps you find your perfect ride.",
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+
+  if (session) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient text-center">
       <h1 className="text-4xl font-bold mb-4 text-gray-800">Welcome to Hillfinder</h1>
