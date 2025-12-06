@@ -56,6 +56,10 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
               {user?.email}
             </div>
 
+            <a href="/dashboard" className="block px-4 py-2 hover:bg-gray-100 text-gray-700">
+              Dashboard
+            </a>
+
             <a
               href="/dashboard/profile"
               className="block px-4 py-2 hover:bg-gray-100 text-gray-700"
@@ -67,9 +71,9 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
               Settings
             </button>
 
-            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700">
+            <a href="/dashboard/saved" className="block px-4 py-2 hover:bg-gray-100 text-gray-700">
               Saved Routes
-            </button>
+            </a>
 
             <button
               onClick={() => signOut()}

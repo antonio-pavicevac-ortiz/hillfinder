@@ -1,4 +1,5 @@
 @import "mapbox-gl/dist/mapbox-gl.css";
+@import "@uploadthing/react/styles.css";
 
 @tailwind base;
 @tailwind components;
@@ -71,3 +72,18 @@ body {
 }
 
 /* Hide the built-in Next.js DevTools overlay badge */
+/* uploadthing */
+/* UploadThing — force all button variations green */
+.ut-button,
+.ut-upload-button,
+.ut-uploading-outer button,
+.ut-uploading-outer .ut-label {
+  @apply bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition !important;
+}
+
+.ut-button:hover,
+.ut-upload-button:hover,
+.ut-uploading-outer button:hover,
+.ut-uploading-outer .ut-label:hover {
+  @apply bg-emerald-600 !important;
+}
