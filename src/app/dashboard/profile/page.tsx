@@ -1,5 +1,6 @@
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import AvatarUploader from "@/components/user/AvatarUploader";
+import ProfileForm from "@/components/user/ProfileForm";
 import { connectToDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { getServerSession } from "next-auth";
@@ -12,8 +13,16 @@ export default async function ProfilePage() {
   }
 
   await connectToDB();
-  const dbUser = await User.findById(session.user.id).lean();
-
+  const dbUser = (await User.findById(session.user.id).lean()) as any;
+  const safeUser = dbUser
+    ? {
+        id: dbUser._id?.toString(),
+        name: dbUser.name || "",
+        email: dbUser.email || "",
+        username: dbUser.username || "",
+        image: dbUser.image || null,
+      }
+    : null;
   const avatar = (dbUser && (dbUser as any).image) || (session.user.image as string | null) || null;
 
   return (
@@ -35,17 +44,21 @@ export default async function ProfilePage() {
         <div className="mt-4 flex flex-col items-center md:flex-row md:items-center md:gap-10">
           {/* Avatar Preview */}
           <div className="h-36 w-36 md:h-40 md:w-40 rounded-full bg-gradient-to-br from-green-500 to-emerald-400 flex items-center justify-center overflow-hidden mb-6 md:mb-0">
-            {avatar ? (
-              <img
-                src={avatar}
-                alt={session.user.name || "Avatar"}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-white text-2xl md:text-3xl font-semibold">
-                {(session.user.name || "?").slice(0, 1).toUpperCase()}
-              </span>
-            )}
+            {(() => {
+              const fallbackUrl = `https://api.dicebear.com/7.x/thumbs/svg?seed=${
+                safeUser?.username || safeUser?.email || "guest"
+              }`;
+
+              const src = avatar || fallbackUrl;
+
+              return (
+                <img
+                  src={src}
+                  alt={session.user.name || "Avatar"}
+                  className="h-full w-full object-cover"
+                />
+              );
+            })()}
           </div>
 
           {/* Upload Zone */}
@@ -59,6 +72,11 @@ export default async function ProfilePage() {
       </div>
 
       {/* Account Information Card ... (unchanged) */}
+      {/* ACCOUNT DETAILS FORM */}
+      <div className="rounded-2xl bg-white/80 p-6 shadow-sm ring-1 ring-black/5 space-y-6">
+        <h2 className="text-lg font-semibold text-gray-800">Account Details</h2>
+        <ProfileForm dbUser={safeUser} />
+      </div>
     </section>
   );
 }
