@@ -1,125 +1,112 @@
 "use client";
-
-import DashboardMap, { DashboardMapRef } from "@/components/dashboard/DashboardMap";
+import { DashboardLegend } from "@/components/dashboard/DashboardLegend";
+import DashboardMap from "@/components/dashboard/DashboardMap";
+import DownhillGenerator from "@/components/dashboard/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
 import SearchDestination from "@/components/dashboard/SearchDestination";
-import useRouteElevation from "@/hooks/useRouteElevation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import AnimatedPanel from "@/components/ui/AnimatedPanel";
+import { useState } from "react";
 
 export default function Dashboard() {
-  // ✅ USE ONLY ONE MAP REF
-  const { loading: routeLoading, computeRoute } = useRouteElevation();
-  const dashboardMapRef = useRef<DashboardMapRef | null>(null);
   const [qaOpen, setQaOpen] = useState(false);
+  const [showGenerator, setShowGenerator] = useState(true);
+  const [searchActive, setSearchActive] = useState(false);
+  const [destination, setDestination] = useState<{
+    name: string;
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [routeActive, setRouteActive] = useState(false);
+  const [hasLearnedPins, setHasLearnedPins] = useState(false);
 
-  /** When map finishes loading… */
-  const handleMapReady = useCallback(() => {
-    console.log("Map ready — requesting geolocation…");
+  const legendVisible = routeActive;
 
-    if (!navigator.geolocation) {
-      console.error("Geolocation not supported in this browser.");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        console.log("GEO SUCCESS:", lat, lng);
-
-        dashboardMapRef.current?.addUserPin(lat, lng);
-      },
-      (err) => {
-        if (!err) {
-          console.error("GEO ERROR: Unknown geolocation error");
-          return;
-        }
-
-        console.error("GEO ERROR:", {
-          code: err.code,
-          message: err.message,
-        });
-      }
-    );
-  }, []);
-
-  const handleStartRoute = async () => {
-    const map = dashboardMapRef.current;
-    if (!map) return;
-
-    // 1. Read user pin
-    const user = map.getUserLocation?.();
-    if (!user) {
-      alert("Your location was not detected yet.");
-      return;
-    }
-
-    // 2. Read destination
-    const dest = map.getDestination?.();
-    if (!dest) {
-      alert("Please search for a destination first.");
-      return;
-    }
-
-    console.log("Starting route from:", user, "→", dest);
-
-    // 3. Compute route (convert objects → tuples)
-    const result = await computeRoute([user.lat, user.lng], [dest.lat, dest.lng]);
-
-    console.log("Route result:", result);
-
-    // 4. Use the FIRST route in the scored list
-    const best = result[0];
-
-    // 5. Draw geometry on map
-    map.drawRoute(best.route.geometry.coordinates, best.difficulty);
-  };
-
-  useEffect(() => {
-    (window as any).dashboardMapRef = dashboardMapRef;
-  }, []);
+  function handleGenerate(params: {
+    from: string;
+    to: string;
+    skill: "beginner" | "intermediate" | "advanced";
+  }) {
+    console.log("🏁 Generate downhill route:", params);
+    setShowGenerator(false);
+  }
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-white">
-      {/* SEARCH BAR — stable fixed layer */}
-      <div className="fixed top-[4.5rem] left-0 right-0 z-[60] flex justify-center px-4">
-        <SearchDestination
-          onSelectLocation={(loc) => {
-            console.log("Selected location:", loc);
-            dashboardMapRef.current?.addPin(loc.lat, loc.lng);
+      {/* MAP */}
+      <div
+        className={`absolute inset-0 z-0 transition-opacity duration-200 ${
+          searchActive ? "opacity-60" : "opacity-100"
+        }`}
+      >
+        <DashboardMap
+          destination={destination}
+          onRouteDrawn={() => {
+            setRouteActive(true);
+            setHasLearnedPins(true);
           }}
         />
       </div>
 
-      {/* MAP */}
-      <DashboardMap ref={dashboardMapRef} onReady={handleMapReady} />
+      {/* Legend */}
+      <AnimatedPanel
+        visible={legendVisible}
+        className="fixed bottom-28 left-4 z-[100] pointer-events-none"
+      >
+        <DashboardLegend visible={legendVisible} />
+      </AnimatedPanel>
 
-      {/* BOTTOM BAR */}
+      {/* Search */}
+      <div className="absolute top-[6rem] left-0 right-0 z-[60] flex justify-center px-2.5 pointer-events-none">
+        <AnimatedPanel
+          visible={true}
+          className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1"
+        >
+          <SearchDestination
+            onFocus={() => {
+              setSearchActive(true);
+              setShowGenerator(false); // Hide the card as soon as the user starts searching
+            }}
+            onBlur={() => setSearchActive(false)}
+            onSelectLocation={(loc) => {
+              setDestination(loc);
+              setSearchActive(false);
+              setShowGenerator(true); // Show the card only after a destination is selected
+              setRouteActive(false);
+            }}
+          />
+        </AnimatedPanel>
+      </div>
+
+      {/* Downhill Generator */}
+      <div className="absolute top-[10.625rem] left-0 right-0 z-[70] px-4 flex justify-center pointer-events-none">
+        <AnimatedPanel visible={showGenerator} className="pointer-events-auto">
+          <DownhillGenerator
+            open={showGenerator} // component returns null when showGenerator is false
+            initialTo={destination?.name}
+            onClose={() => setShowGenerator(false)}
+            onGenerate={handleGenerate}
+            showHint={!hasLearnedPins}
+          />
+        </AnimatedPanel>
+      </div>
+
+      {/* Quick Actions */}
       <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none">
-        <div className="pointer-events-auto bg-white/30 backdrop-blur-3xl border-t border-white/40 shadow-[0_-10px_30px_rgba(0,0,0,0.15)] py-3 flex justify-center">
+        <div className="pointer-events-auto bg-white/30 backdrop-blur-3xl py-3 flex justify-center">
           <QuickActionsTrigger onOpen={() => setQaOpen(true)} />
         </div>
       </div>
 
-      {/* QUICK ACTIONS SHEET */}
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
-        onUseLocation={() => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              dashboardMapRef.current?.addUserPin(pos.coords.latitude, pos.coords.longitude); // ✅ FIXED
-            },
-            (err) => {
-              console.error("Geolocation error:", err);
-              alert("Unable to get your location.");
-            },
-            { enableHighAccuracy: true }
-          );
+        onUseLocation={() => {}}
+        onStartRoute={() => {
+          setQaOpen(false);
+          setShowGenerator(true);
         }}
-        onStartRoute={handleStartRoute}
-        onViewSaved={() => console.log("View Saved")}
+        onViewSaved={() => {}}
       />
     </div>
   );
