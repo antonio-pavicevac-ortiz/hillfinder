@@ -65,7 +65,6 @@ export default function Dashboard() {
           <SearchDestination
             onFocus={() => {
               setSearchActive(true);
-              setShowGenerator(false); // Hide the card as soon as the user starts searching
             }}
             onBlur={() => setSearchActive(false)}
             onSelectLocation={(loc) => {
@@ -73,6 +72,15 @@ export default function Dashboard() {
               setSearchActive(false);
               setShowGenerator(true); // Show the card only after a destination is selected
               setRouteActive(false);
+            }}
+            onQueryChange={(q) => {
+              const hasQuery = q.trim().length > 0;
+              if (hasQuery) {
+                setSearchActive(true);
+                setShowGenerator(false);
+              } else {
+                setShowGenerator(true); // optional: show it again when query is cleared
+              }
             }}
           />
         </AnimatedPanel>

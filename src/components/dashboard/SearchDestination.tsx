@@ -1,17 +1,33 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   onSelectLocation: (loc: { name: string; lat: number; lng: number }) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  onQueryChange?: (query: string) => void;
 }
 
-export default function SearchDestination({ onSelectLocation }: Props) {
+export default function SearchDestination({
+  onSelectLocation,
+  onFocus,
+  onBlur,
+  onQueryChange,
+}: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [justSelected, setJustSelected] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (results.length > 0) setActiveIndex(0);
+    else setActiveIndex(-1);
+  }, [results]);
 
   // Fetch suggestions
   useEffect(() => {
@@ -41,6 +57,21 @@ export default function SearchDestination({ onSelectLocation }: Props) {
     return () => clearTimeout(delay);
   }, [query]);
 
+  function selectPlace(place: any) {
+    onSelectLocation({
+      name: place.place_name,
+      lat: place.center[1],
+      lng: place.center[0],
+    });
+
+    setQuery(place.place_name);
+    setJustSelected(true);
+    setResults([]);
+    setShowDropdown(false);
+    onBlur?.(); // optional: sync parent state
+    inputRef.current?.blur(); // key: forces blur so parent UI behaves consistently
+  }
+
   return (
     <div className="absolute top-3 left-0 right-0 z-20 flex justify-center pointer-events-none">
       <div
@@ -58,56 +89,98 @@ export default function SearchDestination({ onSelectLocation }: Props) {
           <Search className="text-gray-500" size={20} />
           <input
             type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={showDropdown && results.length > 0}
+            aria-controls="search-results"
+            aria-activedescendant={
+              showDropdown && results.length > 0 && activeIndex >= 0
+                ? `search-option-${activeIndex}`
+                : undefined
+            }
             placeholder="Search destination"
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value); // <-- typing works again
+              const next = e.target.value;
+              onQueryChange?.(next);
+              setQuery(next);
+            }}
+            onFocus={() => {
+              onFocus?.();
+              if (query.trim() && results.length > 0) {
+                setShowDropdown(true);
+              }
+            }}
+            onBlur={() => {
+              onBlur?.();
+              setShowDropdown(false);
+            }}
+            onKeyDown={(e) => {
+              if (!showDropdown || results.length === 0) return;
+
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+              }
+
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, 0));
+              }
+
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const place = results[activeIndex];
+                if (place) selectPlace(place);
+              }
+
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setShowDropdown(false);
+              }
             }}
             className="
-              flex-1 bg-transparent text-gray-800 placeholder-gray-500
-              outline-none focus:outline-none focus:ring-0
-            "
+    flex-1 bg-transparent text-gray-800 placeholder-gray-500
+    outline-none focus:outline-none focus:ring-0
+  "
           />
         </div>
 
         {/* Results Dropdown */}
         {showDropdown && results.length > 0 && (
           <div
+            id="search-results"
+            role="listbox"
             className={`
      bg-white/20 backdrop-blur-2xl
     supports-[backdrop-filter]:bg-white/10
     border border-white/30
     rounded-xl shadow-lg mt-3 max-h-60
-    overflow-y-auto overflow-x-visible
+    overflow-y-auto overflow-x-visible overscroll-contain
     px-2 pt-3 pb-6
     transform transition-all duration-200 ease-out
             `}
           >
-            {results.map((place) => (
+            {results.map((place, idx) => (
               <button
                 key={place.id}
-                className="
-                  p-3 text-left w-full text-gray-700
-                  hover:bg-green-100
-                  focus:outline-none
-                  focus-visible:ring-2
-focus-visible:ring-green-600
-focus-visible:ring-offset-2
-focus-visible:ring-offset-white
-                  rounded-lg
-                "
-                onClick={() => {
-                  onSelectLocation({
-                    name: place.place_name,
-                    lat: place.center[1],
-                    lng: place.center[0],
-                  });
-
-                  setQuery(place.place_name); // keep value in input
-                  setJustSelected(true);
-                  setResults([]); // hide results instantly
-                  setShowDropdown(false);
-                }}
+                id={`search-option-${idx}`}
+                role="option"
+                aria-selected={idx === activeIndex}
+                type="button"
+                className={`
+      p-3 text-left w-full text-gray-700 rounded-lg
+      hover:bg-green-100
+      ${idx === activeIndex ? "bg-green-100" : ""}
+      focus:outline-none
+      focus-visible:ring-2
+      focus-visible:ring-green-600
+      focus-visible:ring-offset-2
+      focus-visible:ring-offset-white
+    `}
+                onMouseEnter={() => setActiveIndex(idx)}
+                onMouseDown={(e) => e.preventDefault()} // prevents input blur before click
+                onClick={() => selectPlace(place)}
               >
                 {place.place_name}
               </button>
