@@ -233,7 +233,7 @@ export default function DashboardMap({
     from: mapboxgl.LngLat,
     to: mapboxgl.LngLat
   ) {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${from.lng},${from.lat};${to.lng},${to.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+    const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${from.lng},${from.lat};${to.lng},${to.lat}?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
     const res = await fetch(url);
     const data = await res.json();
 
