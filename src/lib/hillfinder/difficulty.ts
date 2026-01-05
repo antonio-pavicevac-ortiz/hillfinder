@@ -1,4 +1,4 @@
-export type Difficulty = "easy" | "medium" | "frisco";
+export type Difficulty = "easy" | "medium" | "hard";
 
 export function scoreElevation(points: number[]): Difficulty {
   const totalGain = points.reduce((acc, v, i) => {
@@ -9,5 +9,5 @@ export function scoreElevation(points: number[]): Difficulty {
 
   if (totalGain < 20) return "easy";
   if (totalGain < 80) return "medium";
-  return "frisco"; // 😎
+  return "hard"; // 😎
 }
