@@ -5,48 +5,49 @@ import { useEffect, useRef } from "react";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
-function classifyDifficulty(elevations: number[], coords: [number, number][]) {
-  if (elevations.length < 2 || coords.length < 2) return "easy";
+// TODO: Will be reintroduced for skill-level routing (Beginner / Intermediate / Advanced)
+// function classifyDifficulty(elevations: number[], coords: [number, number][]) {
+//   if (elevations.length < 2 || coords.length < 2) return "easy";
 
-  let totalDrop = 0;
-  let totalDistance = 0;
+//   let totalDrop = 0;
+//   let totalDistance = 0;
 
-  for (let i = 1; i < elevations.length; i++) {
-    const elevationDiff = elevations[i - 1] - elevations[i];
-    if (elevationDiff > 0) {
-      totalDrop += elevationDiff;
-    }
+//   for (let i = 1; i < elevations.length; i++) {
+//     const elevationDiff = elevations[i - 1] - elevations[i];
+//     if (elevationDiff > 0) {
+//       totalDrop += elevationDiff;
+//     }
 
-    const [lng1, lat1] = coords[i - 1];
-    const [lng2, lat2] = coords[i];
+//     const [lng1, lat1] = coords[i - 1];
+//     const [lng2, lat2] = coords[i];
 
-    // Horizontal distance in meters (Haversine)
-    const R = 6371000; // Earth radius (m)
+//     // Horizontal distance in meters (Haversine)
+//     const R = 6371000; // Earth radius (m)
 
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLng = (lng2 - lng1) * (Math.PI / 180);
+//     const dLat = (lat2 - lat1) * (Math.PI / 180);
+//     const dLng = (lng2 - lng1) * (Math.PI / 180);
 
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
+//     const a =
+//       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+//       Math.cos((lat1 * Math.PI) / 180) *
+//         Math.cos((lat2 * Math.PI) / 180) *
+//         Math.sin(dLng / 2) *
+//         Math.sin(dLng / 2);
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
+//     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+//     const distance = R * c;
 
-    totalDistance += distance;
-  }
+//     totalDistance += distance;
+//   }
 
-  if (totalDistance === 0) return "easy";
+//   if (totalDistance === 0) return "easy";
 
-  const intensity = totalDrop / totalDistance;
+//   const intensity = totalDrop / totalDistance;
 
-  if (intensity < 5) return "easy";
-  if (intensity < 15) return "medium";
-  return "hard";
-}
+//   if (intensity < 5) return "easy";
+//   if (intensity < 15) return "medium";
+//   return "hard";
+// }
 
 function classifySegments(elevations: number[], coords: [number, number][]) {
   const segments: {
@@ -147,9 +148,11 @@ type Destination = {
 export default function DashboardMap({
   destination,
   onRouteDrawn,
+  onDestinationPicked,
 }: {
   destination: Destination | null;
   onRouteDrawn?: () => void;
+  onDestinationPicked?: (loc: { name: string; lat: number; lng: number }) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -165,6 +168,26 @@ export default function DashboardMap({
     el.style.border = "3px solid white";
     el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
     return el;
+  }
+
+  async function reverseGeocodeName(lng: number, lat: number): Promise<string> {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) return "Dropped Pin";
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      return data?.features?.[0]?.place_name ?? "Dropped Pin";
+    } catch {
+      return "Dropped Pin";
+    }
+  }
+
+  async function notifyDestinationPicked(lngLat: mapboxgl.LngLat) {
+    if (!onDestinationPicked) return;
+    const name = await reverseGeocodeName(lngLat.lng, lngLat.lat);
+    onDestinationPicked({ name, lat: lngLat.lat, lng: lngLat.lng });
   }
 
   function ensureFromMarker(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike) {
@@ -186,6 +209,17 @@ export default function DashboardMap({
       })
         .setLngLat(lngLat)
         .addTo(map);
+
+      // Notify Dashboard when user drags the TO pin
+      destMarkerRef.current.on("dragend", () => {
+        const ll = destMarkerRef.current!.getLngLat();
+        void notifyDestinationPicked(ll);
+
+        // If we have a FROM marker, redraw the route with the new destination
+        if (mapRef.current && markerRef.current) {
+          void drawRouteBetweenPoints(mapRef.current, markerRef.current.getLngLat(), ll);
+        }
+      });
 
       return destMarkerRef.current;
     }
@@ -260,6 +294,7 @@ export default function DashboardMap({
         },
       });
     });
+
     onRouteDrawn?.();
   }
 
@@ -316,10 +351,11 @@ export default function DashboardMap({
 
         // Set / move destination marker
         ensureDestMarker(mapRef.current, clicked);
+        void notifyDestinationPicked(clicked);
 
         // Draw route
         if (!markerRef.current || !destMarkerRef.current) return;
-        drawRouteBetweenPoints(
+        void drawRouteBetweenPoints(
           mapRef.current,
           markerRef.current.getLngLat(),
           destMarkerRef.current.getLngLat()
@@ -346,7 +382,7 @@ export default function DashboardMap({
 
     if (!markerRef.current) return;
 
-    drawRouteBetweenPoints(map, markerRef.current.getLngLat(), dest.getLngLat());
+    void drawRouteBetweenPoints(map, markerRef.current.getLngLat(), dest.getLngLat());
   }, [destination]);
 
   return <div ref={mapContainerRef} className="absolute inset-0 w-full h-full bg-[#e5e3df]" />;

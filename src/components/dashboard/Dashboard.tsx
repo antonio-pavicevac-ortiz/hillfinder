@@ -45,6 +45,11 @@ export default function Dashboard() {
             setRouteActive(true);
             setHasLearnedPins(true);
           }}
+          onDestinationPicked={(loc) => {
+            setDestination(loc);
+            setRouteActive(false);
+            setShowGenerator(true);
+          }}
         />
       </div>
 
@@ -91,7 +96,7 @@ export default function Dashboard() {
         <AnimatedPanel visible={showGenerator} className="pointer-events-auto">
           <DownhillGenerator
             open={showGenerator} // component returns null when showGenerator is false
-            initialTo={destination?.name}
+            initialTo={destination?.name ?? ""}
             onClose={() => setShowGenerator(false)}
             onGenerate={handleGenerate}
             showHint={!hasLearnedPins}
