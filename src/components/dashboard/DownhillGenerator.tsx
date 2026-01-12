@@ -1,8 +1,9 @@
 "use client";
 
 import AnimatedPanel from "@/components/ui/AnimatedPanel";
+import BottomSheet from "@/components/ui/BottomSheet";
 import { UXHint } from "@/components/ui/UXHint";
-import { motion } from "framer-motion";
+import { animate, motion, useDragControls, useMotionValue } from "framer-motion";
 import { useEffect, useState } from "react";
 
 const SKILL_INFO = {
@@ -43,6 +44,9 @@ export default function DownhillGenerator({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  const dragControls = useDragControls();
+  const y = useMotionValue(0);
+
   async function handleGenerate() {
     if (!to.trim()) {
       setMessage("Please enter a destination to generate your downhill route.");
@@ -69,60 +73,91 @@ To: ${to}`
     setTo(initialTo);
   }, [initialTo]);
 
-  if (!open) return null;
+  useEffect(() => {
+    y.set(0);
+  }, [open, y]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 20, scale: 0.98 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-      className="
-      relative
-      w-[100%] sm:w-[500px]
-      bg-white/70 backdrop-blur-xl
-      rounded-2xl border border-white/30 shadow-xl
-      p-5
-    "
-    >
-      <h2 className="text-lg font-semibold text-gray-900 mb-3">Plan Your Downhill Route</h2>
-      <AnimatedPanel visible={showHint} className="mb-3">
-        <UXHint show>Tip: Drag either pin, then tap the map to generate your route.</UXHint>
-      </AnimatedPanel>
+    <BottomSheet open={open} onClose={onClose}>
+      {/* The whole card is draggable, but only the pill starts the drag */}
+      <motion.div
+        style={{ y }}
+        className="pointer-events-auto w-full bg-white/70 backdrop-blur-xl rounded-2xl border border-white/30 shadow-xl p-5"
+        drag="y"
+        dragListener={false}
+        dragControls={dragControls}
+        dragDirectionLock
+        dragConstraints={{ top: 0, bottom: 200 }} // keep whatever number you're using
+        dragElastic={0.35}
+        dragMomentum={false}
+        onDragEnd={(_, info) => {
+          const CLOSE_DISTANCE = 40;
+          const CLOSE_VELOCITY = 800;
 
-      {/* From */}
-      <label className="block text-sm font-medium text-gray-700">From</label>
-      <input
-        type="text"
-        value={from}
-        readOnly
-        className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg
+          const shouldClose = info.offset.y > CLOSE_DISTANCE || info.velocity.y > CLOSE_VELOCITY;
+
+          if (shouldClose) {
+            onClose();
+            return;
+          }
+
+          // ✅ snap back
+          animate(y, 0, { type: "spring", stiffness: 300, damping: 35 });
+        }}
+      >
+        {/* Drag zone (pill + header) */}
+        <div
+          className="touch-none -mt-2 mb-3"
+          onTouchStartCapture={(e) => e.preventDefault()}
+          onPointerDown={(e) => dragControls.start(e)}
+        >
+          {/* pill */}
+          <div className="flex justify-center pt-2 pb-2 cursor-grab active:cursor-grabbing">
+            <div className="h-1.5 w-10 rounded-full bg-gray-400/60" />
+          </div>
+
+          {/* header */}
+          <div className="flex items-center justify-center">
+            <h2 className="text-lg font-semibold text-gray-900">Plan Your Downhill Route</h2>
+          </div>
+        </div>
+
+        <AnimatedPanel visible={showHint} className="mb-3">
+          <UXHint show>Tip: Drag either pin, then tap the map to generate your route.</UXHint>
+        </AnimatedPanel>
+
+        {/* From */}
+        <label className="block text-sm font-medium text-gray-700">From</label>
+        <input
+          type="text"
+          value={from}
+          readOnly
+          className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg
 bg-gray-100 cursor-default
 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-      />
+        />
 
-      {/* To */}
-      <label className="block text-sm font-medium text-gray-700">To</label>
-      <input
-        type="text"
-        value={to}
-        onChange={(e) => setTo(e.target.value)}
-        placeholder="Enter destination"
-        className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg
+        {/* To */}
+        <label className="block text-sm font-medium text-gray-700">To</label>
+        <input
+          type="text"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="Enter destination"
+          className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg
 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-      />
+        />
 
-      {/* Skill */}
-      <label className="block text-sm font-medium text-gray-700 mb-1">Skill Level</label>
+        {/* Skill */}
+        <label className="block text-sm font-medium text-gray-700 mb-1">Skill Level</label>
 
-      <div className="flex flex-col gap-3 mb-4">
-        {/* Skill buttons */}
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-3">
-          {(["beginner", "intermediate", "advanced"] as const).map((level) => (
-            <button
-              key={level}
-              onClick={() => setSkill(level)}
-              className={`px-3 py-2 text-sm sm:text-base rounded-xl border transition
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-3">
+            {(["beginner", "intermediate", "advanced"] as const).map((level) => (
+              <button
+                key={level}
+                onClick={() => setSkill(level)}
+                className={`px-3 py-2 text-sm sm:text-base rounded-xl border transition
 flex items-center justify-center
 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
                 ${
@@ -134,28 +169,29 @@ focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
                         : "bg-red-500 text-white border-red-500"
                     : "border-gray-300 text-gray-700 bg-white"
                 }`}
-            >
-              {SKILL_INFO[level].label}
-            </button>
-          ))}
-        </div>
-        {/* Skill blurb */}
-        <p className="text-sm text-gray-600 transition-opacity">{SKILL_INFO[skill].blurb}</p>
-      </div>
+              >
+                {SKILL_INFO[level].label}
+              </button>
+            ))}
+          </div>
 
-      <button
-        onClick={handleGenerate}
-        disabled={loading}
-        className="w-full bg-emerald-600 hover:bg-emerald-700
+          <p className="text-sm text-gray-600 transition-opacity">{SKILL_INFO[skill].blurb}</p>
+        </div>
+
+        <button
+          onClick={handleGenerate}
+          disabled={loading}
+          className="w-full bg-emerald-600 hover:bg-emerald-700
                  disabled:opacity-50 text-white font-semibold
                  py-2 rounded-lg transition"
-      >
-        {loading ? "Generating Route…" : "Generate Downhill Route"}
-      </button>
+        >
+          {loading ? "Generating Route…" : "Generate Downhill Route"}
+        </button>
 
-      {message && (
-        <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">{message}</p>
-      )}
-    </motion.div>
+        {message && (
+          <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">{message}</p>
+        )}
+      </motion.div>
+    </BottomSheet>
   );
 }

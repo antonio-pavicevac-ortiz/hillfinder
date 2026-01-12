@@ -53,7 +53,7 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
     <>
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Sign in to Hillfinder</h1>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form suppressHydrationWarning onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* Email */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
