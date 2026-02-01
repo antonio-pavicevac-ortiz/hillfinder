@@ -130,11 +130,29 @@ export default function DashboardMap({
 
   function ensureFromMarker(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike) {
     if (markerRef.current) return markerRef.current;
+
     const el = createCircleEl("#16a34a");
-    markerRef.current = new mapboxgl.Marker({ element: el, draggable: true, anchor: "center" })
+    const fromMarker = new mapboxgl.Marker({
+      element: el,
+      draggable: true,
+      anchor: "center",
+    })
       .setLngLat(lngLat)
       .addTo(map);
-    return markerRef.current;
+
+    // ✅ When FROM marker moves, redraw route (if we have a destination)
+    fromMarker.on("dragend", () => {
+      const from = fromMarker.getLngLat();
+      const to = destMarkerRef.current?.getLngLat();
+      if (!to) return;
+
+      if (mapRef.current) {
+        void drawRouteBetweenPoints(mapRef.current, from, to);
+      }
+    });
+
+    markerRef.current = fromMarker;
+    return fromMarker;
   }
 
   function ensureDestMarker(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike) {
