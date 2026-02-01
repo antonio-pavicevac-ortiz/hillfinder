@@ -17,6 +17,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const [qaOpen, setQaOpen] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
   const [showGenerator, setShowGenerator] = useState(true);
+  const [generatorOpen, setGeneratorOpen] = useState(true);
 
   const glassBar =
     "relative bg-white/12 saturate-150 " +
@@ -115,9 +116,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
           <div className="absolute inset-0 z-[70] pointer-events-none">
             <div className="relative h-full w-full">
               <DownhillGenerator
-                open={showGenerator}
-                initialTo=""
-                onClose={() => setShowGenerator(false)}
+                open={generatorOpen}
+                onOpen={() => setGeneratorOpen(true)}
+                onClose={() => setGeneratorOpen(false)}
                 onGenerate={handleGenerate}
                 showHint={true}
               />

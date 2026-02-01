@@ -3,7 +3,6 @@
 import AnimatedPanel from "@/components/ui/AnimatedPanel";
 import BottomSheet from "@/components/ui/BottomSheet";
 import { UXHint } from "@/components/ui/UXHint";
-import { animate, motion, useDragControls, useMotionValue } from "framer-motion";
 import { useEffect, useState } from "react";
 
 const SKILL_INFO = {
@@ -24,12 +23,14 @@ const SKILL_INFO = {
 export default function DownhillGenerator({
   open,
   initialTo = "",
+  onOpen,
   onClose,
   onGenerate,
   showHint,
 }: {
   open: boolean;
   initialTo?: string;
+  onOpen: () => void;
   onClose: () => void;
   onGenerate: (params: {
     from: string;
@@ -43,9 +44,6 @@ export default function DownhillGenerator({
   const [skill, setSkill] = useState<"beginner" | "intermediate" | "advanced">("beginner");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-
-  const dragControls = useDragControls();
-  const y = useMotionValue(0);
 
   async function handleGenerate() {
     if (!to.trim()) {
@@ -73,44 +71,13 @@ To: ${to}`
     setTo(initialTo);
   }, [initialTo]);
 
-  useEffect(() => {
-    y.set(0);
-  }, [open, y]);
-
   return (
-    <BottomSheet open={open} onClose={onClose}>
-      {/* The whole card is draggable, but only the pill starts the drag */}
-      <motion.div
-        style={{ y }}
-        className="pointer-events-auto w-full bg-white/70 backdrop-blur-xl rounded-2xl border border-white/30 shadow-xl p-5"
-        drag="y"
-        dragListener={false}
-        dragControls={dragControls}
-        dragDirectionLock
-        dragConstraints={{ top: 0, bottom: 200 }} // keep whatever number you're using
-        dragElastic={0.35}
-        dragMomentum={false}
-        onDragEnd={(_, info) => {
-          const CLOSE_DISTANCE = 40;
-          const CLOSE_VELOCITY = 800;
-
-          const shouldClose = info.offset.y > CLOSE_DISTANCE || info.velocity.y > CLOSE_VELOCITY;
-
-          if (shouldClose) {
-            onClose();
-            return;
-          }
-
-          // ✅ snap back
-          animate(y, 0, { type: "spring", stiffness: 300, damping: 35 });
-        }}
-      >
+    <BottomSheet open={open} onOpen={onOpen} onClose={onClose}>
+      {" "}
+      {/* The whole card is now non-draggable; drag handled by BottomSheet */}
+      <div className="pointer-events-auto w-full bg-white/70 backdrop-blur-xl rounded-2xl border border-white/30 shadow-xl p-5">
         {/* Drag zone (pill + header) */}
-        <div
-          className="touch-none -mt-2 mb-3"
-          onTouchStartCapture={(e) => e.preventDefault()}
-          onPointerDown={(e) => dragControls.start(e)}
-        >
+        <div className="touch-none -mt-2 mb-3">
           {/* pill */}
           <div className="flex justify-center pt-2 pb-2 cursor-grab active:cursor-grabbing">
             <div className="h-1.5 w-10 rounded-full bg-gray-400/60" />
@@ -191,7 +158,7 @@ focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
         {message && (
           <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">{message}</p>
         )}
-      </motion.div>
+      </div>
     </BottomSheet>
   );
 }
