@@ -73,7 +73,7 @@ export default function SearchDestination({
   }
 
   return (
-    <div className="absolute top-3 left-0 right-0 z-20 flex justify-center pointer-events-none">
+    <div className="w-full flex justify-center pointer-events-none">
       <div
         className="
           w-[92%] max-w-xl
@@ -152,7 +152,8 @@ export default function SearchDestination({
             id="search-results"
             role="listbox"
             className={`
-     bg-white/20 backdrop-blur-2xl
+    relative z-[100]
+    bg-white/20 backdrop-blur-2xl
     supports-[backdrop-filter]:bg-white/10
     border border-white/30
     rounded-xl shadow-lg mt-3 max-h-60

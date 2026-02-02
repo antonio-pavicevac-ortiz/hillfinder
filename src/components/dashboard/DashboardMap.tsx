@@ -77,6 +77,21 @@ function resampleCoords(coords: [number, number][], stepMeters = 15): [number, n
   return result;
 }
 
+function removeRouteLayersAndSources(map: mapboxgl.Map) {
+  if (!map.isStyleLoaded()) {
+    map.once("idle", () => removeRouteLayersAndSources(map));
+    return;
+  }
+
+  const layers = map.getStyle()?.layers ?? [];
+  layers
+    .filter((l) => l.id.startsWith("route-segment-"))
+    .forEach((l) => {
+      if (map.getLayer(l.id)) map.removeLayer(l.id);
+      if (map.getSource(l.id)) map.removeSource(l.id);
+    });
+}
+
 type Destination = {
   lat: number;
   lng: number;
@@ -85,10 +100,12 @@ type Destination = {
 
 export default function DashboardMap({
   destination,
+  clearRouteNonce,
   onRouteDrawn,
   onDestinationPicked,
 }: {
   destination: Destination | null;
+  clearRouteNonce?: number;
   onRouteDrawn?: () => void;
   onDestinationPicked?: (loc: { name: string; lat: number; lng: number }) => void;
 }) {
@@ -96,6 +113,12 @@ export default function DashboardMap({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  const routeReqIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // ✅ remember the last destination that successfully produced a route
+  const lastGoodDestRef = useRef<mapboxgl.LngLat | null>(null);
 
   function createCircleEl(color: string) {
     const el = document.createElement("div");
@@ -140,15 +163,14 @@ export default function DashboardMap({
       .setLngLat(lngLat)
       .addTo(map);
 
-    // ✅ When FROM marker moves, redraw route (if we have a destination)
+    // When FROM marker moves, redraw route (if destination exists)
     fromMarker.on("dragend", () => {
       const from = fromMarker.getLngLat();
       const to = destMarkerRef.current?.getLngLat();
       if (!to) return;
+      if (!mapRef.current) return;
 
-      if (mapRef.current) {
-        void drawRouteBetweenPoints(mapRef.current, from, to);
-      }
+      void drawRouteBetweenPoints(mapRef.current, from, to);
     });
 
     markerRef.current = fromMarker;
@@ -166,12 +188,10 @@ export default function DashboardMap({
         .setLngLat(lngLat)
         .addTo(map);
 
+      // When DEST marker moves, only notify parent (route drawing happens in [destination] effect)
       destMarkerRef.current.on("dragend", () => {
         const ll = destMarkerRef.current!.getLngLat();
         void notifyDestinationPicked(ll);
-        if (mapRef.current && markerRef.current) {
-          void drawRouteBetweenPoints(mapRef.current, markerRef.current.getLngLat(), ll);
-        }
       });
 
       return destMarkerRef.current;
@@ -186,66 +206,93 @@ export default function DashboardMap({
     from: mapboxgl.LngLat,
     to: mapboxgl.LngLat
   ) {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${from.lng},${from.lat};${to.lng},${to.lat}?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    // cancel any in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-    if (!data.routes?.length) return;
+    const reqId = ++routeReqIdRef.current;
 
-    const rawCoords = data.routes[0].geometry.coordinates;
-    const coords = resampleCoords(rawCoords);
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${from.lng},${from.lat};${to.lng},${to.lat}?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
 
-    const elevations = coords.map(([lng, lat]) => {
-      const elevation = map.queryTerrainElevation([lng, lat]);
-      return typeof elevation === "number" ? elevation : 0;
-    });
+      const res = await fetch(url, { signal: controller.signal });
+      const data = await res.json();
 
-    const segments = classifySegments(elevations, coords);
+      if (reqId !== routeReqIdRef.current) return;
 
-    const existingLayers = map.getStyle().layers ?? [];
-    existingLayers
-      .filter((l) => l.id.startsWith("route-segment-"))
-      .forEach((l) => {
-        if (map.getLayer(l.id)) map.removeLayer(l.id);
-        if (map.getSource(l.id)) map.removeSource(l.id);
+      // ✅ if Mapbox returns no route sometimes, keep old route and snap marker back
+      if (!data?.routes?.length) {
+        const fallback = lastGoodDestRef.current;
+        if (fallback && destMarkerRef.current) {
+          destMarkerRef.current.setLngLat(fallback);
+          void notifyDestinationPicked(fallback);
+        }
+        return;
+      }
+
+      // Now safe: clear + redraw
+      removeRouteLayersAndSources(map);
+
+      const rawCoords = data.routes[0].geometry.coordinates as [number, number][];
+      const coords = resampleCoords(rawCoords);
+
+      const elevations = coords.map(([lng, lat]) => {
+        const elevation = map.queryTerrainElevation([lng, lat]);
+        return typeof elevation === "number" ? elevation : 0;
       });
 
-    segments.forEach((segment, index) => {
-      const color =
-        segment.difficulty === "easy"
-          ? "#22c55e"
-          : segment.difficulty === "medium"
-            ? "#eab308"
-            : segment.difficulty === "uphill"
-              ? "#7f1d1d"
-              : "#ef4444";
+      const segments = classifySegments(elevations, coords);
 
-      const id = `route-segment-${index}`;
+      segments.forEach((segment, index) => {
+        const color =
+          segment.difficulty === "easy"
+            ? "#22c55e"
+            : segment.difficulty === "medium"
+              ? "#eab308"
+              : segment.difficulty === "uphill"
+                ? "#7f1d1d"
+                : "#ef4444";
 
-      map.addSource(id, {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: segment.coords },
-          properties: {},
-        },
+        const id = `route-segment-${index}`;
+
+        map.addSource(id, {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: segment.coords },
+            properties: {},
+          },
+        });
+
+        map.addLayer({
+          id,
+          type: "line",
+          source: id,
+          paint: { "line-color": color, "line-width": 5, "line-opacity": 0.9 },
+        });
       });
 
-      map.addLayer({
-        id,
-        type: "line",
-        source: id,
-        paint: { "line-color": color, "line-width": 5, "line-opacity": 0.9 },
-      });
-    });
+      // ✅ route succeeded -> remember this destination as last-good
+      lastGoodDestRef.current = new mapboxgl.LngLat(to.lng, to.lat);
 
-    onRouteDrawn?.();
+      onRouteDrawn?.();
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      console.error("drawRouteBetweenPoints error:", err);
+
+      // On real errors, keep old route; optionally snap back too.
+      const fallback = lastGoodDestRef.current;
+      if (fallback && destMarkerRef.current) {
+        destMarkerRef.current.setLngLat(fallback);
+        void notifyDestinationPicked(fallback);
+      }
+    }
   }
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // ✅ iOS Safari: prevent page from grabbing downward swipes
     const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevBodyOverflow = document.body.style.overflow;
     const prevBodyHeight = document.body.style.height;
@@ -264,25 +311,18 @@ export default function DashboardMap({
 
     mapRef.current = map;
 
-    // Force-enable interactions (helps on iOS Safari)
     map.dragPan.enable();
     map.touchZoomRotate.enable();
     map.doubleClickZoom.enable();
     map.scrollZoom.enable();
-
-    // iOS: pinch should zoom (rotation can feel janky / conflict with page gestures)
     map.touchZoomRotate.disableRotation();
 
     const containerEl = map.getContainer();
-    const canvasEl = map.getCanvas();
     const canvasContainerEl = map.getCanvasContainer();
 
-    // Let Mapbox own touch inside the map
     containerEl.style.touchAction = "none";
     canvasContainerEl.style.touchAction = "none";
-    canvasEl.style.touchAction = "none";
 
-    // ✅ stop the page from rubber-banding / scrolling on single-finger pans
     function stopPageScroll(e: TouchEvent) {
       if (e.touches.length === 1) e.preventDefault();
     }
@@ -290,39 +330,27 @@ export default function DashboardMap({
     canvasContainerEl.addEventListener("touchmove", stopPageScroll, { passive: false });
     containerEl.addEventListener("touchmove", stopPageScroll, { passive: false });
 
+    let lastTouchTapAt = 0;
+
     function handlePickAt(lngLat: mapboxgl.LngLat) {
       if (!mapRef.current) return;
-
-      // If you NEVER want long-press to create the "from" marker, use:
-      // if (!markerRef.current) return;
-
-      if (!markerRef.current) return;
-
       ensureDestMarker(mapRef.current, lngLat);
       void notifyDestinationPicked(lngLat);
-
-      if (!markerRef.current || !destMarkerRef.current) return;
-      void drawRouteBetweenPoints(
-        mapRef.current,
-        markerRef.current.getLngLat(),
-        destMarkerRef.current.getLngLat()
-      );
     }
 
-    // ---- LONG PRESS SETUP (removable handlers) ----
-    const LONG_PRESS_MS = 650; // 650–1000
+    map.on("click", (e) => {
+      if (Date.now() - lastTouchTapAt < 450) return;
+      if (!e?.lngLat) return;
+      handlePickAt(e.lngLat);
+    });
+
+    const TAP_MAX_MS = 260;
     const MOVE_CANCEL_PX = 10;
 
-    let pressTimer: number | null = null;
-    let pressStart: { x: number; y: number } | null = null;
-    let pressCanceled = false;
-
-    function clearPress() {
-      if (pressTimer) window.clearTimeout(pressTimer);
-      pressTimer = null;
-      pressStart = null;
-      pressCanceled = false;
-    }
+    let tapStartAt = 0;
+    let tapStart: { x: number; y: number } | null = null;
+    let canceled = false;
+    let touchStartedOnMarker = false;
 
     function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
       const dx = a.x - b.x;
@@ -330,10 +358,77 @@ export default function DashboardMap({
       return Math.sqrt(dx * dx + dy * dy);
     }
 
-    // IMPORTANT: these are variables so cleanup can remove listeners
-    let onTouchStart: (ev: TouchEvent) => void;
-    let onTouchMove: (ev: TouchEvent) => void;
-    let onTouchEnd: () => void;
+    function onTouchStart(ev: TouchEvent) {
+      if (ev.touches.length !== 1) {
+        canceled = true;
+        tapStart = null;
+        return;
+      }
+
+      const target = ev.target as HTMLElement | null;
+      touchStartedOnMarker = !!target?.closest?.(".mapboxgl-marker");
+
+      if (touchStartedOnMarker) {
+        canceled = true;
+        tapStart = null;
+        return;
+      }
+
+      const t = ev.touches[0];
+      tapStartAt = Date.now();
+      tapStart = { x: t.clientX, y: t.clientY };
+      canceled = false;
+    }
+
+    function onTouchMove(ev: TouchEvent) {
+      if (!tapStart) return;
+
+      if (ev.touches.length !== 1) {
+        canceled = true;
+        tapStart = null;
+        return;
+      }
+
+      const t = ev.touches[0];
+      const now = { x: t.clientX, y: t.clientY };
+      if (dist(tapStart, now) > MOVE_CANCEL_PX) {
+        canceled = true;
+        tapStart = null;
+      }
+    }
+
+    function onTouchEnd(ev: TouchEvent) {
+      const startedOnMarker = touchStartedOnMarker;
+      touchStartedOnMarker = false;
+
+      if (startedOnMarker) {
+        tapStart = null;
+        return;
+      }
+
+      if (!tapStart || canceled) {
+        tapStart = null;
+        return;
+      }
+
+      const elapsed = Date.now() - tapStartAt;
+      if (elapsed > TAP_MAX_MS) {
+        tapStart = null;
+        return;
+      }
+
+      const t = ev.changedTouches[0];
+      const rect = canvasContainerEl.getBoundingClientRect();
+      const x = t.clientX - rect.left;
+      const y = t.clientY - rect.top;
+
+      const lngLat = map.unproject([x, y]);
+
+      lastTouchTapAt = Date.now();
+      handlePickAt(lngLat);
+
+      tapStart = null;
+    }
 
     map.on("load", () => {
       map.addSource("mapbox-dem", {
@@ -354,53 +449,6 @@ export default function DashboardMap({
         () => {}
       );
 
-      // ✅ ONLY long-press creates destination
-      onTouchStart = (ev: TouchEvent) => {
-        // only 1 finger allowed
-        if (ev.touches.length !== 1) {
-          pressCanceled = true;
-          clearPress();
-          return;
-        }
-
-        const t = ev.touches[0];
-        pressStart = { x: t.clientX, y: t.clientY };
-        pressCanceled = false;
-
-        pressTimer = window.setTimeout(() => {
-          if (!mapRef.current || !pressStart || pressCanceled) return;
-
-          const rect = canvasContainerEl.getBoundingClientRect();
-          const point = new mapboxgl.Point(pressStart.x - rect.left, pressStart.y - rect.top);
-          const lngLat = mapRef.current.unproject(point);
-
-          handlePickAt(lngLat);
-        }, LONG_PRESS_MS);
-      };
-
-      onTouchMove = (ev: TouchEvent) => {
-        if (!pressStart) return;
-
-        // second finger = pinch => cancel
-        if (ev.touches.length !== 1) {
-          pressCanceled = true;
-          clearPress();
-          return;
-        }
-
-        const t = ev.touches[0];
-        const now = { x: t.clientX, y: t.clientY };
-        if (dist(pressStart, now) > MOVE_CANCEL_PX) {
-          pressCanceled = true;
-          clearPress();
-        }
-      };
-
-      onTouchEnd = () => {
-        clearPress();
-      };
-
-      // attach to canvas container (best for iOS)
       canvasContainerEl.addEventListener("touchstart", onTouchStart, { passive: true });
       canvasContainerEl.addEventListener("touchmove", onTouchMove, { passive: true });
       canvasContainerEl.addEventListener("touchend", onTouchEnd, { passive: true });
@@ -408,17 +456,13 @@ export default function DashboardMap({
     });
 
     return () => {
-      // remove rubber-band blockers
       canvasContainerEl.removeEventListener("touchmove", stopPageScroll);
       containerEl.removeEventListener("touchmove", stopPageScroll);
 
-      // remove long-press listeners (safe even if load never ran)
-      if (onTouchStart) canvasContainerEl.removeEventListener("touchstart", onTouchStart);
-      if (onTouchMove) canvasContainerEl.removeEventListener("touchmove", onTouchMove);
-      if (onTouchEnd) {
-        canvasContainerEl.removeEventListener("touchend", onTouchEnd);
-        canvasContainerEl.removeEventListener("touchcancel", onTouchEnd);
-      }
+      canvasContainerEl.removeEventListener("touchstart", onTouchStart);
+      canvasContainerEl.removeEventListener("touchmove", onTouchMove);
+      canvasContainerEl.removeEventListener("touchend", onTouchEnd);
+      canvasContainerEl.removeEventListener("touchcancel", onTouchEnd);
 
       map.remove();
       mapRef.current = null;
@@ -426,26 +470,41 @@ export default function DashboardMap({
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
       document.body.style.height = prevBodyHeight;
+      abortRef.current?.abort();
     };
   }, []);
 
+  // When parent picks a destination, mirror marker + draw route
   useEffect(() => {
     if (!mapRef.current || !destination) return;
-
     const map = mapRef.current;
-    const dest = ensureDestMarker(map, [destination.lng, destination.lat]);
 
+    const dest = ensureDestMarker(map, [destination.lng, destination.lat]);
     map.flyTo({ center: [destination.lng, destination.lat], zoom: 15 });
 
     if (!markerRef.current) return;
     void drawRouteBetweenPoints(map, markerRef.current.getLngLat(), dest.getLngLat());
   }, [destination]);
 
+  // Clear route when parent bumps the nonce
+  useEffect(() => {
+    if (clearRouteNonce == null) return;
+    if (!mapRef.current) return;
+
+    const map = mapRef.current;
+
+    removeRouteLayersAndSources(map);
+
+    lastGoodDestRef.current = null;
+  }, [clearRouteNonce]);
+
   return (
-    <div
-      ref={mapContainerRef}
-      className="absolute inset-0 w-full h-full bg-[#e5e3df] outline outline-2 outline-red-500"
-      style={{ touchAction: "none" }}
-    />
+    <div className="absolute inset-0">
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0 w-full h-full bg-[#e5e3df]"
+        style={{ touchAction: "none" }}
+      />
+    </div>
   );
 }
