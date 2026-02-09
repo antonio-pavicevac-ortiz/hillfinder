@@ -7,6 +7,8 @@ import DashboardMap from "@/components/dashboard/DashboardMap";
 import DownhillGenerator from "@/components/dashboard/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
+import SearchDestination from "@/components/dashboard/SearchDestination";
+import AnimatedPanel from "@/components/ui/AnimatedPanel";
 import type { DashboardUser } from "@/types/user";
 import { useEffect, useState } from "react";
 
@@ -19,24 +21,15 @@ type Destination = {
   name?: string;
 };
 
-type Destination = { lat: number; lng: number; name?: string };
-
 export default function Dashboard({ user }: { user: DashboardUser }) {
   const [qaOpen, setQaOpen] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
-<<<<<<< HEAD
-
-=======
->>>>>>> main
   const [generatorOpen, setGeneratorOpen] = useState(true);
 
   const [destination, setDestination] = useState<Destination | null>(null);
   const [hasRoute, setHasRoute] = useState(false);
-<<<<<<< HEAD
-=======
 
   // tells the map to clear itself without refs
->>>>>>> main
   const [clearRouteNonce, setClearRouteNonce] = useState(0);
 
   const glassBar =
@@ -45,15 +38,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
     "before:pointer-events-none before:absolute before:inset-0 " +
     "before:bg-gradient-to-b before:from-white/20 before:to-transparent";
-
-  const glassPill =
-    "relative bg-white/12 saturate-150 " +
-    "border border-white/25 " +
-    "shadow-[0_18px_45px_rgba(0,0,0,0.28),0_4px_18px_rgba(0,0,0,0.22)] " +
-    "[-webkit-backdrop-filter:blur(28px)] [backdrop-filter:blur(28px)] " +
-    "before:pointer-events-none before:absolute before:inset-0 " +
-    "before:rounded-3xl " +
-    "before:bg-gradient-to-b before:from-white/25 before:to-transparent";
 
   function handleGenerate(params: {
     from: string;
@@ -105,51 +89,15 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         <DashboardMap
           destination={destination}
           clearRouteNonce={clearRouteNonce}
-<<<<<<< HEAD
-          onRouteDrawn={() => setHasRoute(true)}
-          onDestinationPicked={(loc) => {
-=======
           onRouteDrawn={handleRouteDrawn}
           onDestinationPicked={(loc) => {
             // Destination changed via map tap; route may or may not draw
->>>>>>> main
             setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
             setHasRoute(false);
           }}
         />
       </div>
 
-<<<<<<< HEAD
-      {/* HIGH-Z OVERLAY CONTROLS (must be above header/footer) */}
-      <div className="fixed inset-0 z-[95] pointer-events-none">
-        {/* Clear route button: top-right, BELOW header (frosted pill) */}
-        <div
-          className="absolute pointer-events-auto"
-          style={{
-            right: 18,
-            top: `calc(${HEADER_H}px + env(safe-area-inset-top) + 18px)`,
-          }}
-        >
-          <ClearRouteButton
-            disabled={!destination || !hasRoute}
-            onClick={() => {
-              setHasRoute(false);
-              setClearRouteNonce((n) => n + 1);
-            }}
-          />
-        </div>
-
-        {/* Legend: bottom-left, ABOVE footer */}
-        <div
-          className="absolute left-3 pointer-events-auto"
-          style={{ bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 12px)` }}
-        >
-          <DashboardLegend visible={!!destination} />
-        </div>
-      </div>
-
-=======
->>>>>>> main
       {/* HEADER */}
       <header
         className="fixed top-0 left-0 right-0 z-[90] pointer-events-none"
@@ -181,11 +129,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         }}
       >
         <div className="relative h-full w-full pointer-events-none">
-<<<<<<< HEAD
-=======
           {/* Clear route button */}
           <div className="absolute right-3 top-[calc(env(safe-area-inset-top)+5.25rem)] z-[55] flex flex-col gap-2 pointer-events-auto">
-            {" "}
             <ClearRouteButton onClick={handleClearRoute} disabled={!hasRoute} />
           </div>
 
@@ -196,7 +141,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
               bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 5.125rem)`,
             }}
           >
-            <DashboardLegend visible={!!destination} />{" "}
+            <DashboardLegend visible={!!destination} />
           </div>
 
           {/* SEARCH BAR */}
@@ -219,7 +164,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
             </AnimatedPanel>
           </div>
 
->>>>>>> main
           {/* GENERATOR */}
           <div className="absolute inset-0 z-[70] pointer-events-none">
             <div className="relative h-full w-full">
