@@ -15,40 +15,25 @@ export default function ClearRouteButton({
       title="Clear route"
       {...props}
       className={[
-        // layout
         "relative inline-flex items-center justify-center",
         "h-11 w-11 rounded-2xl overflow-hidden",
-
-        // match SearchDestination card/control vibe
         "bg-white/80",
         "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
         "border border-white/35",
         "ring-1 ring-black/5",
-
-        // ✅ SAME SHADOW FAMILY AS SEARCH DESTINATION
         "shadow-md",
-
-        // subtle glass sheen
         "before:pointer-events-none before:absolute before:inset-0",
         "before:bg-gradient-to-b before:from-white/35 before:to-transparent",
         "after:pointer-events-none after:absolute after:inset-0",
         "after:shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]",
-
-        // interaction polish
         "transition-transform transition-shadow duration-150 ease-out",
         "will-change-transform touch-manipulation",
         "[-webkit-tap-highlight-color:transparent]",
-
         !disabled
           ? "hover:scale-[1.03] active:scale-[0.96] active:shadow-sm"
           : "opacity-95 cursor-not-allowed",
-
-        // icon state
         disabled ? "text-slate-300" : "text-slate-900",
-
-        // a11y focus ring
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70",
-
         className,
       ].join(" ")}
     >
