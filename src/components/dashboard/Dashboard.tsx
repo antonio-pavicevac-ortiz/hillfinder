@@ -10,19 +10,33 @@ import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
 import type { DashboardUser } from "@/types/user";
 import { useEffect, useState } from "react";
 
-const HEADER_H = 64; // DashboardHeader is h-[64px]
-const FOOTER_H = 56; // trigger bar height (visual), adjust if needed
+const HEADER_H = 64;
+const FOOTER_H = 56;
+
+type Destination = {
+  lat: number;
+  lng: number;
+  name?: string;
+};
 
 type Destination = { lat: number; lng: number; name?: string };
 
 export default function Dashboard({ user }: { user: DashboardUser }) {
   const [qaOpen, setQaOpen] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
+<<<<<<< HEAD
 
+=======
+>>>>>>> main
   const [generatorOpen, setGeneratorOpen] = useState(true);
 
   const [destination, setDestination] = useState<Destination | null>(null);
   const [hasRoute, setHasRoute] = useState(false);
+<<<<<<< HEAD
+=======
+
+  // tells the map to clear itself without refs
+>>>>>>> main
   const [clearRouteNonce, setClearRouteNonce] = useState(0);
 
   const glassBar =
@@ -49,6 +63,18 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     console.log("🏁 Generate downhill route:", params);
   }
 
+  function handleRouteDrawn() {
+    setHasRoute(true);
+  }
+
+  function handleClearRoute() {
+    setHasRoute(false);
+    // 🔥 keep destination so the blue marker stays
+    // setDestination(null);
+    setClearRouteNonce((n) => n + 1);
+  }
+
+  // Lock page scrolling (map owns gestures)
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -79,14 +105,21 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         <DashboardMap
           destination={destination}
           clearRouteNonce={clearRouteNonce}
+<<<<<<< HEAD
           onRouteDrawn={() => setHasRoute(true)}
           onDestinationPicked={(loc) => {
+=======
+          onRouteDrawn={handleRouteDrawn}
+          onDestinationPicked={(loc) => {
+            // Destination changed via map tap; route may or may not draw
+>>>>>>> main
             setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
             setHasRoute(false);
           }}
         />
       </div>
 
+<<<<<<< HEAD
       {/* HIGH-Z OVERLAY CONTROLS (must be above header/footer) */}
       <div className="fixed inset-0 z-[95] pointer-events-none">
         {/* Clear route button: top-right, BELOW header (frosted pill) */}
@@ -115,6 +148,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         </div>
       </div>
 
+=======
+>>>>>>> main
       {/* HEADER */}
       <header
         className="fixed top-0 left-0 right-0 z-[90] pointer-events-none"
@@ -146,6 +181,45 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         }}
       >
         <div className="relative h-full w-full pointer-events-none">
+<<<<<<< HEAD
+=======
+          {/* Clear route button */}
+          <div className="absolute right-3 top-[calc(env(safe-area-inset-top)+5.25rem)] z-[55] flex flex-col gap-2 pointer-events-auto">
+            {" "}
+            <ClearRouteButton onClick={handleClearRoute} disabled={!hasRoute} />
+          </div>
+
+          {/* Legend (fixed to bottom-left above footer) */}
+          <div
+            className="fixed left-3 z-[79] pointer-events-auto"
+            style={{
+              bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 5.125rem)`,
+            }}
+          >
+            <DashboardLegend visible={!!destination} />{" "}
+          </div>
+
+          {/* SEARCH BAR */}
+          <div className="absolute top-0 left-0 right-0 z-[60] flex justify-center px-2.5 pt-3 pointer-events-none">
+            <AnimatedPanel
+              visible={true}
+              className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1"
+            >
+              <SearchDestination
+                onFocus={() => setSearchActive(true)}
+                onBlur={() => setSearchActive(false)}
+                onSelectLocation={(loc) => {
+                  setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
+                  setHasRoute(false);
+                  setSearchActive(false);
+                  setGeneratorOpen(true);
+                }}
+                onQueryChange={(q) => setSearchActive(q.trim().length > 0)}
+              />
+            </AnimatedPanel>
+          </div>
+
+>>>>>>> main
           {/* GENERATOR */}
           <div className="absolute inset-0 z-[70] pointer-events-none">
             <div className="relative h-full w-full">
