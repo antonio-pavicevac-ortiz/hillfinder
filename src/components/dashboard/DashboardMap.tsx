@@ -1,102 +1,21 @@
 "use client";
 
+import { classifySegments } from "@/lib/map/classifySegments";
+import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
+import { resampleCoords } from "@/lib/map/resampleCoords";
+import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
+
 import mapboxgl from "mapbox-gl";
 import { useEffect, useRef } from "react";
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
-
-function classifySegments(elevations: number[], coords: [number, number][]) {
-  const segments: {
-    coords: [number, number][];
-    difficulty: "easy" | "medium" | "hard" | "uphill";
-  }[] = [];
-
-  if (elevations.length < 2 || coords.length < 2) return segments;
-
-  const SLOPE_EPSILON = 0.001; // ignore noise
-  const EASY_DOWNHILL = -0.003; // ~ -0.3%
-  const STEEP_DOWNHILL = -0.01; // ~ -1%
-
-  for (let i = 1; i < elevations.length; i++) {
-    const elevationDiff = elevations[i] - elevations[i - 1];
-
-    const [lng1, lat1] = coords[i - 1];
-    const [lng2, lat2] = coords[i];
-
-    const R = 6371000;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLng = ((lng2 - lng1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
-    if (distance === 0) continue;
-
-    const slope = elevationDiff / distance;
-
-    let difficulty: "easy" | "medium" | "hard" | "uphill";
-    if (Math.abs(slope) < SLOPE_EPSILON) difficulty = "easy";
-    else if (slope > SLOPE_EPSILON) difficulty = "uphill";
-    else if (slope < STEEP_DOWNHILL) difficulty = "hard";
-    else if (slope < EASY_DOWNHILL) difficulty = "medium";
-    else difficulty = "easy";
-
-    segments.push({ coords: [coords[i - 1], coords[i]], difficulty });
-  }
-
-  return segments;
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+if (MAPBOX_TOKEN) {
+  mapboxgl.accessToken = MAPBOX_TOKEN;
+} else if (!mapboxgl.accessToken) {
+  console.warn("[DashboardMap] Missing NEXT_PUBLIC_MAPBOX_TOKEN — Mapbox may not initialize");
 }
 
-function resampleCoords(coords: [number, number][], stepMeters = 15): [number, number][] {
-  const result: [number, number][] = [];
-
-  for (let i = 0; i < coords.length - 1; i++) {
-    const [lng1, lat1] = coords[i];
-    const [lng2, lat2] = coords[i + 1];
-
-    result.push([lng1, lat1]);
-
-    const dx = lng2 - lng1;
-    const dy = lat2 - lat1;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    const steps = Math.floor((distance * 111_000) / stepMeters);
-    if (steps < 1) continue;
-
-    for (let s = 1; s < steps; s++) {
-      const t = s / steps;
-      result.push([lng1 + dx * t, lat1 + dy * t]);
-    }
-  }
-
-  result.push(coords[coords.length - 1]);
-  return result;
-}
-
-function removeRouteLayersAndSources(map: mapboxgl.Map) {
-  if (!map.isStyleLoaded()) {
-    map.once("idle", () => removeRouteLayersAndSources(map));
-    return;
-  }
-
-  const layers = map.getStyle()?.layers ?? [];
-  layers
-    .filter((l) => l.id.startsWith("route-segment-"))
-    .forEach((l) => {
-      if (map.getLayer(l.id)) map.removeLayer(l.id);
-      if (map.getSource(l.id)) map.removeSource(l.id);
-    });
-}
-
-type Destination = {
-  lat: number;
-  lng: number;
-  name?: string;
-};
+type Destination = { lat: number; lng: number; name?: string };
 
 export default function DashboardMap({
   destination,
@@ -114,10 +33,18 @@ export default function DashboardMap({
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
+  // Cache of decoded 256x256 terrain tiles: key -> Promise<RGBA data>
+  const tileCacheRef = useRef<Map<TileKey, Promise<Uint8ClampedArray>>>(new Map());
+
+  const getElevationRef = useRef<
+    ((map: mapboxgl.Map, lng: number, lat: number) => Promise<number>) | null
+  >(null);
+
+  // Route fetch cancellation / race protection
   const routeReqIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ✅ remember the last destination that successfully produced a route
+  // Remember last destination that successfully produced a route (optional snap-back behavior)
   const lastGoodDestRef = useRef<mapboxgl.LngLat | null>(null);
 
   function createCircleEl(color: string) {
@@ -163,6 +90,8 @@ export default function DashboardMap({
       .setLngLat(lngLat)
       .addTo(map);
 
+    (fromMarker.getElement() as HTMLElement).style.touchAction = "none";
+
     // When FROM marker moves, redraw route (if destination exists)
     fromMarker.on("dragend", () => {
       const from = fromMarker.getLngLat();
@@ -188,7 +117,9 @@ export default function DashboardMap({
         .setLngLat(lngLat)
         .addTo(map);
 
-      // When DEST marker moves, only notify parent (route drawing happens in [destination] effect)
+      (destMarkerRef.current.getElement() as HTMLElement).style.touchAction = "none";
+
+      // When DEST marker moves, notify parent (route drawing happens in [destination] effect)
       destMarkerRef.current.on("dragend", () => {
         const ll = destMarkerRef.current!.getLngLat();
         void notifyDestinationPicked(ll);
@@ -206,6 +137,10 @@ export default function DashboardMap({
     from: mapboxgl.LngLat,
     to: mapboxgl.LngLat
   ) {
+    if (!map.isStyleLoaded()) {
+      await new Promise<void>((resolve) => map.once("load", () => resolve()));
+    }
+
     // cancel any in-flight request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -221,7 +156,7 @@ export default function DashboardMap({
 
       if (reqId !== routeReqIdRef.current) return;
 
-      // ✅ if Mapbox returns no route sometimes, keep old route and snap marker back
+      // If Mapbox returns no route, keep old route and optionally snap marker back
       if (!data?.routes?.length) {
         const fallback = lastGoodDestRef.current;
         if (fallback && destMarkerRef.current) {
@@ -231,16 +166,18 @@ export default function DashboardMap({
         return;
       }
 
-      // Now safe: clear + redraw
-      removeRouteLayersAndSources(map);
+      // Safe: clear + redraw
+      clearRouteLayers(map);
 
       const rawCoords = data.routes[0].geometry.coordinates as [number, number][];
       const coords = resampleCoords(rawCoords);
 
-      const elevations = coords.map(([lng, lat]) => {
-        const elevation = map.queryTerrainElevation([lng, lat]);
-        return typeof elevation === "number" ? elevation : 0;
-      });
+      const getElevation = getElevationRef.current;
+      const elevations = await Promise.all(
+        coords.map(([lng, lat]) =>
+          getElevation ? getElevation(map, lng, lat) : Promise.resolve(0)
+        )
+      );
 
       const segments = classifySegments(elevations, coords);
 
@@ -256,6 +193,14 @@ export default function DashboardMap({
 
         const id = `route-segment-${index}`;
 
+        // defensive (in case something was left behind)
+        try {
+          if (map.getLayer(id)) map.removeLayer(id);
+        } catch {}
+        try {
+          if (map.getSource(id)) map.removeSource(id);
+        } catch {}
+
         map.addSource(id, {
           type: "geojson",
           data: {
@@ -269,19 +214,24 @@ export default function DashboardMap({
           id,
           type: "line",
           source: id,
-          paint: { "line-color": color, "line-width": 5, "line-opacity": 0.9 },
-        });
+          paint: {
+            "line-color": color,
+            "line-width": 5,
+            "line-opacity": 0.9,
+            "line-cap": "round",
+            "line-join": "round",
+          },
+        } as any);
       });
 
-      // ✅ route succeeded -> remember this destination as last-good
+      // route succeeded -> remember this destination as last-good
       lastGoodDestRef.current = new mapboxgl.LngLat(to.lng, to.lat);
 
-      onRouteDrawn?.();
+      if (segments.length > 0) onRouteDrawn?.();
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("drawRouteBetweenPoints error:", err);
 
-      // On real errors, keep old route; optionally snap back too.
       const fallback = lastGoodDestRef.current;
       if (fallback && destMarkerRef.current) {
         destMarkerRef.current.setLngLat(fallback);
@@ -292,6 +242,7 @@ export default function DashboardMap({
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
+    if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && !mapboxgl.accessToken) return;
 
     const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevBodyOverflow = document.body.style.overflow;
@@ -311,10 +262,22 @@ export default function DashboardMap({
 
     mapRef.current = map;
 
+    tileCacheRef.current.clear();
+    getElevationRef.current = createTerrainElevationGetter({
+      tileCache: tileCacheRef.current,
+      demTileset: "mapbox.terrain-rgb",
+      elevZoom: 14,
+      getAccessToken: () =>
+        process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? mapboxgl.accessToken ?? undefined,
+    });
+
+    // Force-enable interactions (helps on iOS Safari)
     map.dragPan.enable();
     map.touchZoomRotate.enable();
     map.doubleClickZoom.enable();
     map.scrollZoom.enable();
+
+    // iOS: pinch should zoom; rotation can fight gestures
     map.touchZoomRotate.disableRotation();
 
     const containerEl = map.getContainer();
@@ -464,12 +427,22 @@ export default function DashboardMap({
       canvasContainerEl.removeEventListener("touchend", onTouchEnd);
       canvasContainerEl.removeEventListener("touchcancel", onTouchEnd);
 
+      try {
+        markerRef.current?.remove();
+      } catch {}
+      try {
+        destMarkerRef.current?.remove();
+      } catch {}
+      markerRef.current = null;
+      destMarkerRef.current = null;
+
       map.remove();
       mapRef.current = null;
 
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
       document.body.style.height = prevBodyHeight;
+
       abortRef.current?.abort();
     };
   }, []);
@@ -491,20 +464,15 @@ export default function DashboardMap({
     if (clearRouteNonce == null) return;
     if (!mapRef.current) return;
 
-    const map = mapRef.current;
-
-    removeRouteLayersAndSources(map);
-
+    clearRouteLayers(mapRef.current);
     lastGoodDestRef.current = null;
   }, [clearRouteNonce]);
 
   return (
-    <div className="absolute inset-0">
-      <div
-        ref={mapContainerRef}
-        className="absolute inset-0 w-full h-full bg-[#e5e3df]"
-        style={{ touchAction: "none" }}
-      />
-    </div>
+    <div
+      ref={mapContainerRef}
+      className="absolute inset-0 w-full h-full bg-[#e5e3df]"
+      style={{ touchAction: "none" }}
+    />
   );
 }
