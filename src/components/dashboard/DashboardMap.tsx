@@ -1,179 +1,18 @@
 "use client";
 
+import { classifySegments } from "@/lib/map/classifySegments";
+import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
+import { resampleCoords } from "@/lib/map/resampleCoords";
+import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
+
 import mapboxgl from "mapbox-gl";
 import { useEffect, useRef } from "react";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
-} else {
-  console.warn("[DashboardMap] Missing NEXT_PUBLIC_MAPBOX_TOKEN — Mapbox will not initialize");
-}
-
-type Difficulty = "easy" | "medium" | "hard" | "uphill";
-
-function classifySegments(elevations: number[], coords: [number, number][]) {
-  const segments: { coords: [number, number][]; difficulty: Difficulty }[] = [];
-  if (elevations.length < 2 || coords.length < 2) return segments;
-
-  const SLOPE_EPSILON = 0.001;
-  const EASY_DOWNHILL = -0.003;
-  const STEEP_DOWNHILL = -0.01;
-
-  for (let i = 1; i < elevations.length; i++) {
-    const elevationDiff = elevations[i] - elevations[i - 1];
-
-    const [lng1, lat1] = coords[i - 1];
-    const [lng2, lat2] = coords[i];
-
-    const R = 6371000;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLng = ((lng2 - lng1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
-    if (distance === 0) continue;
-
-    const slope = elevationDiff / distance;
-
-    let difficulty: Difficulty;
-    if (Math.abs(slope) < SLOPE_EPSILON) difficulty = "easy";
-    else if (slope > SLOPE_EPSILON) difficulty = "uphill";
-    else if (slope < STEEP_DOWNHILL) difficulty = "hard";
-    else if (slope < EASY_DOWNHILL) difficulty = "medium";
-    else difficulty = "easy";
-
-    segments.push({ coords: [coords[i - 1], coords[i]], difficulty });
-  }
-
-  return segments;
-}
-
-function removeRouteSegments(map: mapboxgl.Map) {
-  if (!map.isStyleLoaded()) {
-    map.once("idle", () => removeRouteSegments(map));
-    return;
-  }
-
-  const layers = map.getStyle().layers ?? [];
-  layers
-    .filter((l) => l.id.startsWith("route-segment-"))
-    .forEach((l) => {
-      try {
-        if (map.getLayer(l.id)) map.removeLayer(l.id);
-      } catch {}
-      try {
-        if (map.getSource(l.id)) map.removeSource(l.id);
-      } catch {}
-    });
-}
-
-function resampleCoords(coords: [number, number][], stepMeters = 15): [number, number][] {
-  const result: [number, number][] = [];
-
-  for (let i = 0; i < coords.length - 1; i++) {
-    const [lng1, lat1] = coords[i];
-    const [lng2, lat2] = coords[i + 1];
-
-    result.push([lng1, lat1]);
-
-    const dx = lng2 - lng1;
-    const dy = lat2 - lat1;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    const steps = Math.floor((distance * 111_000) / stepMeters);
-    if (steps < 1) continue;
-
-    for (let s = 1; s < steps; s++) {
-      const t = s / steps;
-      result.push([lng1 + dx * t, lat1 + dy * t]);
-    }
-  }
-
-  result.push(coords[coords.length - 1]);
-  return result;
-}
-
-/**
- * ================================
- * Option C: iOS Safari-proof elevation
- * - Use queryTerrainElevation when it works
- * - Fallback to decoding mapbox.terrain-rgb tiles
- * - Cache decoded tiles (big speedup)
- * ================================
- */
-
-const DEM_TILESET = "mapbox.terrain-rgb";
-const ELEV_ZOOM = 14; // matches your DEM maxzoom=14
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function lngLatToTile(lng: number, lat: number, z: number) {
-  const latRad = (lat * Math.PI) / 180;
-  const n = 2 ** z;
-  const x = Math.floor(((lng + 180) / 360) * n);
-  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
-  return { x: clamp(x, 0, n - 1), y: clamp(y, 0, n - 1), z };
-}
-
-function tilePixelXY(lng: number, lat: number, z: number) {
-  const latRad = (lat * Math.PI) / 180;
-  const n = 2 ** z;
-
-  const xFloat = ((lng + 180) / 360) * n;
-  const yFloat = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
-
-  const xTile = Math.floor(xFloat);
-  const yTile = Math.floor(yFloat);
-
-  const xFrac = xFloat - xTile;
-  const yFrac = yFloat - yTile;
-
-  const px = clamp(Math.floor(xFrac * 256), 0, 255);
-  const py = clamp(Math.floor(yFrac * 256), 0, 255);
-
-  return { xTile: clamp(xTile, 0, n - 1), yTile: clamp(yTile, 0, n - 1), px, py };
-}
-
-function decodeTerrainRgb(r: number, g: number, b: number) {
-  // Mapbox Terrain-RGB: elevation(m) = -10000 + (R*256*256 + G*256 + B) * 0.1
-  return -10000 + (r * 256 * 256 + g * 256 + b) * 0.1;
-}
-
-type TileKey = string;
-
-async function decodeTileToRGBA(url: string): Promise<Uint8ClampedArray> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Terrain tile fetch failed: ${res.status}`);
-  const blob = await res.blob();
-
-  const bitmap = await createImageBitmap(blob);
-  const canvas =
-    typeof OffscreenCanvas !== "undefined"
-      ? new OffscreenCanvas(256, 256)
-      : (document.createElement("canvas") as HTMLCanvasElement);
-
-  // @ts-ignore - for HTMLCanvasElement path
-  canvas.width = 256;
-  // @ts-ignore
-  canvas.height = 256;
-
-  // @ts-ignore
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("No 2D context for terrain decode");
-
-  // @ts-ignore
-  ctx.drawImage(bitmap, 0, 0, 256, 256);
-  // @ts-ignore
-  const img = ctx.getImageData(0, 0, 256, 256);
-  return img.data; // RGBA array
+} else if (!mapboxgl.accessToken) {
+  console.warn("[DashboardMap] Missing NEXT_PUBLIC_MAPBOX_TOKEN — Mapbox may not initialize");
 }
 
 type Destination = { lat: number; lng: number; name?: string };
@@ -196,6 +35,20 @@ export default function DashboardMap({
 
   // Cache of decoded 256x256 terrain tiles: key -> Promise<RGBA data>
   const tileCacheRef = useRef<Map<TileKey, Promise<Uint8ClampedArray>>>(new Map());
+
+  const getElevationRef = useRef<
+    ((map: mapboxgl.Map, lng: number, lat: number) => Promise<number>) | null
+  >(null);
+
+  if (!getElevationRef.current) {
+    getElevationRef.current = createTerrainElevationGetter({
+      tileCache: tileCacheRef.current,
+      demTileset: "mapbox.terrain-rgb",
+      elevZoom: 14,
+      getAccessToken: () =>
+        process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? mapboxgl.accessToken ?? undefined,
+    });
+  }
 
   function createCircleEl(color: string) {
     const el = document.createElement("div");
@@ -281,47 +134,6 @@ export default function DashboardMap({
     return destMarkerRef.current;
   }
 
-  function getTileUrl(z: number, x: number, y: number) {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || mapboxgl.accessToken;
-    // v4 terrain-rgb tiles
-    return `https://api.mapbox.com/v4/${DEM_TILESET}/${z}/${x}/${y}.pngraw?access_token=${token}`;
-  }
-
-  async function getElevationTerrainRgb(lng: number, lat: number): Promise<number | null> {
-    try {
-      const { xTile, yTile, px, py } = tilePixelXY(lng, lat, ELEV_ZOOM);
-      const key = `${ELEV_ZOOM}/${xTile}/${yTile}`;
-      const url = getTileUrl(ELEV_ZOOM, xTile, yTile);
-
-      let p = tileCacheRef.current.get(key);
-      if (!p) {
-        p = decodeTileToRGBA(url);
-        tileCacheRef.current.set(key, p);
-      }
-
-      const rgba = await p;
-      const idx = (py * 256 + px) * 4;
-      const r = rgba[idx];
-      const g = rgba[idx + 1];
-      const b = rgba[idx + 2];
-
-      const elev = decodeTerrainRgb(r, g, b);
-      return Number.isFinite(elev) ? elev : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function getElevation(map: mapboxgl.Map, lng: number, lat: number): Promise<number> {
-    // First try Mapbox GL’s built-in terrain query
-    const e = map.queryTerrainElevation([lng, lat]);
-    if (typeof e === "number" && Number.isFinite(e)) return e;
-
-    // Fallback: decode from terrain-rgb tiles (Safari iOS reliability)
-    const fallback = await getElevationTerrainRgb(lng, lat);
-    return typeof fallback === "number" && Number.isFinite(fallback) ? fallback : 0;
-  }
-
   async function drawRouteBetweenPoints(
     map: mapboxgl.Map,
     from: mapboxgl.LngLat,
@@ -331,7 +143,7 @@ export default function DashboardMap({
       await new Promise<void>((resolve) => map.once("load", () => resolve()));
     }
 
-    removeRouteSegments(map);
+    clearRouteLayers(map);
 
     const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${from.lng},${from.lat};${to.lng},${to.lat}?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
 
@@ -342,8 +154,10 @@ export default function DashboardMap({
     const rawCoords = data.routes[0].geometry.coordinates as [number, number][];
     const coords = resampleCoords(rawCoords);
 
-    // ✅ async elevations (works in Safari iOS because we can fallback)
-    const elevations = await Promise.all(coords.map(([lng, lat]) => getElevation(map, lng, lat)));
+    const getElevation = getElevationRef.current;
+    const elevations = await Promise.all(
+      coords.map(([lng, lat]) => (getElevation ? getElevation(map, lng, lat) : Promise.resolve(0)))
+    );
 
     const segments = classifySegments(elevations, coords);
 
@@ -396,7 +210,7 @@ export default function DashboardMap({
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
-    if (!MAPBOX_TOKEN) return;
+    if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && !mapboxgl.accessToken) return;
 
     const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevBodyOverflow = document.body.style.overflow;
@@ -416,6 +230,14 @@ export default function DashboardMap({
 
     mapRef.current = map;
     tileCacheRef.current.clear();
+    // Ensure our elevation getter uses the current token + a fresh cache
+    getElevationRef.current = createTerrainElevationGetter({
+      tileCache: tileCacheRef.current,
+      demTileset: "mapbox.terrain-rgb",
+      elevZoom: 14,
+      getAccessToken: () =>
+        process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? mapboxgl.accessToken ?? undefined,
+    });
 
     // iOS: pinch should zoom; rotation can fight gestures
     map.touchZoomRotate.disableRotation();
@@ -515,7 +337,7 @@ export default function DashboardMap({
     if (clearRouteNonce == null) return;
     const map = mapRef.current;
     if (!map) return;
-    removeRouteSegments(map);
+    clearRouteLayers(map);
   }, [clearRouteNonce]);
 
   return (
