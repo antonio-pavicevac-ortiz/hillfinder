@@ -51,6 +51,25 @@ function classifySegments(elevations: number[], coords: [number, number][]) {
   return segments;
 }
 
+function removeRouteSegments(map: mapboxgl.Map) {
+  if (!map.isStyleLoaded()) {
+    map.once("idle", () => removeRouteSegments(map));
+    return;
+  }
+
+  const layers = map.getStyle().layers ?? [];
+  layers
+    .filter((l) => l.id.startsWith("route-segment-"))
+    .forEach((l) => {
+      try {
+        if (map.getLayer(l.id)) map.removeLayer(l.id);
+      } catch {}
+      try {
+        if (map.getSource(l.id)) map.removeSource(l.id);
+      } catch {}
+    });
+}
+
 function resampleCoords(coords: [number, number][], stepMeters = 15): [number, number][] {
   const result: [number, number][] = [];
 
@@ -85,10 +104,12 @@ type Destination = {
 
 export default function DashboardMap({
   destination,
+  clearRouteNonce,
   onRouteDrawn,
   onDestinationPicked,
 }: {
   destination: Destination | null;
+  clearRouteNonce?: number;
   onRouteDrawn?: () => void;
   onDestinationPicked?: (loc: { name: string; lat: number; lng: number }) => void;
 }) {
@@ -186,13 +207,22 @@ export default function DashboardMap({
     from: mapboxgl.LngLat,
     to: mapboxgl.LngLat
   ) {
+    // Ensure style is ready before touching layers/sources.
+    if (!map.isStyleLoaded()) {
+      await new Promise<void>((resolve) => map.once("idle", () => resolve()));
+    }
+
+    // Clear any prior route layers/sources before drawing the next route.
+    removeRouteSegments(map);
+
     const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${from.lng},${from.lat};${to.lng},${to.lat}?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+
     const res = await fetch(url);
     const data = await res.json();
 
     if (!data.routes?.length) return;
 
-    const rawCoords = data.routes[0].geometry.coordinates;
+    const rawCoords = data.routes[0].geometry.coordinates as [number, number][];
     const coords = resampleCoords(rawCoords);
 
     const elevations = coords.map(([lng, lat]) => {
@@ -202,15 +232,9 @@ export default function DashboardMap({
 
     const segments = classifySegments(elevations, coords);
 
-    const existingLayers = map.getStyle().layers ?? [];
-    existingLayers
-      .filter((l) => l.id.startsWith("route-segment-"))
-      .forEach((l) => {
-        if (map.getLayer(l.id)) map.removeLayer(l.id);
-        if (map.getSource(l.id)) map.removeSource(l.id);
-      });
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index];
 
-    segments.forEach((segment, index) => {
       const color =
         segment.difficulty === "easy"
           ? "#22c55e"
@@ -221,6 +245,14 @@ export default function DashboardMap({
               : "#ef4444";
 
       const id = `route-segment-${index}`;
+
+      // Defensive: if something left a dangling layer/source, remove it.
+      try {
+        if (map.getLayer(id)) map.removeLayer(id);
+      } catch {}
+      try {
+        if (map.getSource(id)) map.removeSource(id);
+      } catch {}
 
       map.addSource(id, {
         type: "geojson",
@@ -235,9 +267,13 @@ export default function DashboardMap({
         id,
         type: "line",
         source: id,
-        paint: { "line-color": color, "line-width": 5, "line-opacity": 0.9 },
+        paint: {
+          "line-color": color,
+          "line-width": 5,
+          "line-opacity": 0.9,
+        },
       });
-    });
+    }
 
     onRouteDrawn?.();
   }
@@ -440,6 +476,15 @@ export default function DashboardMap({
     if (!markerRef.current) return;
     void drawRouteBetweenPoints(map, markerRef.current.getLngLat(), dest.getLngLat());
   }, [destination]);
+
+  useEffect(() => {
+    if (clearRouteNonce == null) return;
+
+    const map = mapRef.current;
+    if (!map) return;
+
+    removeRouteSegments(map);
+  }, [clearRouteNonce]);
 
   return (
     <div
