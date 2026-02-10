@@ -1,86 +1,45 @@
 "use client";
 
-import type { ButtonHTMLAttributes } from "react";
+type Props = {
+  disabled?: boolean;
+  onClick?: () => void;
+};
 
-export default function ClearRouteButton({
-  className = "",
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-  const disabled = !!props.disabled;
+export default function ClearRouteButton({ disabled, onClick }: Props) {
+  const strokeColor = disabled
+    ? "rgba(100,116,139,0.95)" // grey stroke when disabled
+    : "rgba(15,23,42,0.95)"; // dark when active
 
   return (
     <button
       type="button"
       aria-label="Clear route"
-      title="Clear route"
-      {...props}
-      className={[
-        // layout
-        "relative inline-flex items-center justify-center",
-        "h-11 w-11 rounded-2xl overflow-hidden",
+      disabled={disabled}
+      onClick={onClick}
+      className="relative flex items-center justify-center h-12 w-12 rounded-2xl border transition active:scale-95 disabled:cursor-default"
+      style={{
+        // 🔻 slightly greyer / more "disabled" glass when disabled
+        background: disabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.18)",
+        borderColor: disabled ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.30)",
+        backdropFilter: "blur(26px)",
+        WebkitBackdropFilter: "blur(26px)",
 
-        // match SearchDestination card/control vibe
-        "bg-white/80",
-        "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
-        "border border-white/35",
-        "ring-1 ring-black/5",
-
-        // ✅ SAME SHADOW FAMILY AS SEARCH DESTINATION
-        "shadow-md",
-
-        // subtle glass sheen
-        "before:pointer-events-none before:absolute before:inset-0",
-        "before:bg-gradient-to-b before:from-white/35 before:to-transparent",
-        "after:pointer-events-none after:absolute after:inset-0",
-        "after:shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]",
-
-        // interaction polish
-        "transition-transform transition-shadow duration-150 ease-out",
-        "will-change-transform touch-manipulation",
-        "[-webkit-tap-highlight-color:transparent]",
-
-        !disabled
-          ? "hover:scale-[1.03] active:scale-[0.96] active:shadow-sm"
-          : "opacity-95 cursor-not-allowed",
-
-        // icon state
-        disabled ? "text-slate-300" : "text-slate-900",
-
-        // a11y focus ring
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70",
-
-        className,
-      ].join(" ")}
+        // tight grounded shadow (kept)
+        boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
+      }}
     >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d="M7 7H3v4"
-          stroke="currentColor"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M3 11a8 8 0 0 1 13.66-5.66"
-          stroke="currentColor"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M21 13a8 8 0 0 1-13.66 5.66"
-          stroke="currentColor"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M17 17h4v-4"
-          stroke="currentColor"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+      <svg
+        viewBox="0 0 24 24"
+        width="24"
+        height="24"
+        fill="none"
+        stroke={strokeColor}
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M9 14l-4-4 4-4" />
+        <path d="M5 10h9a5 5 0 1 1 0 10h-1.5" />
       </svg>
     </button>
   );
