@@ -17,12 +17,13 @@ import { toast } from "sonner";
 
 const HEADER_H = 64;
 const FOOTER_H = 56;
+
 const HEARTBEAT: TargetAndTransition = {
   scale: [1, 1.012, 1, 1.018, 1],
   transition: {
     duration: 2.4,
     times: [0, 0.12, 0.24, 0.38, 1],
-    ease: [0.22, 1, 0.36, 1], // TS-safe across versions
+    ease: [0.22, 1, 0.36, 1],
     repeat: Infinity,
   },
 };
@@ -69,7 +70,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const [ctaBounceNonce, setCtaBounceNonce] = useState(0);
 
   const [routeRequestNonce, setRouteRequestNonce] = useState(0);
-
   const [plannerTo, setPlannerTo] = useState("");
 
   // ✅ stop pulsing once user interacts
@@ -110,16 +110,22 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const softNudgeTimerRef = useRef<number | null>(null);
 
   // ✅ Quick Route press animation controls
-  // ✅ Quick Route press animation controls
   const quickRouteControls = useAnimationControls();
   const quickRouteAnimatingRef = useRef(false);
+  const quickRoutePulseTimerRef = useRef<number | null>(null);
+
+  // ✅ Planner CTA pulse (only for a short time so it feels intentional)
+  const [plannerPulseOn, setPlannerPulseOn] = useState(true);
+  const plannerPulseTimerRef = useRef<number | null>(null);
 
   // ✅ Recenter
   const [recenterNonce, setRecenterNonce] = useState(0);
   const recenterDisabled = !fromLocation;
-  const recenterStrokeColor = recenterDisabled
-    ? "rgba(100,116,139,0.95)" // same disabled stroke as ClearRouteButton
-    : "rgba(15,23,42,0.95)"; // same active stroke as ClearRouteButton
+  const recenterStrokeColor = recenterDisabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
+
+  // ✅ This MUST be declared before any effect that uses it
+  const allowInitialPulse = !ctaHasInteracted && !pinsReady;
+
   // ----------------------------
   // ✅ UNIVERSAL TOAST (STYLE COMES FROM globals.css)
   // ----------------------------
@@ -138,14 +144,13 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       return;
     }
 
-    // ✅ do NOT use toast.success for neutral
     toast(message, { duration });
   }
 
   function showPinsReadyHint() {
     showBanner("Pins set — tap Quick Route or Plan a downhill route", {
       tone: "neutral",
-      duration: 4200, // readable
+      duration: 4200,
     });
   }
 
@@ -242,6 +247,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   }
 
   function runQuickRoute() {
+    setPlannerPulseOn(false);
     setCtaHasInteracted(true);
     setHasOpenedPlannerOnce(true);
 
@@ -260,7 +266,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     runQuickRoute();
 
     try {
-      // baseline
       quickRouteControls.stop();
       quickRouteControls.set({ opacity: 1, scale: 1 });
 
@@ -276,7 +281,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] },
       });
 
-      // reset for next time it appears
       quickRouteControls.set({ opacity: 1, scale: 1 });
     } finally {
       quickRouteAnimatingRef.current = false;
@@ -312,6 +316,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       body.style.overscrollBehavior = prevBodyOverscroll;
 
       if (softNudgeTimerRef.current) window.clearTimeout(softNudgeTimerRef.current);
+      if (quickRoutePulseTimerRef.current) window.clearTimeout(quickRoutePulseTimerRef.current);
+      if (plannerPulseTimerRef.current) window.clearTimeout(plannerPulseTimerRef.current);
     };
   }, []);
 
@@ -321,36 +327,49 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     prevPinsReadyRef.current = pinsReady;
 
     if (!prev && pinsReady && !generatorOpen && !plannerExiting && !hasOpenedPlannerOnce) {
+      setPlannerPulseOn(false);
       setCtaPinsReadyNudgeNonce((n) => n + 1);
       showPinsReadyHint();
     }
   }, [pinsReady, generatorOpen, plannerExiting, hasOpenedPlannerOnce]);
 
+  // ✅ Quick Route pulse: only briefly
   useEffect(() => {
     const shouldShowQuick = pinsReady && !hasRoute && !generatorOpen && !plannerExiting;
 
-    // If it's not visible, stop any running animation so it doesn't "resume" weirdly later
+    const clearPulseTimer = () => {
+      if (quickRoutePulseTimerRef.current) {
+        window.clearTimeout(quickRoutePulseTimerRef.current);
+        quickRoutePulseTimerRef.current = null;
+      }
+    };
+
     if (!shouldShowQuick) {
-      // If the button disappears while an animation is awaiting (e.g. route draws quickly),
-      // ensure we don't get stuck "animating" forever.
       quickRouteAnimatingRef.current = false;
 
+      clearPulseTimer();
       quickRouteControls.stop();
       quickRouteControls.set({ opacity: 1, scale: 1 });
       return;
     }
 
-    // When it becomes visible again, reset it
+    clearPulseTimer();
     quickRouteControls.stop();
     quickRouteControls.set({ opacity: 1, scale: 1 });
 
-    // Same gentle pulse as Planner CTA, only before interaction
     if (!ctaHasInteracted) {
-      quickRouteControls.start({
-        scale: [1, 1.015, 1],
-        transition: { duration: 2.2, ease: "easeInOut", repeat: Infinity },
-      });
+      quickRouteControls.start(HEARTBEAT);
+
+      quickRoutePulseTimerRef.current = window.setTimeout(() => {
+        quickRouteControls.stop();
+        quickRouteControls.set({ opacity: 1, scale: 1 });
+        quickRoutePulseTimerRef.current = null;
+      }, 19200);
     }
+
+    return () => {
+      clearPulseTimer();
+    };
   }, [pinsReady, hasRoute, generatorOpen, plannerExiting, ctaHasInteracted, quickRouteControls]);
 
   // ✅ SOFT NUDGE: when pins are already ready and user edits pins again
@@ -376,11 +395,36 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     };
   }, [lastPinEditAt, pinsReady, generatorOpen, plannerExiting, hasOpenedPlannerOnce]);
 
+  // ✅ Stop the initial Planner CTA heartbeat after ~2 beats (prevents infinite pulsing)
+  useEffect(() => {
+    const clear = () => {
+      if (plannerPulseTimerRef.current) {
+        window.clearTimeout(plannerPulseTimerRef.current);
+        plannerPulseTimerRef.current = null;
+      }
+    };
+
+    // If we shouldn't be pulsing, ensure timer is cleared and pulse is off.
+    if (!allowInitialPulse) {
+      clear();
+      setPlannerPulseOn(false);
+      return;
+    }
+
+    // Start pulsing once, then stop after ~2 beats.
+    setPlannerPulseOn(true);
+    clear();
+    plannerPulseTimerRef.current = window.setTimeout(() => {
+      setPlannerPulseOn(false);
+      plannerPulseTimerRef.current = null;
+    }, 19200);
+
+    return () => clear();
+  }, [allowInitialPulse]);
+
   const useReturnBounce = ctaBounceNonce > 0;
   const usePinsReadyCallout = !useReturnBounce && ctaPinsReadyNudgeNonce > 0;
   const useSoftNudge = !useReturnBounce && !usePinsReadyCallout && ctaSoftNudgeNonce > 0;
-
-  const allowInitialPulse = !ctaHasInteracted && !pinsReady;
 
   return (
     <main className="fixed inset-0 bg-white overscroll-none" aria-label="Dashboard">
@@ -398,6 +442,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
           onRouteDrawn={handleRouteDrawn}
           onDestinationPicked={(loc) => {
             setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
+            setPlannerPulseOn(false);
             setHasRoute(false);
             setPlannerTo(loc.name);
             setIsTooFar(false);
@@ -444,6 +489,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     >
                       <PlannerCTA
                         onClick={() => {
+                          setPlannerPulseOn(false);
                           setCtaHasInteracted(true);
                           setHasOpenedPlannerOnce(true);
                           setPlannerExiting(false);
@@ -459,7 +505,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                       animate={{ y: [0, -3, 0], scale: [1, 1.01, 1] }}
                       transition={{ duration: 0.35, ease: "easeOut" }}
                     >
-                      {/* softer ring */}
                       <motion.div
                         aria-hidden="true"
                         className={["pointer-events-none absolute -inset-2", CTA_ROUNDED].join(" ")}
@@ -474,6 +519,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
                       <PlannerCTA
                         onClick={() => {
+                          setPlannerPulseOn(false);
                           setCtaHasInteracted(true);
                           setHasOpenedPlannerOnce(true);
                           setPlannerExiting(false);
@@ -503,6 +549,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
                       <PlannerCTA
                         onClick={() => {
+                          setPlannerPulseOn(false);
                           setCtaHasInteracted(true);
                           setHasOpenedPlannerOnce(true);
                           setPlannerExiting(false);
@@ -513,15 +560,11 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                   ) : (
                     <motion.div
                       initial={{ scale: 1 }}
-                      animate={allowInitialPulse ? HEARTBEAT : { scale: 1 }}
-                      transition={{
-                        duration: 2.2,
-                        ease: "easeInOut",
-                        repeat: allowInitialPulse ? Infinity : 0,
-                      }}
+                      animate={allowInitialPulse && plannerPulseOn ? HEARTBEAT : { scale: 1 }}
                     >
                       <PlannerCTA
                         onClick={() => {
+                          setPlannerPulseOn(false);
                           setCtaHasInteracted(true);
                           setHasOpenedPlannerOnce(true);
                           setPlannerExiting(false);
@@ -539,7 +582,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         initial={{ opacity: 0, y: 10, scale: 0.99 }}
                         animate={QUICK_ROUTE_BOUNCE_IN}
                         exit={{ opacity: 0, y: 6, scale: 0.99 }}
-                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                         style={{ willChange: "transform" }}
                       >
                         <motion.button
@@ -578,12 +620,10 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     )}
                   </AnimatePresence>
 
-                  {/* ✅  RECENTER button */}
                   {/* ✅ RECENTER (right side, above Clear Route) */}
                   <div
                     className="fixed right-3 z-[80] pointer-events-auto"
                     style={{
-                      // ClearRoute sits at +0.75rem; this places Recenter one button+gap above it (48px + 12px = 60px = 3.75rem)
                       bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 0.75rem + 3.75rem)`,
                     }}
                   >
@@ -610,7 +650,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
                       }}
                     >
-                      {/* Top highlight layer (matches ClearRouteButton) */}
                       <div
                         aria-hidden
                         className="absolute inset-0 pointer-events-none rounded-2xl"
@@ -620,7 +659,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         }}
                       />
 
-                      {/* Crosshair icon (consistent stroke + weight) */}
                       <svg
                         viewBox="0 0 24 24"
                         width="24"
@@ -642,7 +680,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     </button>
                   </div>
 
-                  {/* ✅ CLEAR ROUTE (kept where you placed it) */}
+                  {/* ✅ CLEAR ROUTE */}
                   <div
                     className="fixed right-3 z-[80] pointer-events-auto"
                     style={{
@@ -697,6 +735,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     onGenerate={handleGenerate}
                     onDestinationSelected={(loc) => {
                       setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
+                      setPlannerPulseOn(false);
                       setHasRoute(false);
                       setPlannerTo(loc.name);
                       setIsTooFar(false);
