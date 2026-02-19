@@ -23,9 +23,32 @@ body {
   --font-mono: var(--font-geist-mono);
 }
 
+/* -----------------------------
+   Reusable component classes
+   ----------------------------- */
 @layer components {
   .btn-green {
     @apply bg-brandGreen text-white font-medium px-4 py-2 rounded hover:bg-brandGreen-dark transition;
+  }
+
+  /* Hillfinder toast card styling (applied globally via <Toaster /> in layout.tsx) */
+  [data-sonner-toast].hf-toast {
+    @apply rounded-2xl px-4 py-2 text-center text-sm font-medium leading-snug
+      shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
+  }
+
+  /* ✅ Neutral (default) — Sonner toast that is NOT an error */
+  [data-sonner-toast].hf-toast:not([data-type="error"]) {
+    @apply !border !border-emerald-300/70 !bg-emerald-100/90 !text-emerald-900;
+  }
+
+  /* ❌ Error */
+  [data-sonner-toast].hf-toast[data-type="error"] {
+    @apply !border !border-rose-300/70 !bg-rose-200/85 !text-rose-900;
+  }
+
+  .hf-toast--drop {
+    animation: hf-toast-drop 0.18s ease-out;
   }
 }
 
@@ -44,11 +67,9 @@ body {
 
 .input-field {
   @apply w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900
-         placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-600 transition;
+    placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-600 transition;
 }
-.btn-green {
-  @apply w-full bg-green-600 hover:bg-green-700 text-white font-medium rounded-md py-2 transition disabled:opacity-60;
-}
+
 .error-text {
   @apply text-sm text-red-600;
 }
@@ -74,9 +95,9 @@ body {
   animation: fadeIn 0.12s ease-out;
 }
 
-/* Hide the built-in Next.js DevTools overlay badge */
-/* uploadthing */
-/* UploadThing — force all button variations green */
+/* -----------------------------
+   UploadThing — force all button variations green
+   ----------------------------- */
 .ut-button,
 .ut-upload-button,
 .ut-uploading-outer button,
@@ -89,4 +110,19 @@ body {
 .ut-uploading-outer button:hover,
 .ut-uploading-outer .ut-label:hover {
   @apply bg-emerald-600 !important;
+}
+
+/* -----------------------------
+   Sonner — consistent top-center + drop-down motion
+   ----------------------------- */
+
+@keyframes hf-toast-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

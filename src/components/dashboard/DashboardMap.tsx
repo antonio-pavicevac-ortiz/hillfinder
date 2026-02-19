@@ -15,6 +15,11 @@ if (MAPBOX_TOKEN) {
   console.warn("[DashboardMap] Missing NEXT_PUBLIC_MAPBOX_TOKEN — Mapbox may not initialize");
 }
 
+type FromLocation = {
+  lat: number;
+  lng: number;
+  name?: string;
+};
 type Destination = { lat: number; lng: number; name?: string };
 
 export default function DashboardMap({
@@ -22,11 +27,21 @@ export default function DashboardMap({
   clearRouteNonce,
   onRouteDrawn,
   onDestinationPicked,
+  routeRequestNonce,
+  routeActive,
+  onFromPicked,
+  fromLocation,
+  recenterNonce,
 }: {
   destination: Destination | null;
   clearRouteNonce?: number;
   onRouteDrawn?: () => void;
   onDestinationPicked?: (loc: { name: string; lat: number; lng: number }) => void;
+  routeRequestNonce?: number;
+  routeActive?: boolean;
+  onFromPicked?: (loc: { name: string; lat: number; lng: number }) => void;
+  fromLocation?: { lat: number; lng: number } | null;
+  recenterNonce?: number;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -78,6 +93,12 @@ export default function DashboardMap({
     onDestinationPicked({ name, lat: lngLat.lat, lng: lngLat.lng });
   }
 
+  async function notifyFromPicked(lngLat: mapboxgl.LngLat) {
+    if (!onFromPicked) return;
+    const name = await reverseGeocodeName(lngLat.lng, lngLat.lat);
+    onFromPicked({ name, lat: lngLat.lat, lng: lngLat.lng });
+  }
+
   function ensureFromMarker(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike) {
     if (markerRef.current) return markerRef.current;
 
@@ -92,14 +113,22 @@ export default function DashboardMap({
 
     (fromMarker.getElement() as HTMLElement).style.touchAction = "none";
 
-    // When FROM marker moves, redraw route (if destination exists)
+    // When FROM marker moves:
+    // - always update parent label
+    // - only redraw the *real* route if a route is already active
+    // - otherwise, keep this as "exploration" and only update the preview line (if present)
     fromMarker.on("dragend", () => {
       const from = fromMarker.getLngLat();
-      const to = destMarkerRef.current?.getLngLat();
-      if (!to) return;
-      if (!mapRef.current) return;
+      void notifyFromPicked(from);
 
-      void drawRouteBetweenPoints(mapRef.current, from, to);
+      const to = destMarkerRef.current?.getLngLat();
+      const map = mapRef.current;
+      if (!to || !map) return;
+
+      // ✅ If a real route is already shown, keep it in sync.
+      if (routeActive) {
+        void drawRouteBetweenPoints(map, from, to);
+      }
     });
 
     markerRef.current = fromMarker;
@@ -260,6 +289,15 @@ export default function DashboardMap({
       clickTolerance: 8,
     });
 
+    const geolocate = new mapboxgl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+      showUserHeading: true,
+      showUserLocation: true,
+    });
+
+    map.addControl(geolocate, "top-right");
+
     mapRef.current = map;
 
     tileCacheRef.current.clear();
@@ -406,7 +444,9 @@ export default function DashboardMap({
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords;
-          ensureFromMarker(map, [longitude, latitude]);
+          const ll = new mapboxgl.LngLat(longitude, latitude);
+          ensureFromMarker(map, ll);
+          void notifyFromPicked(ll);
           map.flyTo({ center: [longitude, latitude], zoom: 15 });
         },
         () => {}
@@ -447,17 +487,27 @@ export default function DashboardMap({
     };
   }, []);
 
-  // When parent picks a destination, mirror marker + draw route
+  // When parent picks a destination, mirror marker + fly to it, but DO NOT draw route automatically
   useEffect(() => {
     if (!mapRef.current || !destination) return;
     const map = mapRef.current;
 
-    const dest = ensureDestMarker(map, [destination.lng, destination.lat]);
+    ensureDestMarker(map, [destination.lng, destination.lat]);
     map.flyTo({ center: [destination.lng, destination.lat], zoom: 15 });
-
-    if (!markerRef.current) return;
-    void drawRouteBetweenPoints(map, markerRef.current.getLngLat(), dest.getLngLat());
   }, [destination]);
+
+  // Draw route only when routeRequestNonce changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!routeRequestNonce) return;
+
+    const map = mapRef.current;
+    const from = markerRef.current?.getLngLat();
+    const to = destMarkerRef.current?.getLngLat();
+    if (!from || !to) return;
+
+    void drawRouteBetweenPoints(map, from, to);
+  }, [routeRequestNonce]);
 
   // Clear route when parent bumps the nonce
   useEffect(() => {
@@ -465,8 +515,28 @@ export default function DashboardMap({
     if (!mapRef.current) return;
 
     clearRouteLayers(mapRef.current);
+    const map = mapRef.current;
+
     lastGoodDestRef.current = null;
   }, [clearRouteNonce]);
+
+  useEffect(() => {
+    if (!recenterNonce) return;
+    if (!fromLocation) return;
+
+    const map = mapRef.current; // ✅ use your real map ref
+    if (!map) return;
+
+    const targetZoom = Math.max(map.getZoom(), 14);
+
+    map.flyTo({
+      center: [fromLocation.lng, fromLocation.lat],
+      zoom: targetZoom,
+      speed: 1.2,
+      curve: 1.42,
+      essential: true,
+    });
+  }, [recenterNonce, fromLocation]);
 
   return (
     <div

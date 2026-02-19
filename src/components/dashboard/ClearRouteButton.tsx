@@ -3,9 +3,15 @@
 type Props = {
   disabled?: boolean;
   onClick?: () => void;
+  /** Optional extra classes (useful when positioning it as a floating control) */
+  className?: string;
+  /** Size in pixels for width/height. Defaults to 48 (Tailwind h-12/w-12). */
+  size?: number;
 };
 
-export default function ClearRouteButton({ disabled, onClick }: Props) {
+export const CLEAR_ROUTE_ROUNDED = "rounded-2xl";
+
+export default function ClearRouteButton({ disabled, onClick, className = "", size = 48 }: Props) {
   const strokeColor = disabled
     ? "rgba(100,116,139,0.95)" // grey stroke when disabled
     : "rgba(15,23,42,0.95)"; // dark when active
@@ -16,8 +22,14 @@ export default function ClearRouteButton({ disabled, onClick }: Props) {
       aria-label="Clear route"
       disabled={disabled}
       onClick={onClick}
-      className="relative flex items-center justify-center h-12 w-12 rounded-2xl transition active:scale-95 disabled:cursor-default overflow-hidden"
+      className={[
+        "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
+        CLEAR_ROUTE_ROUNDED,
+        className,
+      ].join(" ")}
       style={{
+        width: size,
+        height: size,
         // 🔹 Darker, richer glass (matches CTA better)
         background: disabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.22)",
 
@@ -33,7 +45,7 @@ export default function ClearRouteButton({ disabled, onClick }: Props) {
       {/* Top highlight layer (like CTA) */}
       <div
         aria-hidden
-        className="absolute inset-0 rounded-2xl pointer-events-none"
+        className={["absolute inset-0 pointer-events-none", CLEAR_ROUTE_ROUNDED].join(" ")}
         style={{
           background: "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
         }}

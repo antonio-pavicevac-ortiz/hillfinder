@@ -47,6 +47,7 @@ export default [
 
       // App Router: disable page-routes rule
       "@next/next/no-html-link-for-pages": "off",
+      "react-hooks/exhaustive-deps": "warn",
 
       // Unused imports / vars via eslint-plugin-unused-imports
       "unused-imports/no-unused-imports": "warn",
