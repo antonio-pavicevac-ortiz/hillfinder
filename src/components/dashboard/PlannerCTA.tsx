@@ -3,7 +3,7 @@
 import { ChevronRight } from "lucide-react";
 
 // Shared radius so Quick Route can match exactly
-export const CTA_ROUNDED = "rounded-2xl";
+export const CTA_ROUNDED = "rounded-[18px]";
 
 type PlannerCTAProps = {
   onClick: () => void;
@@ -44,32 +44,28 @@ export default function PlannerCTA({
       aria-label={ariaLabel}
       className={[
         glassBar,
-        // Same rounding for both CTAs
         `w-full ${CTA_ROUNDED} px-4 text-left`,
-        // Height control: Quick Route should be ~3/4 height of Planner CTA
         compact ? "py-2.5" : "py-3",
-        // Keep spacing default for planner, but allow parent to override via className
         compact ? "mt-1" : "mt-2",
         "transition-transform duration-150 ease-out active:scale-[0.99]",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
         className,
       ].join(" ")}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-900">{title}</div>
-          {subtitle ? <div className="text-xs text-slate-700/65 truncate">{subtitle}</div> : null}
-        </div>
+      {/* ✅ Match Quick Route: reserve chevron space + absolute chevron */}
+      <div className="relative z-10 block pr-10">
+        <div className="block text-sm font-semibold leading-none text-black">{title}</div>
+
+        {subtitle ? (
+          <div className="mt-1 block text-xs text-slate-700/65 truncate">{subtitle}</div>
+        ) : null}
 
         <ChevronRight
           className={[
-            // ✅ Same chevron size/weight as the main CTA
-            "h-6 w-6 shrink-0 text-slate-900/80 transition-transform duration-200",
-            // ✅ desktop hover
+            "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
+            "h-5 w-5 shrink-0 text-black transition-transform duration-200",
             "group-hover:translate-x-1",
-            // ✅ mobile/touch press
             "group-active:translate-x-1",
-            // ✅ keyboard users
             "group-focus-visible:translate-x-1",
           ].join(" ")}
           strokeWidth={2.5}

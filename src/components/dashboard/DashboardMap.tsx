@@ -3,6 +3,7 @@
 import { classifySegments } from "@/lib/map/classifySegments";
 import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
 import { resampleCoords } from "@/lib/map/resampleCoords";
+import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
 
 import mapboxgl from "mapbox-gl";
@@ -62,6 +63,9 @@ export default function DashboardMap({
   // Remember last destination that successfully produced a route (optional snap-back behavior)
   const lastGoodDestRef = useRef<mapboxgl.LngLat | null>(null);
 
+  const sweepRef = useRef<ReturnType<typeof createRouteSweepController>>(
+    createRouteSweepController()
+  );
   function createCircleEl(color: string) {
     const el = document.createElement("div");
     el.style.width = "32px";
@@ -197,7 +201,7 @@ export default function DashboardMap({
 
       // Safe: clear + redraw
       clearRouteLayers(map);
-
+      sweepRef.current.clear(map);
       const rawCoords = data.routes[0].geometry.coordinates as [number, number][];
       const coords = resampleCoords(rawCoords);
 
@@ -256,7 +260,22 @@ export default function DashboardMap({
       // route succeeded -> remember this destination as last-good
       lastGoodDestRef.current = new mapboxgl.LngLat(to.lng, to.lat);
 
-      if (segments.length > 0) onRouteDrawn?.();
+      if (segments.length > 0) {
+        // Overlay sweep uses the full route geometry (not per-segment)
+        sweepRef.current.ensure(map, coords);
+
+        onRouteDrawn?.();
+
+        // Locked-in delay: sweep shortly after the route appears
+        const safeReqId = reqId;
+        setTimeout(() => {
+          // Only sweep if this request is still the latest and the map still exists
+          if (safeReqId !== routeReqIdRef.current) return;
+          const m = mapRef.current;
+          if (!m) return;
+          sweepRef.current.run(m);
+        }, 120);
+      }
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("drawRouteBetweenPoints error:", err);
@@ -476,6 +495,10 @@ export default function DashboardMap({
       markerRef.current = null;
       destMarkerRef.current = null;
 
+      try {
+        sweepRef.current.destroy(map);
+      } catch {}
+
       map.remove();
       mapRef.current = null;
 
@@ -515,6 +538,7 @@ export default function DashboardMap({
     if (!mapRef.current) return;
 
     clearRouteLayers(mapRef.current);
+    sweepRef.current.clear(mapRef.current);
     const map = mapRef.current;
 
     lastGoodDestRef.current = null;

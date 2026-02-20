@@ -5,7 +5,7 @@ import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import { DashboardLegend } from "@/components/dashboard/DashboardLegend";
 import DashboardMap from "@/components/dashboard/DashboardMap";
 import DownhillGenerator from "@/components/dashboard/DownhillGenerator";
-import PlannerCTA, { CTA_ROUNDED } from "@/components/dashboard/PlannerCTA";
+import PlannerCTA from "@/components/dashboard/PlannerCTA";
 import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
 import { milesBetween } from "@/lib/map/milesBetween";
@@ -38,6 +38,8 @@ const QUICK_ROUTE_BOUNCE_IN: TargetAndTransition = {
     times: [0, 0.7, 1],
   },
 };
+
+const QUICK_ROUTE_ROUNDED = "rounded-2xl";
 
 type Destination = {
   lat: number;
@@ -507,7 +509,10 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     >
                       <motion.div
                         aria-hidden="true"
-                        className={["pointer-events-none absolute -inset-2", CTA_ROUNDED].join(" ")}
+                        className={[
+                          "pointer-events-none absolute -inset-2",
+                          QUICK_ROUTE_ROUNDED,
+                        ].join(" ")}
                         initial={{ opacity: 0, scale: 0.99 }}
                         animate={{ opacity: [0, 0.25, 0], scale: [0.99, 1.01, 1.015] }}
                         transition={{ duration: 0.6, ease: "easeOut" }}
@@ -537,7 +542,10 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     >
                       <motion.div
                         aria-hidden="true"
-                        className={["pointer-events-none absolute -inset-2", CTA_ROUNDED].join(" ")}
+                        className={[
+                          "pointer-events-none absolute -inset-2",
+                          QUICK_ROUTE_ROUNDED,
+                        ].join(" ")}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: [0, 0.18, 0] }}
                         transition={{ duration: 0.55, ease: "easeOut" }}
@@ -592,9 +600,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                           style={{ transformOrigin: "center", willChange: "transform" }}
                           className={
                             "group relative w-full overflow-hidden " +
-                            CTA_ROUNDED +
-                            " px-4 py-2.5 " +
-                            "text-sm font-semibold text-slate-900/90 " +
+                            QUICK_ROUTE_ROUNDED +
+                            " px-4 py-3 " + // ✅ match PlannerCTA height (was 2.5)
                             "bg-white/12 saturate-150 " +
                             "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
                             "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
@@ -602,19 +609,24 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                             "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
                           }
                         >
-                          <span className="block text-left">Quick Route</span>
+                          {/* ✅ Match PlannerCTA: reserve chevron space + absolute chevron */}
+                          <span className="relative z-10 block pr-10 text-left">
+                            <span className="block text-sm font-semibold leading-none text-black">
+                              Quick Route
+                            </span>
 
-                          <ChevronRight
-                            className={[
-                              "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2",
-                              "h-6 w-6 shrink-0 text-slate-900/80 transition-transform duration-200",
-                              "group-hover:translate-x-1",
-                              "group-active:translate-x-1",
-                              "group-focus-visible:translate-x-1",
-                            ].join(" ")}
-                            strokeWidth={2.5}
-                            aria-hidden="true"
-                          />
+                            <ChevronRight
+                              className={[
+                                "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
+                                "h-5 w-5 shrink-0 text-black transition-transform duration-200",
+                                "group-hover:translate-x-1",
+                                "group-active:translate-x-1",
+                                "group-focus-visible:translate-x-1",
+                              ].join(" ")}
+                              strokeWidth={2.5}
+                              aria-hidden="true"
+                            />
+                          </span>
                         </motion.button>
                       </motion.div>
                     )}

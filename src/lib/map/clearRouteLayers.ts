@@ -1,3 +1,5 @@
+// Clears route segment layers/sources by prefix (default: "route-segment-").
+// Note: the traveling sweep overlay ("route-sweep") is managed separately in DashboardMap.
 export function clearRouteLayers(map: mapboxgl.Map, prefix = "route-segment-") {
   if (!map.isStyleLoaded()) {
     map.once("load", () => clearRouteLayers(map, prefix));
