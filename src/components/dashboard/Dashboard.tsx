@@ -63,6 +63,11 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const [generatorOpen, setGeneratorOpen] = useState(false);
 
   const [destination, setDestination] = useState<Destination | null>(null);
+
+  // --- Refs to hold the latest values synchronously
+  const fromLocationRef = useRef<FromLocation | null>(null);
+  const destinationRef = useRef<Destination | null>(null);
+
   const [hasRoute, setHasRoute] = useState(false);
 
   // tells the map to clear itself without refs
@@ -71,7 +76,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   // ✅ used to re-trigger bounce when returning from planner
   const [ctaBounceNonce, setCtaBounceNonce] = useState(0);
 
-  const [routeRequestNonce, setRouteRequestNonce] = useState(0);
   const [plannerTo, setPlannerTo] = useState("");
 
   // ✅ stop pulsing once user interacts
@@ -125,6 +129,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const recenterDisabled = !fromLocation;
   const recenterStrokeColor = recenterDisabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
 
+  // ✅ Alternatives pipeline
   const [routeAlternativesNonce, setRouteAlternativesNonce] = useState(0);
   const [variantsReady, setVariantsReady] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<"easy" | "hard" | null>(null);
@@ -166,6 +171,20 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     });
   }
 
+  // Normalize place strings for comparison (trim, lowercase, collapse spaces)
+  function normalizePlace(s: string) {
+    return s.trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    fromLocationRef.current = fromLocation;
+  }, [fromLocation]);
+
+  useEffect(() => {
+    destinationRef.current = destination;
+  }, [destination]);
+
   function notePinEdited() {
     setLastPinEditAt(Date.now());
   }
@@ -188,14 +207,15 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       return silent();
     };
 
-    const from = fromLocation;
+    const from = fromLocationRef.current ?? fromLocation;
     if (!from) return showGuard("Pick a start location first.");
 
-    const dest = destination;
+    const dest = destinationRef.current ?? destination;
     if (!dest) return showGuard("Pick a destination first.");
 
-    if (!dest.name || dest.name !== params.to) {
-      return showGuard("Please choose a destination from the list.");
+    const destName = dest.name ?? "";
+    if (!destName || normalizePlace(destName) !== normalizePlace(params.to)) {
+      return showGuard("Please choose a destination from the list (or tap the map) to confirm it.");
     }
 
     const MAX_MILES = 20;
@@ -213,31 +233,39 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     }
 
     setIsTooFar(false);
-    setRouteRequestNonce((n) => n + 1);
+
+    // ✅ Alternatives pipeline
+    handleGenerateAlternatives();
   }
 
   function handleRouteDrawn() {
+    // With alternatives, this may fire from map sweeps/segments; keep it as "route exists"
     setHasRoute(true);
     closePlannerWithExitThenBounceCTA();
   }
 
   function handleClearRoute() {
     setHasRoute(false);
+    setVariantsReady(false);
+    setSelectedVariant(null);
     setClearRouteNonce((n) => n + 1);
   }
 
   function canQuickRoute(): boolean {
-    if (!fromLocation) {
+    const from = fromLocationRef.current ?? fromLocation;
+    const dest = destinationRef.current ?? destination;
+
+    if (!from) {
       showBanner("Pick a start location first.", { tone: "error", duration: 4200 });
       return false;
     }
-    if (!destination) {
+    if (!dest) {
       showBanner("Drop a destination pin first.", { tone: "error", duration: 4200 });
       return false;
     }
 
     const MAX_MILES = 20;
-    const d = milesBetween(fromLocation, destination);
+    const d = milesBetween(from, dest);
 
     if (!Number.isFinite(d)) {
       showBanner("Couldn’t measure distance. Try again.", { tone: "error", duration: 4200 });
@@ -265,7 +293,10 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
     // clear previous route state and request a new one
     setHasRoute(false);
-    setRouteRequestNonce((n) => n + 1);
+    setVariantsReady(false);
+    setSelectedVariant(null);
+
+    handleGenerateAlternatives();
   }
 
   async function handleQuickRoutePress() {
@@ -274,14 +305,13 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
     quickRouteAnimatingRef.current = true;
 
-    // ✅ trigger the route immediately (no waiting on animation)
+    // ✅ trigger route immediately
     runQuickRoute();
 
     try {
       quickRouteControls.stop();
       quickRouteControls.set({ opacity: 1, scale: 1 });
 
-      // subtle press feedback (tasteful)
       await quickRouteControls.start({
         scale: 1.02,
         transition: { duration: 0.08, ease: "easeOut" },
@@ -407,7 +437,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     };
   }, [lastPinEditAt, pinsReady, generatorOpen, plannerExiting, hasOpenedPlannerOnce]);
 
-  // ✅ Stop the initial Planner CTA heartbeat after ~2 beats (prevents infinite pulsing)
+  // ✅ Stop the initial Planner CTA heartbeat after ~2 beats
   useEffect(() => {
     const clear = () => {
       if (plannerPulseTimerRef.current) {
@@ -416,14 +446,12 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       }
     };
 
-    // If we shouldn't be pulsing, ensure timer is cleared and pulse is off.
     if (!allowInitialPulse) {
       clear();
       setPlannerPulseOn(false);
       return;
     }
 
-    // Start pulsing once, then stop after ~2 beats.
     setPlannerPulseOn(true);
     clear();
     plannerPulseTimerRef.current = window.setTimeout(() => {
@@ -433,6 +461,35 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
     return () => clear();
   }, [allowInitialPulse]);
+
+  useEffect(() => {
+    if (fromLocation) return;
+
+    if (!("geolocation" in navigator)) {
+      setFromLabelDisplay("Tap map to set start");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        const next = { lat, lng, name: "Current location" } as FromLocation;
+        fromLocationRef.current = next;
+        setFromLocation(next);
+      },
+      () => {
+        setFromLabelDisplay("Tap map to set start");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 30_000,
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const useReturnBounce = ctaBounceNonce > 0;
   const usePinsReadyCallout = !useReturnBounce && ctaPinsReadyNudgeNonce > 0;
@@ -449,19 +506,34 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         <DashboardMap
           destination={destination}
           clearRouteNonce={clearRouteNonce}
-          routeRequestNonce={routeRequestNonce}
           routeActive={hasRoute}
           onRouteDrawn={handleRouteDrawn}
           onDestinationPicked={(loc) => {
-            setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
+            const next = { name: loc.name, lat: loc.lat, lng: loc.lng } as Destination;
+            destinationRef.current = next;
+            setDestination(next);
+
             setPlannerPulseOn(false);
             setHasRoute(false);
+
+            // ✅ editing pins invalidates variant state
+            setVariantsReady(false);
+            setSelectedVariant(null);
+
             setPlannerTo(loc.name);
             setIsTooFar(false);
             notePinEdited();
           }}
           onFromPicked={(loc) => {
-            setFromLocation({ name: loc.name, lat: loc.lat, lng: loc.lng });
+            const next = { name: loc.name, lat: loc.lat, lng: loc.lng } as FromLocation;
+            fromLocationRef.current = next;
+            setFromLocation(next);
+
+            // ✅ editing pins invalidates variant state
+            setHasRoute(false);
+            setVariantsReady(false);
+            setSelectedVariant(null);
+
             notePinEdited();
           }}
           fromLocation={fromLocation}
@@ -471,6 +543,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
           onVariantsReady={() => {
             setVariantsReady(true);
             setSelectedVariant("easy"); // ✅ default highlight
+            setHasRoute(true); // ✅ alternatives pipeline represents the active route
           }}
           onVariantSelected={(v) => setSelectedVariant(v)}
         />
@@ -618,7 +691,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                           className={
                             "group relative w-full overflow-hidden " +
                             QUICK_ROUTE_ROUNDED +
-                            " px-4 py-3 " + // ✅ match PlannerCTA height (was 2.5)
+                            " px-4 py-3 " +
                             "bg-white/12 saturate-150 " +
                             "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
                             "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
@@ -626,7 +699,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                             "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
                           }
                         >
-                          {/* ✅ Match PlannerCTA: reserve chevron space + absolute chevron */}
                           <span className="relative z-10 block pr-10 text-left">
                             <span className="block text-sm font-semibold leading-none text-black">
                               Quick Route
@@ -649,7 +721,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     )}
                   </AnimatePresence>
 
-                  {/* ✅ RECENTER (right side, above Clear Route) */}
+                  {/* ✅ RECENTER */}
                   <div
                     className="fixed right-3 z-[80] pointer-events-auto"
                     style={{
@@ -753,19 +825,38 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                 <div className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1">
                   <DownhillGenerator
                     fromLabel={fromLabelDisplay}
-                    blocked={isTooFar}
+                    blocked={isTooFar || !fromLocation}
                     initialTo={plannerTo}
                     onToChange={(value) => {
                       setPlannerTo(value);
                       setIsTooFar(false);
+
+                      if (
+                        destination?.name &&
+                        normalizePlace(destination.name) !== normalizePlace(value)
+                      ) {
+                        destinationRef.current = null;
+                        setDestination(null);
+
+                        setHasRoute(false);
+                        setVariantsReady(false);
+                        setSelectedVariant(null);
+                      }
                     }}
                     open={generatorOpen}
                     onClose={closePlannerWithExitThenBounceCTA}
                     onGenerate={handleGenerate}
                     onDestinationSelected={(loc) => {
-                      setDestination({ name: loc.name, lat: loc.lat, lng: loc.lng });
+                      const next = { name: loc.name, lat: loc.lat, lng: loc.lng } as Destination;
+                      destinationRef.current = next;
+                      setDestination(next);
+
                       setPlannerPulseOn(false);
+
                       setHasRoute(false);
+                      setVariantsReady(false);
+                      setSelectedVariant(null);
+
                       setPlannerTo(loc.name);
                       setIsTooFar(false);
                       notePinEdited();
@@ -774,7 +865,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     selectedVariant={selectedVariant}
                     onVariantSelected={(v) => {
                       setSelectedVariant(v);
-                      // optional: also tell the map immediately via the prop (map will react to selectedVariant)
+                      setHasRoute(true);
                     }}
                   />
                 </div>

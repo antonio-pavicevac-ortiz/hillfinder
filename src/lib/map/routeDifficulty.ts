@@ -28,7 +28,12 @@ export function computeRouteStats(elevations: number[]): RouteStats {
   };
 }
 
-// ✅ Easy = least climbing
+// ✅ Easy = least climbing / least “uphill-ness”
 export function scoreEasy(stats: RouteStats) {
+  return stats.totalAscentM * 1.0 + stats.uphillRatio * 150;
+}
+
+// ✅ Hard = more climbing / more “uphill-ness”
+export function scoreHard(stats: RouteStats) {
   return stats.totalAscentM * 1.0 + stats.uphillRatio * 150;
 }

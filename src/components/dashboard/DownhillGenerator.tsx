@@ -1,21 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Suggestion = {
   id: string;
-  name: string;
   placeName: string;
   lng: number;
   lat: number;
-};
-
-type Variant = {
-  coords: [number, number][];
-  elevations: number[];
-  score: number;
 };
 
 export default function DownhillGenerator({
@@ -29,22 +21,18 @@ export default function DownhillGenerator({
   onDestinationSelected,
   variantsReady = false,
   selectedVariant,
-  onVariantsReady,
   onVariantSelected,
-  routeAlternativesNonce,
 }: {
   fromLabel: string;
   blocked?: boolean;
   open: boolean;
   initialTo?: string;
-  onToChange?: (next: string) => void; // ✅ NEW
+  onToChange?: (next: string) => void;
   onClose: () => void;
   onGenerate: (params: { from: string; to: string }) => Promise<void> | void;
   onDestinationSelected?: (loc: { name: string; lat: number; lng: number }) => void;
-  routeAlternativesNonce?: number;
   variantsReady?: boolean;
   selectedVariant?: "easy" | "hard" | null;
-  onVariantsReady?: () => void;
   onVariantSelected?: (v: "easy" | "hard") => void;
 }) {
   const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -56,41 +44,59 @@ export default function DownhillGenerator({
   // ✅ Lock generate after success until "To" changes
   const [generatedFor, setGeneratedFor] = useState<string>("");
 
+  // ✅ If we generated and are waiting for variants from the map
+  const [waitingForVariants, setWaitingForVariants] = useState(false);
+
   // Suggestions
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
-  // ✅ Helps avoid overwriting user typing when initialTo changes
+  // Avoid overwriting user typing when initialTo changes
   const userEditingRef = useRef(false);
-
   const isFocusedRef = useRef(false);
   const suppressOpenRef = useRef(false);
 
-  const easyPillRef = useRef<mapboxgl.Marker | null>(null);
-  const hardPillRef = useRef<mapboxgl.Marker | null>(null);
+  const trimmedTo = useMemo(() => to.trim(), [to]);
+  const isGenerated = !!trimmedTo && trimmedTo === generatedFor;
 
-  const variantsRef = useRef<{ easy: Variant; hard: Variant } | null>(null);
+  // ✅ Generate should be disabled while we’re waiting for variants
+  const canGenerate = !!trimmedTo && !isGenerated && !loading && !blocked && !waitingForVariants;
 
-  async function handleGenerate() {
-    const dest = to.trim();
+  async function handleGenerate(destOverride?: string) {
+    const dest = (destOverride ?? to).trim();
+
     if (!dest) {
       setMessage("Please enter a destination to generate your downhill route.");
       return;
     }
+
+    // Keep local + parent state aligned
+    if (destOverride != null && destOverride !== to) {
+      setTo(destOverride);
+      onToChange?.(destOverride);
+    }
+
     if (dest === generatedFor) return;
+    if (blocked) return;
 
     setLoading(true);
-    setMessage("Analyzing elevation and computing downhill segments…");
+    setWaitingForVariants(true);
+    setMessage("Generating routes…");
 
     try {
       await onGenerate({ from: fromLabel, to: dest });
-      // If the parent accepted the request, we can clear the helper text.
+
+      // Mark this destination as generated
       setGeneratedFor(dest);
+
+      // Now we wait until DashboardMap flips variantsReady=true
+      // (we’ll clear waiting state in the effect below)
       setMessage("");
     } catch (err: any) {
-      // Guardrail errors are handled by a global toast; don’t show an extra inline message.
+      setWaitingForVariants(false);
+
       if (err && (err as any).hfSilent) {
         setMessage("");
         return;
@@ -101,67 +107,32 @@ export default function DownhillGenerator({
     }
   }
 
-  function createPillEl(label: string) {
-    const el = document.createElement("button");
-    el.type = "button";
-    el.textContent = label;
-    el.style.padding = "6px 10px";
-    el.style.borderRadius = "999px";
-    el.style.border = "1px solid rgba(255,255,255,0.35)";
-    el.style.background = "rgba(255,255,255,0.20)";
-    el.style.backdropFilter = "blur(18px)";
-    (el.style as any)["-webkit-backdrop-filter"] = "blur(18px)";
-    el.style.color = "rgba(0,0,0,0.92)";
-    el.style.fontSize = "11px";
-    el.style.fontWeight = "700";
-    el.style.letterSpacing = "0.04em";
-    el.style.boxShadow = "0 8px 30px rgba(0,0,0,0.14)";
-    el.style.cursor = "pointer";
-    return el;
-  }
-
-  function ensurePill(
-    map: mapboxgl.Map,
-    kind: "easy" | "hard",
-    lngLat: [number, number],
-    onPick?: () => void
-  ) {
-    const ref = kind === "easy" ? easyPillRef : hardPillRef;
-    if (!ref.current) {
-      const el = createPillEl(kind === "easy" ? "EASY" : "HARD");
-      el.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onPick?.();
-      });
-      ref.current = new mapboxgl.Marker({ element: el, anchor: "left" })
-        .setLngLat(lngLat)
-        .addTo(map);
-    } else {
-      ref.current.setLngLat(lngLat);
+  // ✅ When variants become ready, stop the “waiting” lock
+  useEffect(() => {
+    if (!open) return;
+    if (variantsReady) {
+      setWaitingForVariants(false);
     }
-  }
+  }, [variantsReady, open]);
 
+  // Sync initialTo -> local "to" (only when opening / or input empty)
   useEffect(() => {
     if (!open) return;
 
-    // Only sync from parent when:
-    // - user is not actively editing, OR
-    // - local is empty (fresh open), OR
-    // - initialTo changed and we want the map-as-source-of-truth
-    const next = initialTo ?? "";
+    const next = (initialTo ?? "").trim();
     const shouldSync = !userEditingRef.current || to.trim() === "";
 
     if (shouldSync && next !== to) {
       setTo(next);
-      // don’t force-open dropdown here; let focus decide
+
+      // Optional: if parent set destination, auto-generate once
+      if (next.length > 0 && !blocked) {
+        window.setTimeout(() => void handleGenerate(next), 0);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo]);
 
-  const trimmedTo = useMemo(() => to.trim(), [to]);
-  const isGenerated = !!trimmedTo && trimmedTo === generatedFor;
-  const canGenerate = !!trimmedTo && !isGenerated && !loading && !blocked;
   // ✅ Fetch suggestions (debounced + abortable)
   useEffect(() => {
     if (!open) return;
@@ -197,23 +168,18 @@ export default function DownhillGenerator({
         const res = await fetch(url, { signal: controller.signal });
         const data = await res.json();
 
-        const items: Suggestion[] = (data?.features ?? []).map((f: any) => ({
-          id: String(f.id ?? f.place_name),
-          name: f.text ?? "",
-          placeName: f.place_name ?? f.text ?? "",
-          lng: f.center?.[0],
-          lat: f.center?.[1],
-        }));
+        const items: Suggestion[] = (data?.features ?? [])
+          .map((f: any) => ({
+            id: String(f.id ?? f.place_name),
+            placeName: f.place_name ?? f.text ?? "",
+            lng: f.center?.[0],
+            lat: f.center?.[1],
+          }))
+          .filter((s: any) => Number.isFinite(s.lng) && Number.isFinite(s.lat));
 
-        const nextSuggestions = items.filter(
-          (s) => Number.isFinite(s.lng) && Number.isFinite(s.lat)
-        );
-        setSuggestions(nextSuggestions);
+        setSuggestions(items);
 
-        // ✅ Only open if input is focused and we aren't suppressing (e.g., right after selecting)
-        setSuggestOpen(
-          isFocusedRef.current && !suppressOpenRef.current && nextSuggestions.length > 0
-        );
+        setSuggestOpen(isFocusedRef.current && !suppressOpenRef.current && items.length > 0);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         setSuggestions([]);
@@ -224,10 +190,22 @@ export default function DownhillGenerator({
     return () => window.clearTimeout(t);
   }, [trimmedTo, open, MAPBOX_TOKEN]);
 
-  // --- Sheet motion tuning ---
-  const CLOSE_DISTANCE_PX = 90;
-  const FLICK_VELOCITY = 900;
-  const DRAG_ELASTIC: number = 0.18;
+  // ✅ If the map already generated variants (Quick Route or auto pipeline),
+  // lock the Generate button as "Generated" for the current To value.
+  useEffect(() => {
+    if (!open) return;
+    if (!variantsReady) return;
+
+    const dest = trimmedTo;
+    if (!dest) return;
+
+    // Only set if we haven't already locked it for this To value
+    if (generatedFor !== dest) {
+      setGeneratedFor(dest);
+      setMessage(""); // optional: clear "Generating..." messages
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, variantsReady, trimmedTo]);
 
   const SPRING_IN = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 } as const;
   const SPRING_OUT = { type: "spring", stiffness: 360, damping: 38, mass: 0.9 } as const;
@@ -247,19 +225,8 @@ export default function DownhillGenerator({
               "pointer-events-auto w-full",
               "bg-white/70 backdrop-blur-xl",
               "rounded-2xl border border-white/30 shadow-xl p-5",
-              "relative",
-              "isolate",
+              "relative isolate",
             ].join(" ")}
-            drag="y"
-            dragDirectionLock
-            dragConstraints={{ top: 0, bottom: 9999 }}
-            dragElastic={DRAG_ELASTIC}
-            onDragEnd={(_, info) => {
-              const offsetY = info.offset.y;
-              const velocityY = info.velocity.y;
-              const shouldClose = offsetY > CLOSE_DISTANCE_PX || velocityY > FLICK_VELOCITY;
-              if (shouldClose) onClose();
-            }}
             style={{ touchAction: "none" }}
           >
             {/* Header */}
@@ -298,20 +265,16 @@ export default function DownhillGenerator({
                   const next = e.target.value;
 
                   userEditingRef.current = true;
-                  window.setTimeout(() => {
-                    userEditingRef.current = false;
-                  }, 350);
+                  window.setTimeout(() => (userEditingRef.current = false), 350);
 
                   setTo(next);
-                  onToChange?.(next); // ✅ PERSIST IN DASHBOARD STATE
+                  onToChange?.(next);
 
                   setMessage("");
-                  setGeneratedFor(""); // ✅ re-enable after edit
+                  setGeneratedFor("");
+                  setWaitingForVariants(false);
 
-                  // Typing should allow suggestions again
                   suppressOpenRef.current = false;
-
-                  // Keep the dropdown "open intent" while focused (results will populate asynchronously)
                   setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
                 }}
                 onFocus={() => {
@@ -323,7 +286,7 @@ export default function DownhillGenerator({
                   window.setTimeout(() => setSuggestOpen(false), 140);
                 }}
                 placeholder="Enter destination"
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500"
               />
 
               <AnimatePresence>
@@ -334,13 +297,8 @@ export default function DownhillGenerator({
                     exit={{ opacity: 0, y: -3, scale: 0.985 }}
                     transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
                     className={[
-                      "absolute left-0 right-0",
-                      "top-[calc(100%+4px)]",
-                      "z-[999]",
-                      "rounded-xl",
-                      "overflow-hidden",
-                      "border border-white/70",
-                      "ring-1 ring-black/5",
+                      "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
+                      "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
                       "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
                     ].join(" ")}
                     style={{
@@ -357,25 +315,25 @@ export default function DownhillGenerator({
                           className="w-full text-left px-3 py-3 text-sm font-medium text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10 transition"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
-                            // ✅ Prevent the fetch effect from reopening the list after selection.
-                            // We'll re-enable opening on the next user edit (onChange clears this).
                             suppressOpenRef.current = true;
-
-                            // Also abort any in-flight autocomplete fetch to reduce racey reopen behavior
                             abortRef.current?.abort();
                             abortRef.current = null;
 
                             setTo(s.placeName);
-                            onToChange?.(s.placeName); // ✅ PERSIST SELECTION TOO
+                            onToChange?.(s.placeName);
 
                             setSuggestOpen(false);
                             setMessage("");
                             setGeneratedFor("");
+                            setWaitingForVariants(false);
+
                             onDestinationSelected?.({
                               name: s.placeName,
                               lat: s.lat,
                               lng: s.lng,
                             });
+
+                            void handleGenerate(s.placeName);
                           }}
                         >
                           <div className="truncate">{s.placeName}</div>
@@ -387,36 +345,177 @@ export default function DownhillGenerator({
               </AnimatePresence>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            {/* Easy/Hard toggle */}
+            <div className="mt-3">
+              {(() => {
+                const waitingForVariants = !variantsReady && isGenerated;
+
+                return (
+                  <>
+                    <div
+                      className={[
+                        "grid grid-cols-2 gap-2 rounded-2xl p-2",
+                        "bg-white/35 border border-white/45 ring-1 ring-black/5",
+                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]",
+                        "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
+                      ].join(" ")}
+                    >
+                      {/* EASY */}
+                      <button
+                        type="button"
+                        disabled={!variantsReady}
+                        onClick={() => onVariantSelected?.("easy")}
+                        aria-pressed={selectedVariant === "easy"}
+                        className={[
+                          "w-full rounded-xl px-3 py-2.5 transition active:scale-[0.99]",
+                          "flex items-center justify-center gap-2 border",
+                          "focus:outline-none focus-visible:ring-[1px]",
+
+                          !variantsReady
+                            ? "bg-slate-200/80 text-slate-500 border-slate-300/80 cursor-not-allowed"
+                            : selectedVariant === "easy"
+                              ? [
+                                  "bg-emerald-500 text-white border-emerald-600",
+                                  "ring-[1px] ring-emerald-500/40", // ✅ halo
+                                  "focus-visible:ring-emerald-500", // ✅ no blue
+                                  "shadow-[0_10px_26px_rgba(16,185,129,0.35)]",
+                                  "font-semibold",
+                                ].join(" ")
+                              : [
+                                  "bg-slate-200 text-slate-700 border-slate-300",
+                                  "hover:bg-slate-300 cursor-pointer font-medium",
+                                  "focus-visible:ring-slate-400", // subtle focus
+                                ].join(" "),
+                        ].join(" ")}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{
+                            background: !variantsReady
+                              ? "rgba(156,163,175,0.85)"
+                              : selectedVariant === "easy"
+                                ? "white"
+                                : "rgba(100,116,139,0.9)",
+                          }}
+                          aria-hidden="true"
+                        />
+
+                        <span>Easy</span>
+
+                        {variantsReady && selectedVariant === "easy" && (
+                          <span aria-hidden="true" className="ml-1 text-white font-bold">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+
+                      {/* HARD */}
+                      <button
+                        type="button"
+                        disabled={!variantsReady}
+                        onClick={() => onVariantSelected?.("hard")}
+                        aria-pressed={selectedVariant === "hard"}
+                        className={[
+                          "w-full rounded-xl px-3 py-2.5 transition active:scale-[0.99]",
+                          "flex items-center justify-center gap-2 border",
+                          "focus:outline-none focus-visible:ring-[1px]",
+
+                          !variantsReady
+                            ? "bg-slate-200/80 text-slate-500 border-slate-300/80 cursor-not-allowed"
+                            : selectedVariant === "hard"
+                              ? [
+                                  "bg-rose-500 text-white border-rose-600",
+                                  "ring-[1px] ring-rose-500/40", // ✅ halo
+                                  "focus-visible:ring-rose-500", // ✅ no blue
+                                  "shadow-[0_10px_26px_rgba(244,63,94,0.35)]",
+                                  "font-semibold",
+                                ].join(" ")
+                              : [
+                                  "bg-slate-200 text-slate-700 border-slate-300",
+                                  "hover:bg-slate-300 cursor-pointer font-medium",
+                                  "focus-visible:ring-slate-400",
+                                ].join(" "),
+                        ].join(" ")}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{
+                            background: !variantsReady
+                              ? "rgba(156,163,175,0.85)"
+                              : selectedVariant === "hard"
+                                ? "white"
+                                : "rgba(100,116,139,0.9)",
+                          }}
+                          aria-hidden="true"
+                        />
+
+                        <span>Hard</span>
+
+                        {variantsReady && selectedVariant === "hard" && (
+                          <span aria-hidden="true" className="ml-1 text-white font-bold">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {waitingForVariants && (
+                      <p className="mt-2 text-center text-xs text-slate-500">
+                        Computing Easy/Hard options…
+                      </p>
+                    )}
+
+                    {!waitingForVariants && variantsReady && (
+                      <p className="mt-2 text-center text-xs text-slate-600">
+                        Pick <span className="font-semibold">Easy</span> or{" "}
+                        <span className="font-semibold">Hard</span>.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            {/* Generate */}
+            <div className="mt-4">
               <button
                 type="button"
-                disabled={!variantsReady}
-                onClick={() => onVariantSelected?.("easy")}
+                onClick={() => void handleGenerate()}
+                disabled={!canGenerate}
                 className={[
-                  "rounded-xl px-3 py-2 text-sm font-semibold border transition",
-                  variantsReady ? "cursor-pointer" : "opacity-50 cursor-not-allowed",
-                  selectedVariant === "easy"
-                    ? "bg-white/25 border-white/30"
-                    : "bg-white/10 border-white/20",
+                  "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
+                  canGenerate
+                    ? [
+                        // ACTIVE
+                        "bg-emerald-500",
+                        "text-white",
+                        "border border-emerald-500/60",
+                        "shadow-[0_12px_30px_rgba(16,185,129,0.35)]",
+                        "hover:bg-emerald-600",
+                      ].join(" ")
+                    : [
+                        // DISABLED — subtle gray hairline like toggle buttons
+                        "bg-gray-200",
+                        "text-gray-500",
+                        "border border-slate-300/70", // 👈 subtle hairline
+                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]", // 👈 soft top light
+                        "cursor-not-allowed",
+                      ].join(" "),
                 ].join(" ")}
               >
-                Easy
+                {loading
+                  ? "Generating…"
+                  : waitingForVariants
+                    ? "Working…"
+                    : isGenerated
+                      ? "Generated"
+                      : "Generate Route"}
               </button>
 
-              <button
-                type="button"
-                disabled={!variantsReady}
-                onClick={() => onVariantSelected?.("hard")}
-                className={[
-                  "rounded-xl px-3 py-2 text-sm font-semibold border transition",
-                  variantsReady ? "cursor-pointer" : "opacity-50 cursor-not-allowed",
-                  selectedVariant === "hard"
-                    ? "bg-white/25 border-white/30"
-                    : "bg-white/10 border-white/20",
-                ].join(" ")}
-              >
-                Hard
-              </button>
+              {blocked && (
+                <p className="mt-2 text-center text-xs text-rose-600">
+                  This route is currently blocked. Try a closer destination.
+                </p>
+              )}
             </div>
 
             {message && (
