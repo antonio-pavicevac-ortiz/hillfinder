@@ -33,6 +33,10 @@ export default function DashboardMap({
   onFromPicked,
   fromLocation,
   recenterNonce,
+  routeAlternativesNonce,
+  selectedVariant,
+  onVariantsReady,
+  onVariantSelected,
 }: {
   destination: Destination | null;
   clearRouteNonce?: number;
@@ -43,6 +47,10 @@ export default function DashboardMap({
   onFromPicked?: (loc: { name: string; lat: number; lng: number }) => void;
   fromLocation?: { lat: number; lng: number } | null;
   recenterNonce?: number;
+  routeAlternativesNonce?: number;
+  selectedVariant?: "easy" | "hard" | null;
+  onVariantsReady?: () => void;
+  onVariantSelected?: (v: "easy" | "hard") => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);

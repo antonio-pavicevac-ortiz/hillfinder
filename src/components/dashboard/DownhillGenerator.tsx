@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Suggestion = {
@@ -9,6 +10,12 @@ type Suggestion = {
   placeName: string;
   lng: number;
   lat: number;
+};
+
+type Variant = {
+  coords: [number, number][];
+  elevations: number[];
+  score: number;
 };
 
 export default function DownhillGenerator({
@@ -20,6 +27,11 @@ export default function DownhillGenerator({
   onClose,
   onGenerate,
   onDestinationSelected,
+  variantsReady = false,
+  selectedVariant,
+  onVariantsReady,
+  onVariantSelected,
+  routeAlternativesNonce,
 }: {
   fromLabel: string;
   blocked?: boolean;
@@ -29,6 +41,11 @@ export default function DownhillGenerator({
   onClose: () => void;
   onGenerate: (params: { from: string; to: string }) => Promise<void> | void;
   onDestinationSelected?: (loc: { name: string; lat: number; lng: number }) => void;
+  routeAlternativesNonce?: number;
+  variantsReady?: boolean;
+  selectedVariant?: "easy" | "hard" | null;
+  onVariantsReady?: () => void;
+  onVariantSelected?: (v: "easy" | "hard") => void;
 }) {
   const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -50,6 +67,80 @@ export default function DownhillGenerator({
 
   const isFocusedRef = useRef(false);
   const suppressOpenRef = useRef(false);
+
+  const easyPillRef = useRef<mapboxgl.Marker | null>(null);
+  const hardPillRef = useRef<mapboxgl.Marker | null>(null);
+
+  const variantsRef = useRef<{ easy: Variant; hard: Variant } | null>(null);
+
+  async function handleGenerate() {
+    const dest = to.trim();
+    if (!dest) {
+      setMessage("Please enter a destination to generate your downhill route.");
+      return;
+    }
+    if (dest === generatedFor) return;
+
+    setLoading(true);
+    setMessage("Analyzing elevation and computing downhill segments…");
+
+    try {
+      await onGenerate({ from: fromLabel, to: dest });
+      // If the parent accepted the request, we can clear the helper text.
+      setGeneratedFor(dest);
+      setMessage("");
+    } catch (err: any) {
+      // Guardrail errors are handled by a global toast; don’t show an extra inline message.
+      if (err && (err as any).hfSilent) {
+        setMessage("");
+        return;
+      }
+      setMessage(err?.message ?? "Something went wrong generating the route.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function createPillEl(label: string) {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.textContent = label;
+    el.style.padding = "6px 10px";
+    el.style.borderRadius = "999px";
+    el.style.border = "1px solid rgba(255,255,255,0.35)";
+    el.style.background = "rgba(255,255,255,0.20)";
+    el.style.backdropFilter = "blur(18px)";
+    (el.style as any)["-webkit-backdrop-filter"] = "blur(18px)";
+    el.style.color = "rgba(0,0,0,0.92)";
+    el.style.fontSize = "11px";
+    el.style.fontWeight = "700";
+    el.style.letterSpacing = "0.04em";
+    el.style.boxShadow = "0 8px 30px rgba(0,0,0,0.14)";
+    el.style.cursor = "pointer";
+    return el;
+  }
+
+  function ensurePill(
+    map: mapboxgl.Map,
+    kind: "easy" | "hard",
+    lngLat: [number, number],
+    onPick?: () => void
+  ) {
+    const ref = kind === "easy" ? easyPillRef : hardPillRef;
+    if (!ref.current) {
+      const el = createPillEl(kind === "easy" ? "EASY" : "HARD");
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onPick?.();
+      });
+      ref.current = new mapboxgl.Marker({ element: el, anchor: "left" })
+        .setLngLat(lngLat)
+        .addTo(map);
+    } else {
+      ref.current.setLngLat(lngLat);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -132,33 +223,6 @@ export default function DownhillGenerator({
 
     return () => window.clearTimeout(t);
   }, [trimmedTo, open, MAPBOX_TOKEN]);
-
-  async function handleGenerate() {
-    const dest = to.trim();
-    if (!dest) {
-      setMessage("Please enter a destination to generate your downhill route.");
-      return;
-    }
-    if (dest === generatedFor) return;
-
-    setLoading(true);
-    setMessage("Analyzing elevation and computing downhill segments…");
-
-    try {
-      await onGenerate({ from: fromLabel, to: dest });
-      // If the parent accepted the request, we can clear the helper text.
-      setMessage("");
-    } catch (err: any) {
-      // Guardrail errors are handled by a global toast; don’t show an extra inline message.
-      if (err && (err as any).hfSilent) {
-        setMessage("");
-        return;
-      }
-      setMessage(err?.message ?? "Something went wrong generating the route.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   // --- Sheet motion tuning ---
   const CLOSE_DISTANCE_PX = 90;
@@ -323,25 +387,37 @@ export default function DownhillGenerator({
               </AnimatePresence>
             </div>
 
-            <button
-              onClick={handleGenerate}
-              disabled={!canGenerate}
-              className={[
-                "w-full font-semibold py-2 rounded-lg transition border",
-                loading ? "opacity-90" : "",
-                isGenerated
-                  ? "bg-gray-200 text-gray-600 border-gray-300"
-                  : canGenerate
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
-                    : "bg-emerald-600/45 text-white/80 border-emerald-600/30 cursor-not-allowed",
-              ].join(" ")}
-            >
-              {loading
-                ? "Generating Route…"
-                : isGenerated
-                  ? "Route Generated"
-                  : "Generate Downhill Route"}
-            </button>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={!variantsReady}
+                onClick={() => onVariantSelected?.("easy")}
+                className={[
+                  "rounded-xl px-3 py-2 text-sm font-semibold border transition",
+                  variantsReady ? "cursor-pointer" : "opacity-50 cursor-not-allowed",
+                  selectedVariant === "easy"
+                    ? "bg-white/25 border-white/30"
+                    : "bg-white/10 border-white/20",
+                ].join(" ")}
+              >
+                Easy
+              </button>
+
+              <button
+                type="button"
+                disabled={!variantsReady}
+                onClick={() => onVariantSelected?.("hard")}
+                className={[
+                  "rounded-xl px-3 py-2 text-sm font-semibold border transition",
+                  variantsReady ? "cursor-pointer" : "opacity-50 cursor-not-allowed",
+                  selectedVariant === "hard"
+                    ? "bg-white/25 border-white/30"
+                    : "bg-white/10 border-white/20",
+                ].join(" ")}
+              >
+                Hard
+              </button>
+            </div>
 
             {message && (
               <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">

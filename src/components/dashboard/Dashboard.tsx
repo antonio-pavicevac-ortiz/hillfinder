@@ -125,8 +125,18 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const recenterDisabled = !fromLocation;
   const recenterStrokeColor = recenterDisabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
 
+  const [routeAlternativesNonce, setRouteAlternativesNonce] = useState(0);
+  const [variantsReady, setVariantsReady] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<"easy" | "hard" | null>(null);
+
   // ✅ This MUST be declared before any effect that uses it
   const allowInitialPulse = !ctaHasInteracted && !pinsReady;
+
+  function handleGenerateAlternatives() {
+    setVariantsReady(false);
+    setSelectedVariant(null);
+    setRouteAlternativesNonce((n) => n + 1);
+  }
 
   // ----------------------------
   // ✅ UNIVERSAL TOAST (STYLE COMES FROM globals.css)
@@ -456,6 +466,13 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
           }}
           fromLocation={fromLocation}
           recenterNonce={recenterNonce}
+          routeAlternativesNonce={routeAlternativesNonce}
+          selectedVariant={selectedVariant}
+          onVariantsReady={() => {
+            setVariantsReady(true);
+            setSelectedVariant("easy"); // ✅ default highlight
+          }}
+          onVariantSelected={(v) => setSelectedVariant(v)}
         />
       </div>
 
@@ -752,6 +769,12 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                       setPlannerTo(loc.name);
                       setIsTooFar(false);
                       notePinEdited();
+                    }}
+                    variantsReady={variantsReady}
+                    selectedVariant={selectedVariant}
+                    onVariantSelected={(v) => {
+                      setSelectedVariant(v);
+                      // optional: also tell the map immediately via the prop (map will react to selectedVariant)
                     }}
                   />
                 </div>
