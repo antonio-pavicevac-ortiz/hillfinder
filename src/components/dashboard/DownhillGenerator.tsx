@@ -29,11 +29,15 @@ export default function DownhillGenerator({
   initialTo?: string;
   onToChange?: (next: string) => void;
   onClose: () => void;
-  onGenerate: (params: { from: string; to: string }) => Promise<void> | void;
+  onGenerate: (params: {
+    from: string;
+    to: string;
+    variant: "easy" | "hard";
+  }) => Promise<void> | void;
   onDestinationSelected?: (loc: { name: string; lat: number; lng: number }) => void;
-  variantsReady?: boolean;
+  variantsReady?: boolean; // parent signal: route finished / map updated
   selectedVariant?: "easy" | "hard" | null;
-  onVariantSelected?: (v: "easy" | "hard") => void;
+  onVariantSelected?: (v: "easy" | "hard" | null) => void;
 }) {
   const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -41,10 +45,10 @@ export default function DownhillGenerator({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  // ✅ Lock generate after success until "To" changes
+  // Lock generate after success until "To" changes
   const [generatedFor, setGeneratedFor] = useState<string>("");
 
-  // ✅ If we generated and are waiting for variants from the map
+  // After clicking Generate, we lock controls until parent says we're done
   const [waitingForVariants, setWaitingForVariants] = useState(false);
 
   // Suggestions
@@ -59,16 +63,29 @@ export default function DownhillGenerator({
   const suppressOpenRef = useRef(false);
 
   const trimmedTo = useMemo(() => to.trim(), [to]);
-  const isGenerated = !!trimmedTo && trimmedTo === generatedFor;
+  const hasDestination = trimmedTo.length > 0;
+  const hasDifficulty = !!selectedVariant;
 
-  // ✅ Generate should be disabled while we’re waiting for variants
-  const canGenerate = !!trimmedTo && !isGenerated && !loading && !blocked && !waitingForVariants;
+  const isGenerated = hasDestination && trimmedTo === generatedFor;
+
+  // Can pick difficulty only after a destination exists, and while not locked
+  const canPickDifficulty =
+    hasDestination && !loading && !blocked && !waitingForVariants && !isGenerated;
+
+  // Can generate only when both destination + difficulty exist
+  const canGenerate =
+    hasDestination && hasDifficulty && !isGenerated && !loading && !blocked && !waitingForVariants;
 
   async function handleGenerate(destOverride?: string) {
     const dest = (destOverride ?? to).trim();
 
     if (!dest) {
       setMessage("Please enter a destination to generate your downhill route.");
+      return;
+    }
+
+    if (!selectedVariant) {
+      setMessage("Please choose Easy or Hard before generating.");
       return;
     }
 
@@ -83,16 +100,12 @@ export default function DownhillGenerator({
 
     setLoading(true);
     setWaitingForVariants(true);
-    setMessage("Generating routes…");
+    setMessage("Computing your route…");
 
     try {
-      await onGenerate({ from: fromLabel, to: dest });
+      await onGenerate({ from: fromLabel, to: dest, variant: selectedVariant });
 
-      // Mark this destination as generated
       setGeneratedFor(dest);
-
-      // Now we wait until DashboardMap flips variantsReady=true
-      // (we’ll clear waiting state in the effect below)
       setMessage("");
     } catch (err: any) {
       setWaitingForVariants(false);
@@ -107,15 +120,14 @@ export default function DownhillGenerator({
     }
   }
 
-  // ✅ When variants become ready, stop the “waiting” lock
+  // When parent says the route/variants are ready, unlock controls
   useEffect(() => {
     if (!open) return;
-    if (variantsReady) {
-      setWaitingForVariants(false);
-    }
+    if (variantsReady) setWaitingForVariants(false);
   }, [variantsReady, open]);
 
   // Sync initialTo -> local "to" (only when opening / or input empty)
+  // IMPORTANT: do NOT auto-generate here (keeps Quick Route separate)
   useEffect(() => {
     if (!open) return;
 
@@ -124,16 +136,20 @@ export default function DownhillGenerator({
 
     if (shouldSync && next !== to) {
       setTo(next);
+      onToChange?.(next);
 
-      // Optional: if parent set destination, auto-generate once
-      if (next.length > 0 && !blocked) {
-        window.setTimeout(() => void handleGenerate(next), 0);
-      }
+      // force re-pick difficulty when destination changes
+      onVariantSelected?.(null);
+
+      // reset generate locks/messages for the new destination
+      setGeneratedFor("");
+      setWaitingForVariants(false);
+      setMessage("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo]);
 
-  // ✅ Fetch suggestions (debounced + abortable)
+  // Fetch suggestions (debounced + abortable)
   useEffect(() => {
     if (!open) return;
 
@@ -178,7 +194,6 @@ export default function DownhillGenerator({
           .filter((s: any) => Number.isFinite(s.lng) && Number.isFinite(s.lat));
 
         setSuggestions(items);
-
         setSuggestOpen(isFocusedRef.current && !suppressOpenRef.current && items.length > 0);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
@@ -189,23 +204,6 @@ export default function DownhillGenerator({
 
     return () => window.clearTimeout(t);
   }, [trimmedTo, open, MAPBOX_TOKEN]);
-
-  // ✅ If the map already generated variants (Quick Route or auto pipeline),
-  // lock the Generate button as "Generated" for the current To value.
-  useEffect(() => {
-    if (!open) return;
-    if (!variantsReady) return;
-
-    const dest = trimmedTo;
-    if (!dest) return;
-
-    // Only set if we haven't already locked it for this To value
-    if (generatedFor !== dest) {
-      setGeneratedFor(dest);
-      setMessage(""); // optional: clear "Generating..." messages
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, variantsReady, trimmedTo]);
 
   const SPRING_IN = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 } as const;
   const SPRING_OUT = { type: "spring", stiffness: 360, damping: 38, mass: 0.9 } as const;
@@ -274,6 +272,9 @@ export default function DownhillGenerator({
                   setGeneratedFor("");
                   setWaitingForVariants(false);
 
+                  // IMPORTANT: destination changed => force re-pick difficulty
+                  onVariantSelected?.(null);
+
                   suppressOpenRef.current = false;
                   setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
                 }}
@@ -327,13 +328,14 @@ export default function DownhillGenerator({
                             setGeneratedFor("");
                             setWaitingForVariants(false);
 
+                            // destination changed => force re-pick difficulty
+                            onVariantSelected?.(null);
+
                             onDestinationSelected?.({
                               name: s.placeName,
                               lat: s.lat,
                               lng: s.lng,
                             });
-
-                            void handleGenerate(s.placeName);
                           }}
                         >
                           <div className="truncate">{s.placeName}</div>
@@ -348,7 +350,7 @@ export default function DownhillGenerator({
             {/* Easy/Hard toggle */}
             <div className="mt-3">
               {(() => {
-                const waitingForVariants = !variantsReady && isGenerated;
+                const showWaitingHint = waitingForVariants; // local truth
 
                 return (
                   <>
@@ -363,7 +365,7 @@ export default function DownhillGenerator({
                       {/* EASY */}
                       <button
                         type="button"
-                        disabled={!variantsReady}
+                        disabled={!canPickDifficulty}
                         onClick={() => onVariantSelected?.("easy")}
                         aria-pressed={selectedVariant === "easy"}
                         className={[
@@ -371,27 +373,27 @@ export default function DownhillGenerator({
                           "flex items-center justify-center gap-2 border",
                           "focus:outline-none focus-visible:ring-[1px]",
 
-                          !variantsReady
+                          !canPickDifficulty
                             ? "bg-slate-200/80 text-slate-500 border-slate-300/80 cursor-not-allowed"
                             : selectedVariant === "easy"
                               ? [
                                   "bg-emerald-500 text-white border-emerald-600",
-                                  "ring-[1px] ring-emerald-500/40", // ✅ halo
-                                  "focus-visible:ring-emerald-500", // ✅ no blue
+                                  "ring-[1px] ring-emerald-500/40",
+                                  "focus-visible:ring-emerald-500",
                                   "shadow-[0_10px_26px_rgba(16,185,129,0.35)]",
                                   "font-semibold",
                                 ].join(" ")
                               : [
                                   "bg-slate-200 text-slate-700 border-slate-300",
                                   "hover:bg-slate-300 cursor-pointer font-medium",
-                                  "focus-visible:ring-slate-400", // subtle focus
+                                  "focus-visible:ring-slate-400",
                                 ].join(" "),
                         ].join(" ")}
                       >
                         <span
                           className="h-2.5 w-2.5 rounded-full"
                           style={{
-                            background: !variantsReady
+                            background: !canPickDifficulty
                               ? "rgba(156,163,175,0.85)"
                               : selectedVariant === "easy"
                                 ? "white"
@@ -399,10 +401,8 @@ export default function DownhillGenerator({
                           }}
                           aria-hidden="true"
                         />
-
                         <span>Easy</span>
-
-                        {variantsReady && selectedVariant === "easy" && (
+                        {selectedVariant === "easy" && (
                           <span aria-hidden="true" className="ml-1 text-white font-bold">
                             ✓
                           </span>
@@ -412,7 +412,7 @@ export default function DownhillGenerator({
                       {/* HARD */}
                       <button
                         type="button"
-                        disabled={!variantsReady}
+                        disabled={!canPickDifficulty}
                         onClick={() => onVariantSelected?.("hard")}
                         aria-pressed={selectedVariant === "hard"}
                         className={[
@@ -420,13 +420,13 @@ export default function DownhillGenerator({
                           "flex items-center justify-center gap-2 border",
                           "focus:outline-none focus-visible:ring-[1px]",
 
-                          !variantsReady
+                          !canPickDifficulty
                             ? "bg-slate-200/80 text-slate-500 border-slate-300/80 cursor-not-allowed"
                             : selectedVariant === "hard"
                               ? [
                                   "bg-rose-500 text-white border-rose-600",
-                                  "ring-[1px] ring-rose-500/40", // ✅ halo
-                                  "focus-visible:ring-rose-500", // ✅ no blue
+                                  "ring-[1px] ring-rose-500/40",
+                                  "focus-visible:ring-rose-500",
                                   "shadow-[0_10px_26px_rgba(244,63,94,0.35)]",
                                   "font-semibold",
                                 ].join(" ")
@@ -440,7 +440,7 @@ export default function DownhillGenerator({
                         <span
                           className="h-2.5 w-2.5 rounded-full"
                           style={{
-                            background: !variantsReady
+                            background: !canPickDifficulty
                               ? "rgba(156,163,175,0.85)"
                               : selectedVariant === "hard"
                                 ? "white"
@@ -448,10 +448,8 @@ export default function DownhillGenerator({
                           }}
                           aria-hidden="true"
                         />
-
                         <span>Hard</span>
-
-                        {variantsReady && selectedVariant === "hard" && (
+                        {selectedVariant === "hard" && (
                           <span aria-hidden="true" className="ml-1 text-white font-bold">
                             ✓
                           </span>
@@ -459,13 +457,13 @@ export default function DownhillGenerator({
                       </button>
                     </div>
 
-                    {waitingForVariants && (
+                    {showWaitingHint && (
                       <p className="mt-2 text-center text-xs text-slate-500">
-                        Computing Easy/Hard options…
+                        Computing your route…
                       </p>
                     )}
 
-                    {!waitingForVariants && variantsReady && (
+                    {!showWaitingHint && hasDestination && (
                       <p className="mt-2 text-center text-xs text-slate-600">
                         Pick <span className="font-semibold">Easy</span> or{" "}
                         <span className="font-semibold">Hard</span>.
@@ -475,6 +473,7 @@ export default function DownhillGenerator({
                 );
               })()}
             </div>
+
             {/* Generate */}
             <div className="mt-4">
               <button
@@ -485,7 +484,6 @@ export default function DownhillGenerator({
                   "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
                   canGenerate
                     ? [
-                        // ACTIVE
                         "bg-emerald-500",
                         "text-white",
                         "border border-emerald-500/60",
@@ -493,11 +491,10 @@ export default function DownhillGenerator({
                         "hover:bg-emerald-600",
                       ].join(" ")
                     : [
-                        // DISABLED — subtle gray hairline like toggle buttons
                         "bg-gray-200",
                         "text-gray-500",
-                        "border border-slate-300/70", // 👈 subtle hairline
-                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]", // 👈 soft top light
+                        "border border-slate-300/70",
+                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
                         "cursor-not-allowed",
                       ].join(" "),
                 ].join(" ")}
