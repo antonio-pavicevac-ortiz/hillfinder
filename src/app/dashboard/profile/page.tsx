@@ -13,7 +13,23 @@ export default async function ProfilePage() {
   }
 
   await connectToDB();
-  const dbUser = (await User.findById(session.user.id).lean()) as any;
+
+  const email = session.user.email;
+
+  // Prefer email lookup because some providers (or misconfigured callbacks) set `session.user.id`
+  // to a non-ObjectId (e.g. provider user id). `findById` would throw a CastError in that case.
+  let dbUser: any = null;
+
+  if (email) {
+    dbUser = await User.findOne({ email }).lean();
+  } else {
+    // Fallback: attempt id lookup only if it looks like a Mongo ObjectId.
+    const id = (session.user as any).id;
+    if (typeof id === "string" && /^[a-f\d]{24}$/i.test(id)) {
+      dbUser = await User.findById(id).lean();
+    }
+  }
+
   const safeUser = dbUser
     ? {
         id: dbUser._id?.toString(),

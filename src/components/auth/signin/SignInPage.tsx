@@ -130,7 +130,7 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
           <button
             type="submit"
             disabled={isSubmitting}
-            className="btn-green text-white w-full rounded-md py-2 transition disabled:opacity-50"
+            className="btn-green text-white w-full rounded-md py-2 transition disabled:opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {isSubmitting ? "Signing in..." : "Sign In"}
           </button>
@@ -168,8 +168,12 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
           transition={{ delay: 0.8, duration: 0.25 }}
         >
           <button
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-            className="w-full bg-green-600 text-white py-2 rounded-md hover:bg-green-700 transition"
+            disabled={isSubmitting}
+            onClick={() => {
+              if (isSubmitting) return;
+              signIn("google", { callbackUrl: "/dashboard" });
+            }}
+            className="w-full bg-green-600 text-white py-2 rounded-md transition hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Continue with Google
           </button>
