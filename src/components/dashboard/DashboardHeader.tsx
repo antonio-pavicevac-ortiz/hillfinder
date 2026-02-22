@@ -76,7 +76,10 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
             </a>
 
             <button
-              onClick={() => signOut()}
+              onClick={() => {
+                setMenuOpen(false);
+                signOut({ callbackUrl: "/auth/signout" });
+              }}
               className="w-full text-left px-4 py-2 hover:bg-gray-100 text-red-600"
             >
               Sign Out

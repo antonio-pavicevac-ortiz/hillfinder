@@ -22,12 +22,6 @@ export default function SignOutPage() {
         >
           Sign back in
         </Link>
-        <Link
-          href="/"
-          className="border border-green-600 text-green-700 hover:bg-green-50 px-5 py-2 rounded-md font-medium transition"
-        >
-          Return Home
-        </Link>
       </div>
     </motion.div>
   );

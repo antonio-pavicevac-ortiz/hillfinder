@@ -29,6 +29,7 @@ export function ForgotPasswordPage() {
   const router = useRouter();
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
+    if (isSubmitting) return;
     setSuccessMessage("");
     try {
       const response = await fetch("/api/auth/forgot-password", {
@@ -92,7 +93,7 @@ export function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-medium rounded-md py-2 transition disabled:opacity-50"
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-medium rounded-md py-2 transition disabled:opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {isSubmitting ? "Sending..." : "Send Reset Link"}
           </button>
