@@ -44,8 +44,15 @@ export default function DownhillGenerator({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Lock generate after success until "To" changes
-  const [generatedFor, setGeneratedFor] = useState<string>("");
+  /**
+   * ✅ IMPORTANT FIX:
+   * Keep selection local so toggling Easy/Hard does NOT trigger parent side effects.
+   * We only "commit" to parent when Generate is pressed.
+   */
+  const [uiVariant, setUiVariant] = useState<Variant | null>(selectedVariant ?? null);
+
+  // Track "generated" per destination + variant (so Easy can be generated and Hard still available)
+  const [generatedKey, setGeneratedKey] = useState<string>("");
 
   // After clicking Generate, we lock controls until parent says we're done
   const [waitingForVariants, setWaitingForVariants] = useState(false);
@@ -53,6 +60,8 @@ export default function DownhillGenerator({
   // Suggestions
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
+
+  const showSuggest = suggestOpen && suggestions.length > 0;
 
   const abortRef = useRef<AbortController | null>(null);
   const toInputRef = useRef<HTMLInputElement | null>(null);
@@ -64,17 +73,24 @@ export default function DownhillGenerator({
 
   const trimmedTo = useMemo(() => to.trim(), [to]);
   const hasDestination = trimmedTo.length > 0;
-  const hasDifficulty = !!selectedVariant;
+  const hasDifficulty = !!uiVariant;
 
-  const isGenerated = hasDestination && trimmedTo === generatedFor;
+  const activeKey = hasDestination && uiVariant ? `${trimmedTo}::${uiVariant}` : "";
+  const isGenerated = !!activeKey && activeKey === generatedKey;
 
-  // “Locked” states should force buttons gray:
-  // - no destination
-  // - loading / blocked
-  // - waiting for map variants
-  // - already generated for this destination
-  const canPickDifficulty =
-    hasDestination && !loading && !blocked && !waitingForVariants && !isGenerated;
+  // Add this helper anywhere inside the component (top-level in component body)
+  function nextFrame(times = 2) {
+    return new Promise<void>((resolve) => {
+      const step = (n: number) => {
+        if (n <= 0) return resolve();
+        requestAnimationFrame(() => step(n - 1));
+      };
+      step(times);
+    });
+  }
+
+  // ✅ allow switching difficulty even if one variant was already generated
+  const canPickDifficulty = hasDestination && !loading && !blocked && !waitingForVariants;
 
   const canGenerate =
     hasDestination && hasDifficulty && !isGenerated && !loading && !blocked && !waitingForVariants;
@@ -86,18 +102,19 @@ export default function DownhillGenerator({
       setMessage("Please enter a destination to generate your downhill route.");
       return;
     }
-    if (!selectedVariant) {
+    if (!uiVariant) {
       setMessage("Please choose Easy or Hard before generating.");
       return;
     }
 
-    // Keep local + parent aligned
+    // Keep local + parent aligned (destination)
     if (destOverride != null && destOverride !== to) {
       setTo(destOverride);
       onToChange?.(destOverride);
     }
 
-    if (dest === generatedFor) return;
+    const nextKey = `${dest}::${uiVariant}`;
+    if (nextKey === generatedKey) return;
     if (blocked) return;
 
     setLoading(true);
@@ -105,8 +122,16 @@ export default function DownhillGenerator({
     setMessage("Computing your route…");
 
     try {
-      await onGenerate({ from: fromLabel, to: dest, variant: selectedVariant });
-      setGeneratedFor(dest);
+      // ✅ Commit variant to parent
+      onVariantSelected?.(uiVariant);
+
+      // ✅ Give React/parent a beat to apply that state before generation runs
+      await nextFrame(2);
+
+      // ✅ Now generate using the chosen variant
+      await onGenerate({ from: fromLabel, to: dest, variant: uiVariant });
+
+      setGeneratedKey(`${dest}::${uiVariant}`);
       setMessage("");
     } catch (err: any) {
       setWaitingForVariants(false);
@@ -138,16 +163,25 @@ export default function DownhillGenerator({
       setTo(next);
       onToChange?.(next);
 
-      // destination changed => force re-pick difficulty
+      // destination changed => reset selection + generated status
+      setUiVariant(null);
       onVariantSelected?.(null);
 
-      // reset locks/messages for new destination
-      setGeneratedFor("");
+      setGeneratedKey("");
       setWaitingForVariants(false);
       setMessage("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo]);
+
+  /**
+   * If parent clears/changes selectedVariant (rare, but possible),
+   * reflect it locally.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setUiVariant(selectedVariant ?? null);
+  }, [selectedVariant, open]);
 
   // Fetch suggestions (debounced + abortable)
   useEffect(() => {
@@ -210,8 +244,30 @@ export default function DownhillGenerator({
 
   function stateFor(variant: Variant): BtnState {
     if (!canPickDifficulty) return "disabled";
-    if (selectedVariant === variant) return "selected";
+    if (uiVariant === variant) return "selected";
     return "ready";
+  }
+
+  // ✅ Switch difficulty should NOT trigger anything upstream now.
+  function pickDifficulty(v: Variant) {
+    if (!canPickDifficulty) return;
+
+    setUiVariant(v);
+
+    // kill any suggestion UI / focus state that might be intercepting taps
+    suppressOpenRef.current = true;
+    setSuggestOpen(false);
+    setSuggestions([]);
+    isFocusedRef.current = false;
+
+    abortRef.current?.abort();
+    abortRef.current = null;
+
+    toInputRef.current?.blur();
+
+    window.setTimeout(() => {
+      suppressOpenRef.current = false;
+    }, 200);
   }
 
   const baseBtn =
@@ -220,7 +276,6 @@ export default function DownhillGenerator({
   const disabledClass =
     "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]";
 
-  // READY (destination entered): light tint + BLACK text
   // READY (destination entered): light tint + GREY text (B version)
   const easyReady =
     "bg-emerald-200/80 text-slate-600 border-emerald-300/80 shadow-[0_10px_26px_rgba(16,185,129,0.14)] hover:bg-emerald-200/95 hover:shadow-[0_14px_34px_rgba(16,185,129,0.18)] cursor-pointer font-semibold focus-visible:ring-emerald-300/70";
@@ -302,10 +357,11 @@ export default function DownhillGenerator({
                   onToChange?.(next);
 
                   setMessage("");
-                  setGeneratedFor("");
+                  setGeneratedKey("");
                   setWaitingForVariants(false);
 
-                  // destination changed => force re-pick difficulty
+                  // destination changed => reset local + parent selection
+                  setUiVariant(null);
                   onVariantSelected?.(null);
 
                   suppressOpenRef.current = false;
@@ -324,7 +380,7 @@ export default function DownhillGenerator({
               />
 
               <AnimatePresence>
-                {suggestOpen && suggestions.length > 0 && (
+                {showSuggest && (
                   <motion.div
                     initial={{ opacity: 0, y: -3, scale: 0.985 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -334,6 +390,7 @@ export default function DownhillGenerator({
                       "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
                       "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
                       "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
+                      "pointer-events-auto",
                     ].join(" ")}
                     style={{
                       backgroundColor: "rgba(255,255,255,0.98)",
@@ -358,8 +415,11 @@ export default function DownhillGenerator({
 
                             setSuggestOpen(false);
                             setMessage("");
-                            setGeneratedFor("");
+                            setGeneratedKey("");
                             setWaitingForVariants(false);
+
+                            // destination changed => reset selection local + parent
+                            setUiVariant(null);
                             onVariantSelected?.(null);
 
                             onDestinationSelected?.({
@@ -368,9 +428,12 @@ export default function DownhillGenerator({
                               lng: s.lng,
                             });
 
-                            // ✅ Stop caret movement after selection
                             isFocusedRef.current = false;
                             toInputRef.current?.blur();
+
+                            window.setTimeout(() => {
+                              suppressOpenRef.current = false;
+                            }, 200);
                           }}
                         >
                           <div className="truncate">{s.placeName}</div>
@@ -418,8 +481,8 @@ export default function DownhillGenerator({
                       <button
                         type="button"
                         disabled={!canPickDifficulty}
-                        onClick={() => onVariantSelected?.("easy")}
-                        aria-pressed={selectedVariant === "easy"}
+                        onClick={() => pickDifficulty("easy")}
+                        aria-pressed={uiVariant === "easy"}
                         className={[baseBtn, easyClass].join(" ")}
                       >
                         <span
@@ -430,7 +493,7 @@ export default function DownhillGenerator({
                                 ? "rgba(156,163,175,0.85)"
                                 : easyState === "selected"
                                   ? "rgba(255,255,255,0.95)"
-                                  : "rgba(100,116,139,0.85)", // dusty grey
+                                  : "rgba(100,116,139,0.85)",
                           }}
                           aria-hidden="true"
                         />
@@ -455,8 +518,8 @@ export default function DownhillGenerator({
                       <button
                         type="button"
                         disabled={!canPickDifficulty}
-                        onClick={() => onVariantSelected?.("hard")}
-                        aria-pressed={selectedVariant === "hard"}
+                        onClick={() => pickDifficulty("hard")}
+                        aria-pressed={uiVariant === "hard"}
                         className={[baseBtn, hardClass].join(" ")}
                       >
                         <span
@@ -467,7 +530,7 @@ export default function DownhillGenerator({
                                 ? "rgba(156,163,175,0.85)"
                                 : hardState === "selected"
                                   ? "rgba(255,255,255,0.95)"
-                                  : "rgba(100,116,139,0.85)", // dusty grey
+                                  : "rgba(100,116,139,0.85)",
                           }}
                           aria-hidden="true"
                         />
