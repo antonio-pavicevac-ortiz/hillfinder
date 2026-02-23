@@ -79,6 +79,34 @@ export default function DashboardMap({
 
   const variantsRef = useRef<{ easy: Variant; hard: Variant } | null>(null);
 
+  function invalidateRouteNow(reason: string) {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Stop any in-flight fetches / animations
+    abortRef.current?.abort();
+    sweepRef.current.clear(map);
+
+    // Clear all drawn route layers/sources
+    clearRouteLayers(map);
+
+    // Reset local caches so stale state can't re-render
+    lastGoodDestRef.current = null;
+    variantsRef.current = null;
+
+    // Bump req id so any pending timers no-op
+    routeReqIdRef.current += 1;
+
+    // Helpful debug during dev
+    // console.log(`[DashboardMap] route invalidated: ${reason}`);
+  }
+
+  // ✅ Keep latest selectedVariant for async functions (avoid stale closures)
+  const selectedVariantRef = useRef<"easy" | "hard" | null>(null);
+  useEffect(() => {
+    selectedVariantRef.current = selectedVariant ?? null;
+  }, [selectedVariant]);
+
   const sweepRef = useRef<ReturnType<typeof createRouteSweepController>>(
     createRouteSweepController()
   );
@@ -145,11 +173,19 @@ export default function DashboardMap({
 
     (fromMarker.getElement() as HTMLElement).style.touchAction = "none";
 
+    // Invalidate route immediately on drag start
+    fromMarker.on("dragstart", () => {
+      invalidateRouteNow("from marker dragstart");
+    });
+
     // When FROM marker moves:
     // - always update parent label
     // - only redraw the *real* route if a route is already active
     // - otherwise, keep this as "exploration" and only update the preview line (if present)
     fromMarker.on("dragend", () => {
+      // Ensure any stale route is gone after repositioning the pin
+      invalidateRouteNow("from marker dragend");
+
       const from = fromMarker.getLngLat();
       void notifyFromPicked(from);
 
@@ -157,7 +193,7 @@ export default function DashboardMap({
       const map = mapRef.current;
       if (!to || !map) return;
 
-      // ✅ If a route is already active, keep the alternatives in sync.
+      // If a route is already active, keep the alternatives in sync.
       if (routeActive) {
         void generateAlternativesBetweenPoints(map, from, to);
       }
@@ -180,8 +216,16 @@ export default function DashboardMap({
 
       (destMarkerRef.current.getElement() as HTMLElement).style.touchAction = "none";
 
+      // Invalidate route immediately on drag start
+      destMarkerRef.current.on("dragstart", () => {
+        invalidateRouteNow("dest marker dragstart");
+      });
+
       // When DEST marker moves, notify parent (route drawing happens in [destination] effect)
       destMarkerRef.current.on("dragend", () => {
+        // Ensure any stale route is gone after repositioning the pin
+        invalidateRouteNow("dest marker dragend");
+
         const ll = destMarkerRef.current!.getLngLat();
         void notifyDestinationPicked(ll);
       });
@@ -377,18 +421,78 @@ export default function DashboardMap({
     }
   }
 
-  async function buildVariant(map: mapboxgl.Map, coords: [number, number][]) {
+  async function buildVariant(
+    map: mapboxgl.Map,
+    coords: [number, number][],
+    meta?: { distanceMeters?: number; durationSeconds?: number }
+  ) {
     const getElevation = getElevationRef.current;
     const elevations = await Promise.all(
       coords.map(([lng, lat]) => (getElevation ? getElevation(map, lng, lat) : Promise.resolve(0)))
     );
 
     const stats = computeRouteStats(elevations);
-    const score = scoreEasy(stats); // ✅ easy = lowest, hard = highest
+
+    // Base score: lower = easier, higher = harder
+    const baseScore = scoreEasy(stats);
+
+    // ✅ Penalize excessive detours so the “Easy” winner doesn't look silly.
+    // Use API distance when available; otherwise estimate from geometry.
+    const geomMeters = routeLengthMeters(coords);
+    const distMeters = meta?.distanceMeters ?? geomMeters;
+
+    // Small penalty per km. Enough to break ties, not enough to override grade.
+    const km = distMeters / 1000;
+    const distancePenalty = km * 0.18;
+
+    const score = baseScore + distancePenalty;
 
     return { coords, elevations, score } as Variant;
   }
 
+  function haversineMeters(a: [number, number], b: [number, number]) {
+    // coords are [lng, lat]
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(b[1] - a[1]);
+    const dLng = toRad(b[0] - a[0]);
+    const lat1 = toRad(a[1]);
+    const lat2 = toRad(b[1]);
+
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLng / 2);
+    const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  function routeLengthMeters(coords: [number, number][]) {
+    let sum = 0;
+    for (let i = 1; i < coords.length; i++) sum += haversineMeters(coords[i - 1], coords[i]);
+    return sum;
+  }
+
+  function isNearDuplicateRoute(a: [number, number][], b: [number, number][]) {
+    if (a.length < 2 || b.length < 2) return true;
+
+    // Quick checks: endpoint proximity + length similarity
+    const aStart = a[0];
+    const aEnd = a[a.length - 1];
+    const bStart = b[0];
+    const bEnd = b[b.length - 1];
+
+    const startDist = haversineMeters(aStart, bStart);
+    const endDist = haversineMeters(aEnd, bEnd);
+
+    // If endpoints don't match for same OD, it's not a dup
+    if (startDist > 40 || endDist > 40) return false;
+
+    const aLen = routeLengthMeters(a);
+    const bLen = routeLengthMeters(b);
+    const diff = Math.abs(aLen - bLen);
+
+    // If lengths are within ~3% or 60m (whichever larger), treat as dup
+    return diff < Math.max(60, aLen * 0.03);
+  }
   // --- helpers for "always two routes" ---
 
   function metersToDegreesLat(m: number) {
@@ -477,11 +581,21 @@ export default function DashboardMap({
       const candidates: Variant[] = [];
 
       // Build candidates from base routes (up to 3)
-      for (const r of baseRoutes.slice(0, 3)) {
+      for (const r of baseRoutes.slice(0, 4)) {
         const raw = r?.geometry?.coordinates as [number, number][] | undefined;
         if (!raw?.length) continue;
+
         const coords = resampleCoords(raw);
-        candidates.push(await buildVariant(map, coords));
+
+        // Dedupe against what we already have
+        if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
+
+        candidates.push(
+          await buildVariant(map, coords, {
+            distanceMeters: typeof r?.distance === "number" ? r.distance : undefined,
+            durationSeconds: typeof r?.duration === "number" ? r.duration : undefined,
+          })
+        );
       }
 
       // 2) Fallback: if we didn't get enough unique candidates, generate detour candidates
@@ -514,13 +628,21 @@ export default function DashboardMap({
 
           const coords = resampleCoords(raw);
 
-          // crude dedupe: avoid adding if the first coord sequence length is nearly identical
-          // (keeps us from picking the same path repeatedly)
-          const maybe = await buildVariant(map, coords);
-          const isNearDup = candidates.some(
-            (c) => Math.abs(c.coords.length - maybe.coords.length) < 6
+          // ✅ Stronger dedupe: avoid adding essentially the same route
+          if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
+
+          candidates.push(
+            await buildVariant(map, coords, {
+              distanceMeters:
+                typeof detourRoutes[0]?.distance === "number"
+                  ? detourRoutes[0].distance
+                  : undefined,
+              durationSeconds:
+                typeof detourRoutes[0]?.duration === "number"
+                  ? detourRoutes[0].duration
+                  : undefined,
+            })
           );
-          if (!isNearDup) candidates.push(maybe);
 
           if (candidates.length >= 4) break; // plenty for min/max
         }
@@ -529,19 +651,41 @@ export default function DashboardMap({
       if (reqId !== routeReqIdRef.current) return;
       if (candidates.length === 0) return;
 
-      // 3) Pick easy/hard by score
-      let easy = candidates[0];
-      let hard = candidates[0];
+      // 3) Pick easy/hard by score (lower = easier, higher = harder)
+      const sorted = [...candidates].sort((a, b) => a.score - b.score);
 
-      for (const v of candidates) {
-        if (v.score < easy.score) easy = v;
-        if (v.score > hard.score) hard = v;
+      let easy = sorted[0];
+      let hard = sorted[sorted.length - 1];
+
+      // ✅ If extremes are effectively the same path, pick the next-best option to ensure variety
+      if (sorted.length > 1 && isNearDuplicateRoute(easy.coords, hard.coords)) {
+        // Prefer a different hard if available
+        for (let i = sorted.length - 2; i >= 0; i--) {
+          if (!isNearDuplicateRoute(easy.coords, sorted[i].coords)) {
+            hard = sorted[i];
+            break;
+          }
+        }
+
+        // If still dup, try moving easy forward
+        if (isNearDuplicateRoute(easy.coords, hard.coords)) {
+          for (let i = 1; i < sorted.length; i++) {
+            if (!isNearDuplicateRoute(sorted[i].coords, hard.coords)) {
+              easy = sorted[i];
+              break;
+            }
+          }
+        }
       }
 
-      // If we *still* only have 1 candidate, force both to same (UI still works),
-      // but ideally candidates.length >= 2 now.
       variantsRef.current = { easy, hard };
       onVariantsReady?.();
+
+      // ✅ If nothing is selected yet, default to easy so map + UI stay consistent
+      if (!selectedVariantRef.current) {
+        selectedVariantRef.current = "easy";
+        onVariantSelected?.("easy");
+      }
 
       // Helpful debug
       console.log("ROUTES RETURNED:", baseRoutes.length);
@@ -551,7 +695,7 @@ export default function DashboardMap({
         candidates.map((c) => c.coords.length)
       );
 
-      const initial = selectedVariant ?? "easy";
+      const initial = selectedVariantRef.current ?? "easy";
       drawVariantRoute(map, initial === "hard" ? hard : easy);
     } catch (err: any) {
       if (err?.name === "AbortError") return;

@@ -54,6 +54,10 @@ export default function DownhillGenerator({
   // Track "generated" per destination + variant (so Easy can be generated and Hard still available)
   const [generatedKey, setGeneratedKey] = useState<string>("");
 
+  // Remembers the last variant we committed via the Generate button.
+  // Used to re-assert variant when async results resolve, without firing on simple toggle clicks.
+  const lastCommittedRef = useRef<{ key: string; variant: Variant; ts: number } | null>(null);
+
   // After clicking Generate, we lock controls until parent says we're done
   const [waitingForVariants, setWaitingForVariants] = useState(false);
 
@@ -65,6 +69,9 @@ export default function DownhillGenerator({
 
   const abortRef = useRef<AbortController | null>(null);
   const toInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ✅ Failsafe timer: if variantsReady never comes back, unlock UI
+  const waitTimerRef = useRef<number | null>(null);
 
   // Avoid overwriting user typing when initialTo changes
   const userEditingRef = useRef(false);
@@ -78,7 +85,6 @@ export default function DownhillGenerator({
   const activeKey = hasDestination && uiVariant ? `${trimmedTo}::${uiVariant}` : "";
   const isGenerated = !!activeKey && activeKey === generatedKey;
 
-  // Add this helper anywhere inside the component (top-level in component body)
   function nextFrame(times = 2) {
     return new Promise<void>((resolve) => {
       const step = (n: number) => {
@@ -94,6 +100,26 @@ export default function DownhillGenerator({
 
   const canGenerate =
     hasDestination && hasDifficulty && !isGenerated && !loading && !blocked && !waitingForVariants;
+
+  function clearWaitTimer() {
+    if (waitTimerRef.current != null) {
+      window.clearTimeout(waitTimerRef.current);
+      waitTimerRef.current = null;
+    }
+  }
+
+  function startWaitTimer() {
+    clearWaitTimer();
+
+    // If parent never flips variantsReady true (or something fails upstream),
+    // we must not leave the UI stuck forever.
+    waitTimerRef.current = window.setTimeout(() => {
+      setWaitingForVariants(false);
+      setLoading(false);
+      setMessage("Route is taking longer than expected — try again.");
+      waitTimerRef.current = null;
+    }, 12000);
+  }
 
   async function handleGenerate(destOverride?: string) {
     const dest = (destOverride ?? to).trim();
@@ -117,24 +143,44 @@ export default function DownhillGenerator({
     if (nextKey === generatedKey) return;
     if (blocked) return;
 
+    // stop suggestion UI stealing taps
+    suppressOpenRef.current = true;
+    setSuggestOpen(false);
+    setSuggestions([]);
+    isFocusedRef.current = false;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    toInputRef.current?.blur();
+
     setLoading(true);
     setWaitingForVariants(true);
     setMessage("Computing your route…");
+    startWaitTimer();
 
     try {
-      // ✅ Commit variant to parent
+      // ✅ Commit variant to parent ONLY on Generate
+      // Also remember it so we can re-assert after async results resolve.
+      lastCommittedRef.current = { key: nextKey, variant: uiVariant, ts: Date.now() };
       onVariantSelected?.(uiVariant);
 
-      // ✅ Give React/parent a beat to apply that state before generation runs
+      // ✅ Give parent/state a beat to apply before generation runs
       await nextFrame(2);
 
-      // ✅ Now generate using the chosen variant
+      // ✅ Generate using the chosen variant
       await onGenerate({ from: fromLabel, to: dest, variant: uiVariant });
 
+      // ✅ Re-assert the chosen variant after generation completes.
+      // Some parent flows may temporarily default back to "easy" once results arrive.
+      // We want the rendered route to stay aligned with the variant the user generated.
+      onVariantSelected?.(uiVariant);
+
+      // ✅ if generation finished, unlock UI now (even if variantsReady never flips)
       setGeneratedKey(`${dest}::${uiVariant}`);
       setMessage("");
+      setWaitingForVariants(false);
     } catch (err: any) {
       setWaitingForVariants(false);
+      clearWaitTimer();
 
       if (err && (err as any).hfSilent) {
         setMessage("");
@@ -143,14 +189,51 @@ export default function DownhillGenerator({
       setMessage(err?.message ?? "Something went wrong generating the route.");
     } finally {
       setLoading(false);
+
+      // ✅ hard stop: never allow UI to remain locked after the async finishes
+      setWaitingForVariants(false);
+      clearWaitTimer();
     }
   }
 
-  // When parent says route/variants are ready, unlock controls
+  // ✅ When parent says route/variants are ready, unlock controls + clear timer
   useEffect(() => {
     if (!open) return;
-    if (variantsReady) setWaitingForVariants(false);
-  }, [variantsReady, open]);
+
+    if (variantsReady) {
+      setWaitingForVariants(false);
+      clearWaitTimer();
+
+      // ✅ Only re-assert a variant if it was previously committed via Generate.
+      // This prevents an upstream "auto-generate on selectedVariant change" from triggering
+      // when the user merely taps Easy/Hard.
+      const commit = lastCommittedRef.current;
+      if (!commit) return;
+
+      // If we already marked this key as generated, or we're still in the "waiting" phase,
+      // re-assert the committed variant to prevent snapping back to defaults.
+      const fresh = Date.now() - commit.ts < 15000;
+      const sameKey = commit.key === generatedKey;
+      if (fresh && (sameKey || waitingForVariants)) {
+        onVariantSelected?.(commit.variant);
+      }
+    }
+  }, [variantsReady, open, generatedKey, waitingForVariants, onVariantSelected]);
+
+  // ✅ Clear timer on close/unmount (prevents “stuck computing” across open/close)
+  useEffect(() => {
+    if (!open) {
+      clearWaitTimer();
+      setWaitingForVariants(false);
+      setLoading(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      clearWaitTimer();
+    };
+  }, []);
 
   // Sync initialTo -> local "to"
   useEffect(() => {
@@ -169,19 +252,27 @@ export default function DownhillGenerator({
 
       setGeneratedKey("");
       setWaitingForVariants(false);
+      clearWaitTimer();
       setMessage("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo]);
 
   /**
-   * If parent clears/changes selectedVariant (rare, but possible),
-   * reflect it locally.
+   * ✅ IMPORTANT:
+   * The UI is the source of truth for variant selection.
+   * The parent can change `selectedVariant` as part of its own state machine
+   * (including temporarily clearing it), so we only *adopt* the parent value
+   * when our local UI has no selection yet.
    */
   useEffect(() => {
     if (!open) return;
-    setUiVariant(selectedVariant ?? null);
-  }, [selectedVariant, open]);
+
+    // Only hydrate from parent if we haven't chosen anything locally yet.
+    if (uiVariant == null && selectedVariant != null) {
+      setUiVariant(selectedVariant);
+    }
+  }, [selectedVariant, uiVariant, open]);
 
   // Fetch suggestions (debounced + abortable)
   useEffect(() => {
@@ -359,6 +450,7 @@ export default function DownhillGenerator({
                   setMessage("");
                   setGeneratedKey("");
                   setWaitingForVariants(false);
+                  clearWaitTimer();
 
                   // destination changed => reset local + parent selection
                   setUiVariant(null);
@@ -417,6 +509,7 @@ export default function DownhillGenerator({
                             setMessage("");
                             setGeneratedKey("");
                             setWaitingForVariants(false);
+                            clearWaitTimer();
 
                             // destination changed => reset selection local + parent
                             setUiVariant(null);
@@ -577,13 +670,16 @@ export default function DownhillGenerator({
                 disabled={!canGenerate}
                 className={[
                   "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
-                  canGenerate
+
+                  // ✅ Keep the button green when a route is already generated for this destination+variant.
+                  // It's still disabled (via disabled={!canGenerate}), but it should *look* successful.
+                  canGenerate || isGenerated
                     ? [
                         "bg-emerald-500",
                         "text-white",
                         "border border-emerald-500/60",
                         "shadow-[0_12px_30px_rgba(16,185,129,0.35)]",
-                        "hover:bg-emerald-600",
+                        isGenerated ? "cursor-default" : "hover:bg-emerald-600",
                       ].join(" ")
                     : [
                         "bg-gray-200",

@@ -515,6 +515,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
             setPlannerPulseOn(false);
             setHasRoute(false);
+            setClearRouteNonce((n) => n + 1);
 
             // ✅ editing pins invalidates variant state
             setVariantsReady(false);
@@ -531,6 +532,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
             // ✅ editing pins invalidates variant state
             setHasRoute(false);
+            setClearRouteNonce((n) => n + 1);
             setVariantsReady(false);
             setSelectedVariant(null);
 
@@ -542,7 +544,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
           selectedVariant={selectedVariant}
           onVariantsReady={() => {
             setVariantsReady(true);
-            setSelectedVariant("easy"); // ✅ default highlight
+            setSelectedVariant((prev) => prev ?? "easy"); // ✅ default only if nothing selected
             setHasRoute(true); // ✅ alternatives pipeline represents the active route
           }}
           onVariantSelected={(v) => setSelectedVariant(v)}
@@ -864,8 +866,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     variantsReady={variantsReady}
                     selectedVariant={selectedVariant}
                     onVariantSelected={(v) => {
+                      // Selecting Easy/Hard should only change the highlighted variant,
+                      // not mark a route as generated/active.
                       setSelectedVariant(v);
-                      setHasRoute(true);
                     }}
                   />
                 </div>
