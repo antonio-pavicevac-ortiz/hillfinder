@@ -10,6 +10,9 @@ type Suggestion = {
   lat: number;
 };
 
+type Variant = "easy" | "hard";
+type BtnState = "disabled" | "ready" | "selected";
+
 export default function DownhillGenerator({
   fromLabel,
   blocked = false,
@@ -29,15 +32,11 @@ export default function DownhillGenerator({
   initialTo?: string;
   onToChange?: (next: string) => void;
   onClose: () => void;
-  onGenerate: (params: {
-    from: string;
-    to: string;
-    variant: "easy" | "hard";
-  }) => Promise<void> | void;
+  onGenerate: (params: { from: string; to: string; variant: Variant }) => Promise<void> | void;
   onDestinationSelected?: (loc: { name: string; lat: number; lng: number }) => void;
-  variantsReady?: boolean; // parent signal: route finished / map updated
-  selectedVariant?: "easy" | "hard" | null;
-  onVariantSelected?: (v: "easy" | "hard" | null) => void;
+  variantsReady?: boolean;
+  selectedVariant?: Variant | null;
+  onVariantSelected?: (v: Variant | null) => void;
 }) {
   const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -56,6 +55,7 @@ export default function DownhillGenerator({
   const [suggestOpen, setSuggestOpen] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  const toInputRef = useRef<HTMLInputElement | null>(null);
 
   // Avoid overwriting user typing when initialTo changes
   const userEditingRef = useRef(false);
@@ -68,11 +68,14 @@ export default function DownhillGenerator({
 
   const isGenerated = hasDestination && trimmedTo === generatedFor;
 
-  // Can pick difficulty only after a destination exists, and while not locked
+  // “Locked” states should force buttons gray:
+  // - no destination
+  // - loading / blocked
+  // - waiting for map variants
+  // - already generated for this destination
   const canPickDifficulty =
     hasDestination && !loading && !blocked && !waitingForVariants && !isGenerated;
 
-  // Can generate only when both destination + difficulty exist
   const canGenerate =
     hasDestination && hasDifficulty && !isGenerated && !loading && !blocked && !waitingForVariants;
 
@@ -83,13 +86,12 @@ export default function DownhillGenerator({
       setMessage("Please enter a destination to generate your downhill route.");
       return;
     }
-
     if (!selectedVariant) {
       setMessage("Please choose Easy or Hard before generating.");
       return;
     }
 
-    // Keep local + parent state aligned
+    // Keep local + parent aligned
     if (destOverride != null && destOverride !== to) {
       setTo(destOverride);
       onToChange?.(destOverride);
@@ -104,7 +106,6 @@ export default function DownhillGenerator({
 
     try {
       await onGenerate({ from: fromLabel, to: dest, variant: selectedVariant });
-
       setGeneratedFor(dest);
       setMessage("");
     } catch (err: any) {
@@ -120,14 +121,13 @@ export default function DownhillGenerator({
     }
   }
 
-  // When parent says the route/variants are ready, unlock controls
+  // When parent says route/variants are ready, unlock controls
   useEffect(() => {
     if (!open) return;
     if (variantsReady) setWaitingForVariants(false);
   }, [variantsReady, open]);
 
-  // Sync initialTo -> local "to" (only when opening / or input empty)
-  // IMPORTANT: do NOT auto-generate here (keeps Quick Route separate)
+  // Sync initialTo -> local "to"
   useEffect(() => {
     if (!open) return;
 
@@ -138,10 +138,10 @@ export default function DownhillGenerator({
       setTo(next);
       onToChange?.(next);
 
-      // force re-pick difficulty when destination changes
+      // destination changed => force re-pick difficulty
       onVariantSelected?.(null);
 
-      // reset generate locks/messages for the new destination
+      // reset locks/messages for new destination
       setGeneratedFor("");
       setWaitingForVariants(false);
       setMessage("");
@@ -208,6 +208,38 @@ export default function DownhillGenerator({
   const SPRING_IN = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 } as const;
   const SPRING_OUT = { type: "spring", stiffness: 360, damping: 38, mass: 0.9 } as const;
 
+  function stateFor(variant: Variant): BtnState {
+    if (!canPickDifficulty) return "disabled";
+    if (selectedVariant === variant) return "selected";
+    return "ready";
+  }
+
+  const baseBtn =
+    "relative w-full rounded-xl py-3 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
+
+  const disabledClass =
+    "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]";
+
+  // READY (destination entered): light tint + BLACK text
+  // READY (destination entered): light tint + GREY text (B version)
+  const easyReady =
+    "bg-emerald-200/80 text-slate-600 border-emerald-300/80 shadow-[0_10px_26px_rgba(16,185,129,0.14)] hover:bg-emerald-200/95 hover:shadow-[0_14px_34px_rgba(16,185,129,0.18)] cursor-pointer font-semibold focus-visible:ring-emerald-300/70";
+
+  const hardReady =
+    "bg-rose-200/80 text-slate-600 border-rose-300/80 shadow-[0_10px_26px_rgba(244,63,94,0.12)] hover:bg-rose-200/95 hover:shadow-[0_14px_34px_rgba(244,63,94,0.16)] cursor-pointer font-semibold focus-visible:ring-rose-300/70";
+
+  // SELECTED: deeper + WHITE text + stronger halo glow
+  const easySelectedClass =
+    "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-500/55 shadow-[0_18px_46px_rgba(16,185,129,0.45),0_0_0_6px_rgba(16,185,129,0.10)] cursor-pointer font-extrabold focus-visible:ring-emerald-500/80";
+
+  const hardSelectedClass =
+    "bg-rose-600 text-white border-rose-700 ring-2 ring-rose-500/55 shadow-[0_18px_46px_rgba(244,63,94,0.42),0_0_0_6px_rgba(244,63,94,0.10)] cursor-pointer font-extrabold focus-visible:ring-rose-500/80";
+
+  const dotBase = "absolute left-4 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full";
+
+  const checkBase =
+    "absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold transition-all duration-150";
+
   return (
     <AnimatePresence initial={false}>
       {open && (
@@ -259,6 +291,7 @@ export default function DownhillGenerator({
               <input
                 type="text"
                 value={to}
+                ref={toInputRef}
                 onChange={(e) => {
                   const next = e.target.value;
 
@@ -272,7 +305,7 @@ export default function DownhillGenerator({
                   setGeneratedFor("");
                   setWaitingForVariants(false);
 
-                  // IMPORTANT: destination changed => force re-pick difficulty
+                  // destination changed => force re-pick difficulty
                   onVariantSelected?.(null);
 
                   suppressOpenRef.current = false;
@@ -327,8 +360,6 @@ export default function DownhillGenerator({
                             setMessage("");
                             setGeneratedFor("");
                             setWaitingForVariants(false);
-
-                            // destination changed => force re-pick difficulty
                             onVariantSelected?.(null);
 
                             onDestinationSelected?.({
@@ -336,6 +367,10 @@ export default function DownhillGenerator({
                               lat: s.lat,
                               lng: s.lng,
                             });
+
+                            // ✅ Stop caret movement after selection
+                            isFocusedRef.current = false;
+                            toInputRef.current?.blur();
                           }}
                         >
                           <div className="truncate">{s.placeName}</div>
@@ -350,15 +385,32 @@ export default function DownhillGenerator({
             {/* Easy/Hard toggle */}
             <div className="mt-3">
               {(() => {
-                const showWaitingHint = waitingForVariants; // local truth
+                const showWaitingHint = waitingForVariants;
+
+                const easyState = stateFor("easy");
+                const hardState = stateFor("hard");
+
+                const easyClass =
+                  easyState === "disabled"
+                    ? disabledClass
+                    : easyState === "selected"
+                      ? easySelectedClass
+                      : easyReady;
+
+                const hardClass =
+                  hardState === "disabled"
+                    ? disabledClass
+                    : hardState === "selected"
+                      ? hardSelectedClass
+                      : hardReady;
 
                 return (
                   <>
                     <div
                       className={[
                         "grid grid-cols-2 gap-2 rounded-2xl p-2",
-                        "bg-white/35 border border-white/45 ring-1 ring-black/5",
-                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]",
+                        "bg-slate-200/45 border border-slate-300/60 ring-1 ring-black/5",
+                        "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
                         "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
                       ].join(" ")}
                     >
@@ -368,45 +420,35 @@ export default function DownhillGenerator({
                         disabled={!canPickDifficulty}
                         onClick={() => onVariantSelected?.("easy")}
                         aria-pressed={selectedVariant === "easy"}
-                        className={[
-                          "w-full rounded-xl px-3 py-2.5 transition active:scale-[0.99]",
-                          "flex items-center justify-center gap-2 border",
-                          "focus:outline-none focus-visible:ring-[1px]",
-
-                          !canPickDifficulty
-                            ? "bg-slate-200/80 text-slate-500 border-slate-300/80 cursor-not-allowed"
-                            : selectedVariant === "easy"
-                              ? [
-                                  "bg-emerald-500 text-white border-emerald-600",
-                                  "ring-[1px] ring-emerald-500/40",
-                                  "focus-visible:ring-emerald-500",
-                                  "shadow-[0_10px_26px_rgba(16,185,129,0.35)]",
-                                  "font-semibold",
-                                ].join(" ")
-                              : [
-                                  "bg-slate-200 text-slate-700 border-slate-300",
-                                  "hover:bg-slate-300 cursor-pointer font-medium",
-                                  "focus-visible:ring-slate-400",
-                                ].join(" "),
-                        ].join(" ")}
+                        className={[baseBtn, easyClass].join(" ")}
                       >
                         <span
-                          className="h-2.5 w-2.5 rounded-full"
+                          className={dotBase}
                           style={{
-                            background: !canPickDifficulty
-                              ? "rgba(156,163,175,0.85)"
-                              : selectedVariant === "easy"
-                                ? "white"
-                                : "rgba(100,116,139,0.9)",
+                            background:
+                              easyState === "disabled"
+                                ? "rgba(156,163,175,0.85)"
+                                : easyState === "selected"
+                                  ? "rgba(255,255,255,0.95)"
+                                  : "rgba(100,116,139,0.85)", // dusty grey
                           }}
                           aria-hidden="true"
                         />
-                        <span>Easy</span>
-                        {selectedVariant === "easy" && (
-                          <span aria-hidden="true" className="ml-1 text-white font-bold">
-                            ✓
-                          </span>
-                        )}
+                        <span className="text-center">Easy</span>
+
+                        <span
+                          aria-hidden="true"
+                          className={[
+                            checkBase,
+                            easyState === "selected"
+                              ? "opacity-100 scale-100"
+                              : "opacity-0 scale-95",
+                            "bg-white/18 ring-1 ring-white/35 text-white",
+                            "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
+                          ].join(" ")}
+                        >
+                          ✓
+                        </span>
                       </button>
 
                       {/* HARD */}
@@ -415,45 +457,35 @@ export default function DownhillGenerator({
                         disabled={!canPickDifficulty}
                         onClick={() => onVariantSelected?.("hard")}
                         aria-pressed={selectedVariant === "hard"}
-                        className={[
-                          "w-full rounded-xl px-3 py-2.5 transition active:scale-[0.99]",
-                          "flex items-center justify-center gap-2 border",
-                          "focus:outline-none focus-visible:ring-[1px]",
-
-                          !canPickDifficulty
-                            ? "bg-slate-200/80 text-slate-500 border-slate-300/80 cursor-not-allowed"
-                            : selectedVariant === "hard"
-                              ? [
-                                  "bg-rose-500 text-white border-rose-600",
-                                  "ring-[1px] ring-rose-500/40",
-                                  "focus-visible:ring-rose-500",
-                                  "shadow-[0_10px_26px_rgba(244,63,94,0.35)]",
-                                  "font-semibold",
-                                ].join(" ")
-                              : [
-                                  "bg-slate-200 text-slate-700 border-slate-300",
-                                  "hover:bg-slate-300 cursor-pointer font-medium",
-                                  "focus-visible:ring-slate-400",
-                                ].join(" "),
-                        ].join(" ")}
+                        className={[baseBtn, hardClass].join(" ")}
                       >
                         <span
-                          className="h-2.5 w-2.5 rounded-full"
+                          className={dotBase}
                           style={{
-                            background: !canPickDifficulty
-                              ? "rgba(156,163,175,0.85)"
-                              : selectedVariant === "hard"
-                                ? "white"
-                                : "rgba(100,116,139,0.9)",
+                            background:
+                              hardState === "disabled"
+                                ? "rgba(156,163,175,0.85)"
+                                : hardState === "selected"
+                                  ? "rgba(255,255,255,0.95)"
+                                  : "rgba(100,116,139,0.85)", // dusty grey
                           }}
                           aria-hidden="true"
                         />
-                        <span>Hard</span>
-                        {selectedVariant === "hard" && (
-                          <span aria-hidden="true" className="ml-1 text-white font-bold">
-                            ✓
-                          </span>
-                        )}
+                        <span className="text-center">Hard</span>
+
+                        <span
+                          aria-hidden="true"
+                          className={[
+                            checkBase,
+                            hardState === "selected"
+                              ? "opacity-100 scale-100"
+                              : "opacity-0 scale-95",
+                            "bg-white/18 ring-1 ring-white/35 text-white",
+                            "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
+                          ].join(" ")}
+                        >
+                          ✓
+                        </span>
                       </button>
                     </div>
 
@@ -504,7 +536,7 @@ export default function DownhillGenerator({
                   : waitingForVariants
                     ? "Working…"
                     : isGenerated
-                      ? "Generated"
+                      ? "Route Generated"
                       : "Generate Route"}
               </button>
 
