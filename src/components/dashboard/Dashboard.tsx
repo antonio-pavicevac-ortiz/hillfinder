@@ -165,7 +165,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   }
 
   function showPinsReadyHint() {
-    showBanner("Pins set — tap Quick Route or Plan a downhill route", {
+    showBanner("Pins set — tap Quick Route", {
       tone: "neutral",
       duration: 4200,
     });
@@ -494,6 +494,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const useReturnBounce = ctaBounceNonce > 0;
   const usePinsReadyCallout = !useReturnBounce && ctaPinsReadyNudgeNonce > 0;
   const useSoftNudge = !useReturnBounce && !usePinsReadyCallout && ctaSoftNudgeNonce > 0;
+  const showQuickRouteCTA = pinsReady && !hasRoute;
+  const showPlannerCTA = !showQuickRouteCTA; // ✅ Option 1: never show both
 
   return (
     <main className="fixed inset-0 bg-white overscroll-none" aria-label="Dashboard">
@@ -574,109 +576,110 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
             <div className="absolute top-3 left-0 right-0 z-[60] flex justify-center px-2.5 pointer-events-none">
               <div className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1">
                 <div className="flex flex-col gap-3">
-                  {useReturnBounce ? (
-                    <motion.div
-                      key={`return-${ctaBounceNonce}`}
-                      initial={{ y: 0, scale: 1 }}
-                      animate={{ y: [0, -5, 0], scale: [1, 1.008, 1] }}
-                      transition={{ duration: 0.36, ease: "easeOut" }}
-                    >
-                      <PlannerCTA
-                        onClick={() => {
-                          setPlannerPulseOn(false);
-                          setCtaHasInteracted(true);
-                          setHasOpenedPlannerOnce(true);
-                          setPlannerExiting(false);
-                          setGeneratorOpen(true);
-                        }}
-                      />
-                    </motion.div>
-                  ) : usePinsReadyCallout ? (
-                    <motion.div
-                      key={`pins-ready-${ctaPinsReadyNudgeNonce}`}
-                      className="relative"
-                      initial={{ scale: 1, y: 0, opacity: 1 }}
-                      animate={{ y: [0, -3, 0], scale: [1, 1.01, 1] }}
-                      transition={{ duration: 0.35, ease: "easeOut" }}
-                    >
+                  {showPlannerCTA &&
+                    (useReturnBounce ? (
                       <motion.div
-                        aria-hidden="true"
-                        className={[
-                          "pointer-events-none absolute -inset-2",
-                          QUICK_ROUTE_ROUNDED,
-                        ].join(" ")}
-                        initial={{ opacity: 0, scale: 0.99 }}
-                        animate={{ opacity: [0, 0.25, 0], scale: [0.99, 1.01, 1.015] }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                        style={{
-                          border: "1px solid rgba(255,255,255,0.45)",
-                          boxShadow: "0 0 0 4px rgba(59,130,246,0.10)",
-                        }}
-                      />
-
-                      <PlannerCTA
-                        onClick={() => {
-                          setPlannerPulseOn(false);
-                          setCtaHasInteracted(true);
-                          setHasOpenedPlannerOnce(true);
-                          setPlannerExiting(false);
-                          setGeneratorOpen(true);
-                        }}
-                      />
-                    </motion.div>
-                  ) : useSoftNudge ? (
-                    <motion.div
-                      key={`soft-${ctaSoftNudgeNonce}`}
-                      className="relative"
-                      initial={{ scale: 1, y: 0 }}
-                      animate={{ scale: [1, 1.01, 1], y: [0, -3, 0] }}
-                      transition={{ duration: 0.32, ease: "easeOut" }}
-                    >
+                        key={`return-${ctaBounceNonce}`}
+                        initial={{ y: 0, scale: 1 }}
+                        animate={{ y: [0, -5, 0], scale: [1, 1.008, 1] }}
+                        transition={{ duration: 0.36, ease: "easeOut" }}
+                      >
+                        <PlannerCTA
+                          onClick={() => {
+                            setPlannerPulseOn(false);
+                            setCtaHasInteracted(true);
+                            setHasOpenedPlannerOnce(true);
+                            setPlannerExiting(false);
+                            setGeneratorOpen(true);
+                          }}
+                        />
+                      </motion.div>
+                    ) : usePinsReadyCallout ? (
                       <motion.div
-                        aria-hidden="true"
-                        className={[
-                          "pointer-events-none absolute -inset-2",
-                          QUICK_ROUTE_ROUNDED,
-                        ].join(" ")}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0, 0.18, 0] }}
-                        transition={{ duration: 0.55, ease: "easeOut" }}
-                        style={{
-                          border: "1px solid rgba(255,255,255,0.40)",
-                          boxShadow: "0 0 0 4px rgba(59,130,246,0.08)",
-                        }}
-                      />
+                        key={`pins-ready-${ctaPinsReadyNudgeNonce}`}
+                        className="relative"
+                        initial={{ scale: 1, y: 0, opacity: 1 }}
+                        animate={{ y: [0, -3, 0], scale: [1, 1.01, 1] }}
+                        transition={{ duration: 0.35, ease: "easeOut" }}
+                      >
+                        <motion.div
+                          aria-hidden="true"
+                          className={[
+                            "pointer-events-none absolute -inset-2",
+                            QUICK_ROUTE_ROUNDED,
+                          ].join(" ")}
+                          initial={{ opacity: 0, scale: 0.99 }}
+                          animate={{ opacity: [0, 0.25, 0], scale: [0.99, 1.01, 1.015] }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                          style={{
+                            border: "1px solid rgba(255,255,255,0.45)",
+                            boxShadow: "0 0 0 4px rgba(59,130,246,0.10)",
+                          }}
+                        />
 
-                      <PlannerCTA
-                        onClick={() => {
-                          setPlannerPulseOn(false);
-                          setCtaHasInteracted(true);
-                          setHasOpenedPlannerOnce(true);
-                          setPlannerExiting(false);
-                          setGeneratorOpen(true);
-                        }}
-                      />
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      initial={{ scale: 1 }}
-                      animate={allowInitialPulse && plannerPulseOn ? HEARTBEAT : { scale: 1 }}
-                    >
-                      <PlannerCTA
-                        onClick={() => {
-                          setPlannerPulseOn(false);
-                          setCtaHasInteracted(true);
-                          setHasOpenedPlannerOnce(true);
-                          setPlannerExiting(false);
-                          setGeneratorOpen(true);
-                        }}
-                      />
-                    </motion.div>
-                  )}
+                        <PlannerCTA
+                          onClick={() => {
+                            setPlannerPulseOn(false);
+                            setCtaHasInteracted(true);
+                            setHasOpenedPlannerOnce(true);
+                            setPlannerExiting(false);
+                            setGeneratorOpen(true);
+                          }}
+                        />
+                      </motion.div>
+                    ) : useSoftNudge ? (
+                      <motion.div
+                        key={`soft-${ctaSoftNudgeNonce}`}
+                        className="relative"
+                        initial={{ scale: 1, y: 0 }}
+                        animate={{ scale: [1, 1.01, 1], y: [0, -3, 0] }}
+                        transition={{ duration: 0.32, ease: "easeOut" }}
+                      >
+                        <motion.div
+                          aria-hidden="true"
+                          className={[
+                            "pointer-events-none absolute -inset-2",
+                            QUICK_ROUTE_ROUNDED,
+                          ].join(" ")}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: [0, 0.18, 0] }}
+                          transition={{ duration: 0.55, ease: "easeOut" }}
+                          style={{
+                            border: "1px solid rgba(255,255,255,0.40)",
+                            boxShadow: "0 0 0 4px rgba(59,130,246,0.08)",
+                          }}
+                        />
+
+                        <PlannerCTA
+                          onClick={() => {
+                            setPlannerPulseOn(false);
+                            setCtaHasInteracted(true);
+                            setHasOpenedPlannerOnce(true);
+                            setPlannerExiting(false);
+                            setGeneratorOpen(true);
+                          }}
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        initial={{ scale: 1 }}
+                        animate={allowInitialPulse && plannerPulseOn ? HEARTBEAT : { scale: 1 }}
+                      >
+                        <PlannerCTA
+                          onClick={() => {
+                            setPlannerPulseOn(false);
+                            setCtaHasInteracted(true);
+                            setHasOpenedPlannerOnce(true);
+                            setPlannerExiting(false);
+                            setGeneratorOpen(true);
+                          }}
+                        />
+                      </motion.div>
+                    ))}
 
                   {/* ✅ Quick Route */}
                   <AnimatePresence initial={false}>
-                    {pinsReady && !hasRoute && !generatorOpen && !plannerExiting && (
+                    {showQuickRouteCTA && !generatorOpen && !plannerExiting && (
                       <motion.div
                         key={`quick-route-${ctaBounceNonce}`}
                         initial={{ opacity: 0, y: 10, scale: 0.99 }}

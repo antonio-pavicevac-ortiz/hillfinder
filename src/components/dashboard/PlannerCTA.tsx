@@ -24,9 +24,9 @@ type PlannerCTAProps = {
 export default function PlannerCTA({
   onClick,
   className = "",
-  title = "Plan a downhill route",
+  title = "Plan a route",
   subtitle = "Tap to open the planner",
-  ariaLabel = "Plan a downhill route",
+  ariaLabel = "Plan a route",
   compact = false,
 }: PlannerCTAProps) {
   const glassBar =
