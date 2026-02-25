@@ -178,6 +178,10 @@ export default function DownhillGenerator({
       setGeneratedKey(`${dest}::${uiVariant}`);
       setMessage("");
       setWaitingForVariants(false);
+
+      // Close immediately so the parent AnimatePresence exit runs smoothly.
+      // rAF avoids competing with the last state updates in this tick.
+      requestAnimationFrame(() => onClose());
     } catch (err: any) {
       setWaitingForVariants(false);
       clearWaitTimer();
@@ -389,13 +393,7 @@ export default function DownhillGenerator({
   return (
     <AnimatePresence initial={false}>
       {open && (
-        <motion.div
-          key="downhill-generator"
-          className="w-full"
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1, transition: SPRING_IN }}
-          exit={{ y: 320, opacity: 0, transition: SPRING_OUT }}
-        >
+        <div className="w-full">
           <motion.div
             className={[
               "pointer-events-auto w-full",
@@ -419,7 +417,7 @@ export default function DownhillGenerator({
               </div>
 
               <div className="flex items-center justify-center">
-                <h2 className="text-lg font-semibold text-gray-900">Plan Your Downhill Route</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
               </div>
             </div>
 
@@ -719,7 +717,7 @@ export default function DownhillGenerator({
               </p>
             )}
           </motion.div>
-        </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

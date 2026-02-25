@@ -79,6 +79,45 @@ export default function DashboardMap({
 
   const variantsRef = useRef<{ easy: Variant; hard: Variant } | null>(null);
 
+  function clamp(n: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function straightLineMeters(from: mapboxgl.LngLat, to: mapboxgl.LngLat) {
+    return from.distanceTo(to);
+  }
+
+  /**
+   * Reject routes that are too long relative to:
+   * - the best baseline route (detour cap)
+   * - the straight-line distance (loopiness cap)
+   */
+  function isSillyRoute(params: {
+    from: mapboxgl.LngLat;
+    to: mapboxgl.LngLat;
+    routeMeters: number;
+    baselineMeters: number;
+    maxDetourRatio: number; // e.g. 1.18
+    maxLoopiness: number; // e.g. 2.2
+  }) {
+    const { from, to, routeMeters, baselineMeters, maxDetourRatio, maxLoopiness } = params;
+
+    if (!Number.isFinite(routeMeters) || routeMeters <= 0) return true;
+    if (!Number.isFinite(baselineMeters) || baselineMeters <= 0) return false; // can't judge detour
+
+    // 1) Detour ratio vs baseline
+    if (routeMeters > baselineMeters * maxDetourRatio) return true;
+
+    // 2) Loopiness vs straight-line distance
+    const straight = straightLineMeters(from, to);
+    if (straight > 0) {
+      const loopiness = routeMeters / straight;
+      if (loopiness > maxLoopiness) return true;
+    }
+
+    return false;
+  }
+
   function invalidateRouteNow(reason: string) {
     const map = mapRef.current;
     if (!map) return;
@@ -578,6 +617,14 @@ export default function DashboardMap({
       if (reqId !== routeReqIdRef.current) return;
 
       const baseRoutes: any[] = Array.isArray(baseData?.routes) ? baseData.routes : [];
+
+      // Baseline: shortest route among returned routes (fallback to geometry estimate)
+      let baselineMeters = Infinity;
+      for (const r of baseRoutes) {
+        const d = typeof r?.distance === "number" ? r.distance : undefined;
+        if (d && Number.isFinite(d)) baselineMeters = Math.min(baselineMeters, d);
+      }
+
       const candidates: Variant[] = [];
 
       // Build candidates from base routes (up to 3)
@@ -586,6 +633,30 @@ export default function DashboardMap({
         if (!raw?.length) continue;
 
         const coords = resampleCoords(raw);
+
+        const geomMeters = routeLengthMeters(coords);
+        const distMeters = typeof r?.distance === "number" ? r.distance : geomMeters;
+
+        // If baselineMeters wasn't available, seed it from first valid route
+        if (!Number.isFinite(baselineMeters) || baselineMeters === Infinity) {
+          baselineMeters = distMeters;
+        }
+
+        // Reject silly base routes (rare, but can happen)
+        const MAX_DETOUR_RATIO = 1.18;
+        const MAX_LOOPINESS = 2.2;
+        if (
+          isSillyRoute({
+            from,
+            to,
+            routeMeters: distMeters,
+            baselineMeters,
+            maxDetourRatio: MAX_DETOUR_RATIO,
+            maxLoopiness: MAX_LOOPINESS,
+          })
+        ) {
+          continue;
+        }
 
         // Dedupe against what we already have
         if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
@@ -602,9 +673,9 @@ export default function DashboardMap({
       if (candidates.length < 2) {
         const mid = midpoint(from, to);
 
-        // distance-based detour size (bigger trip => bigger detour), clamped
-        // walking: 250m–900m tends to create meaningful alternates without going crazy
-        const approxMeters = Math.max(250, Math.min(900, (from.distanceTo(to) ?? 1500) * 0.12));
+        const trip = from.distanceTo(to) ?? 1500;
+        // Smaller: 120m–420m, scaled but capped (walking routes)
+        const approxMeters = clamp(trip * 0.06, 120, 420);
 
         const waypoints = detourWaypoints(mid, approxMeters);
 
@@ -628,15 +699,32 @@ export default function DashboardMap({
 
           const coords = resampleCoords(raw);
 
+          const geomMeters = routeLengthMeters(coords);
+          const distMeters =
+            typeof detourRoutes[0]?.distance === "number" ? detourRoutes[0].distance : geomMeters;
+
+          // Detour routes should be held to a stricter standard
+          const MAX_DETOUR_RATIO_DETOUR = 1.12;
+          const MAX_LOOPINESS_DETOUR = 2.0;
+          if (
+            isSillyRoute({
+              from,
+              to,
+              routeMeters: distMeters,
+              baselineMeters,
+              maxDetourRatio: MAX_DETOUR_RATIO_DETOUR,
+              maxLoopiness: MAX_LOOPINESS_DETOUR,
+            })
+          ) {
+            continue;
+          }
+
           // ✅ Stronger dedupe: avoid adding essentially the same route
           if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
 
           candidates.push(
             await buildVariant(map, coords, {
-              distanceMeters:
-                typeof detourRoutes[0]?.distance === "number"
-                  ? detourRoutes[0].distance
-                  : undefined,
+              distanceMeters: distMeters,
               durationSeconds:
                 typeof detourRoutes[0]?.duration === "number"
                   ? detourRoutes[0].duration
