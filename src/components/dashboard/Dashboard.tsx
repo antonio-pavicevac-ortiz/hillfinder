@@ -137,7 +137,39 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   // ✅ This MUST be declared before any effect that uses it
   const allowInitialPulse = !ctaHasInteracted && !pinsReady;
 
+  // ✅ Resolving overlay (super lean)
+  const [resolving, setResolving] = useState(false);
+  const resolvingStartRef = useRef<number>(0);
+  const resolvingHideTimerRef = useRef<number | null>(null);
+  const resolvingFailTimerRef = useRef<number | null>(null);
+
+  function stopResolving() {
+    if (resolvingHideTimerRef.current) {
+      window.clearTimeout(resolvingHideTimerRef.current);
+      resolvingHideTimerRef.current = null;
+    }
+    if (resolvingFailTimerRef.current) {
+      window.clearTimeout(resolvingFailTimerRef.current);
+      resolvingFailTimerRef.current = null;
+    }
+    setResolving(false);
+  }
+
   function handleGenerateAlternatives() {
+    resolvingStartRef.current = Date.now();
+    setResolving(true);
+
+    // 🔒 Failsafe — never hang forever
+    if (resolvingFailTimerRef.current) window.clearTimeout(resolvingFailTimerRef.current);
+
+    resolvingFailTimerRef.current = window.setTimeout(() => {
+      stopResolving();
+      showBanner("Still working… try again or pick a closer destination.", {
+        tone: "neutral",
+        duration: 4200,
+      });
+    }, 12000);
+
     setVariantsReady(false);
     setSelectedVariant(null);
     setRouteAlternativesNonce((n) => n + 1);
@@ -253,6 +285,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   }
 
   function handleClearRoute() {
+    stopResolving();
     setHasRoute(false);
     setVariantsReady(false);
     setSelectedVariant(null);
@@ -345,7 +378,10 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
     const MIN_LOCATING_MS = 650;
     const t = window.setTimeout(() => setFromLabelDisplay(fromLocation.name!), MIN_LOCATING_MS);
-    return () => window.clearTimeout(t);
+    return () => {
+      window.clearTimeout(t);
+      if (resolvingHideTimerRef.current) window.clearTimeout(resolvingHideTimerRef.current);
+    };
   }, [fromLocation?.name]);
 
   useEffect(() => {
@@ -554,12 +590,84 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
           selectedVariant={selectedVariant}
           onVariantsReady={() => {
             setVariantsReady(true);
-            setSelectedVariant((prev) => prev ?? "easy"); // ✅ default only if nothing selected
-            setHasRoute(true); // ✅ alternatives pipeline represents the active route
+            setSelectedVariant((prev) => prev ?? "easy");
+            setHasRoute(true);
+
+            // clear failsafe immediately on success
+            if (resolvingFailTimerRef.current) window.clearTimeout(resolvingFailTimerRef.current);
+
+            const MIN_MS = 450;
+            const elapsed = Date.now() - resolvingStartRef.current;
+            const remaining = Math.max(0, MIN_MS - elapsed);
+
+            if (resolvingHideTimerRef.current) window.clearTimeout(resolvingHideTimerRef.current);
+
+            resolvingHideTimerRef.current = window.setTimeout(() => {
+              stopResolving();
+            }, remaining);
           }}
           onVariantSelected={(v) => setSelectedVariant(v)}
         />
       </div>
+
+      {/* ✅ RESOLVING OVERLAY */}
+      <AnimatePresence>
+        {resolving && (
+          <motion.div
+            className="fixed inset-0 z-[999]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            aria-label="Finding route"
+            role="status"
+          >
+            {/* Darker wash + stronger blur so it’s visible on bright maps */}
+            <div className="absolute inset-0 bg-black/18 backdrop-blur-[6px]" />
+
+            {/* Centered status pill (higher contrast) */}
+            <div className="absolute inset-0 flex items-center justify-center px-4">
+              <motion.div
+                initial={{ scale: 0.98, y: 6, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.985, y: 4, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
+                className="relative"
+              >
+                {/* Mixed halo (subtle white rim + toned-down emerald glow) */}
+                <div
+                  aria-hidden="true"
+                  className="absolute -inset-3 rounded-[28px] pointer-events-none"
+                  style={{
+                    boxShadow: "0 0 0 1px rgba(255,255,255,0.10), 0 0 26px rgba(16,185,129,0.22)",
+                  }}
+                />
+
+                <div
+                  className={[
+                    "relative",
+                    "rounded-2xl px-5 py-4",
+                    "bg-slate-950/90",
+                    "border border-white/20",
+                    "shadow-[0_34px_90px_rgba(0,0,0,0.70)]",
+                    "backdrop-blur-[32px]",
+                  ].join(" ")}
+                  style={{ pointerEvents: "auto", cursor: "wait" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="inline-block h-5 w-5 rounded-full border-[3px] border-white/30 border-t-emerald-400 border-r-emerald-300 animate-spin"
+                      aria-hidden="true"
+                    />
+                    <span className="text-sm font-semibold text-white">Finding your route…</span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/70">This should only take a moment.</p>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* HEADER */}
       <header
