@@ -195,6 +195,14 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     setGeneratorOpen(false);
   }
 
+  function openPlanner() {
+    setPlannerPulseOn(false);
+    setCtaHasInteracted(true);
+    setHasOpenedPlannerOnce(true);
+    setPlannerExiting(false);
+    setGeneratorOpen(true);
+  }
+
   async function handleGenerate(params: { from: string; to: string }) {
     const silent = (): never => {
       const err = new Error("HF_GUARDRAIL");
@@ -584,15 +592,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         animate={{ y: [0, -5, 0], scale: [1, 1.008, 1] }}
                         transition={{ duration: 0.36, ease: "easeOut" }}
                       >
-                        <PlannerCTA
-                          onClick={() => {
-                            setPlannerPulseOn(false);
-                            setCtaHasInteracted(true);
-                            setHasOpenedPlannerOnce(true);
-                            setPlannerExiting(false);
-                            setGeneratorOpen(true);
-                          }}
-                        />
+                        <PlannerCTA onClick={openPlanner} />
                       </motion.div>
                     ) : usePinsReadyCallout ? (
                       <motion.div
@@ -617,15 +617,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                           }}
                         />
 
-                        <PlannerCTA
-                          onClick={() => {
-                            setPlannerPulseOn(false);
-                            setCtaHasInteracted(true);
-                            setHasOpenedPlannerOnce(true);
-                            setPlannerExiting(false);
-                            setGeneratorOpen(true);
-                          }}
-                        />
+                        <PlannerCTA onClick={openPlanner} />
                       </motion.div>
                     ) : useSoftNudge ? (
                       <motion.div
@@ -650,30 +642,14 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                           }}
                         />
 
-                        <PlannerCTA
-                          onClick={() => {
-                            setPlannerPulseOn(false);
-                            setCtaHasInteracted(true);
-                            setHasOpenedPlannerOnce(true);
-                            setPlannerExiting(false);
-                            setGeneratorOpen(true);
-                          }}
-                        />
+                        <PlannerCTA onClick={openPlanner} />
                       </motion.div>
                     ) : (
                       <motion.div
                         initial={{ scale: 1 }}
                         animate={allowInitialPulse && plannerPulseOn ? HEARTBEAT : { scale: 1 }}
                       >
-                        <PlannerCTA
-                          onClick={() => {
-                            setPlannerPulseOn(false);
-                            setCtaHasInteracted(true);
-                            setHasOpenedPlannerOnce(true);
-                            setPlannerExiting(false);
-                            setGeneratorOpen(true);
-                          }}
-                        />
+                        <PlannerCTA onClick={openPlanner} />
                       </motion.div>
                     ))}
 
@@ -725,6 +701,42 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                       </motion.div>
                     )}
                   </AnimatePresence>
+                  {/* Secondary access to planner (always visible when Quick Route is visible) */}
+                  {showQuickRouteCTA && !generatorOpen && !plannerExiting && (
+                    <motion.button
+                      type="button"
+                      onClick={openPlanner}
+                      whileTap={{ scale: 0.98 }}
+                      className={
+                        "group relative w-full overflow-hidden " +
+                        QUICK_ROUTE_ROUNDED +
+                        " px-4 py-3 " +
+                        "bg-white/12 saturate-150 " +
+                        "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
+                        "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
+                        "before:pointer-events-none before:absolute before:inset-0 " +
+                        "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                      }
+                    >
+                      <span className="relative z-10 block pr-10 text-left">
+                        <span className="block text-sm font-semibold leading-none text-black">
+                          Plan Route Instead
+                        </span>
+
+                        <ChevronRight
+                          className={[
+                            "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
+                            "h-5 w-5 shrink-0 text-black transition-transform duration-200",
+                            "group-hover:translate-x-1",
+                            "group-active:translate-x-1",
+                            "group-focus-visible:translate-x-1",
+                          ].join(" ")}
+                          strokeWidth={2.5}
+                          aria-hidden="true"
+                        />
+                      </span>
+                    </motion.button>
+                  )}
 
                   {/* ✅ RECENTER */}
                   <div
