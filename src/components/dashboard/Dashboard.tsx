@@ -2,7 +2,7 @@
 
 import ClearRouteButton from "@/components/dashboard/ClearRouteButton";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
-import { DashboardLegend } from "@/components/dashboard/DashboardLegend";
+import { DashboardLegendPanel } from "@/components/dashboard/DashboardLegend";
 import DashboardMap from "@/components/dashboard/DashboardMap";
 import DownhillGenerator from "@/components/dashboard/DownhillGenerator";
 import PlannerCTA from "@/components/dashboard/PlannerCTA";
@@ -10,7 +10,13 @@ import QuickActionsSheet from "@/components/dashboard/QuickActionSheet";
 import QuickActionsTrigger from "@/components/dashboard/QuickActionsTrigger";
 import { milesBetween } from "@/lib/map/milesBetween";
 import type { DashboardUser } from "@/types/user";
-import { AnimatePresence, motion, TargetAndTransition, useAnimationControls } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  TargetAndTransition,
+  useAnimationControls,
+  useDragControls,
+} from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -41,6 +47,15 @@ const QUICK_ROUTE_BOUNCE_IN: TargetAndTransition = {
 
 const QUICK_ROUTE_ROUNDED = "rounded-2xl";
 
+// ✅ Single sheet: full card slides down until only the pill is left peeking
+const PLANNER_OPEN_H = 420;
+
+// pill-only peek height (tweak 22–36 to taste)
+const PLANNER_PEEK_H = 34; // enough to show the internal pill area
+// how far the sheet can slide down
+const PLANNER_MIN_Y = PLANNER_OPEN_H - PLANNER_PEEK_H;
+const PLANNER_HIDE_Y = PLANNER_MIN_Y + 220;
+
 type Destination = {
   lat: number;
   lng: number;
@@ -57,10 +72,21 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const [fromLocation, setFromLocation] = useState<FromLocation | null>(null);
   const [fromLabelDisplay, setFromLabelDisplay] = useState<string>("Locating…");
   const [qaOpen, setQaOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const legendWrapRef = useRef<HTMLDivElement | null>(null);
+  const legendButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // ✅ dims map while planner is open
   const [searchActive, setSearchActive] = useState(false);
 
-  // ✅ start closed so CTA is the entry point
-  const [generatorOpen, setGeneratorOpen] = useState(false);
+  // ✅ Keep the planner mounted so the “peek card + pill” is always visible
+  const [generatorOpen, setGeneratorOpen] = useState(true);
+
+  // ✅ Start in “peek” mode (card is visible, only the pill affordance)
+  const [generatorMinimized, setGeneratorMinimized] = useState(true);
+
+  // ✅ drag controls (only the gray pill should initiate drag)
+  const plannerDragControls = useDragControls();
 
   const [destination, setDestination] = useState<Destination | null>(null);
 
@@ -91,53 +117,44 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     "before:pointer-events-none before:absolute before:inset-0 " +
     "before:bg-gradient-to-b before:from-white/20 before:to-transparent";
 
-  const [plannerExiting, setPlannerExiting] = useState(false);
+  const plannerFullyOpen = generatorOpen && !generatorMinimized;
 
   // ----------------------------
   // ✅ PIN-BASED CTA CALLOUT LOGIC
   // ----------------------------
 
-  // "Pins are ready" means BOTH markers exist (not just destination)
   const pinsReady = !!fromLocation && !!destination;
 
-  // Strong callout when pins become ready (first time per session)
   const [ctaPinsReadyNudgeNonce, setCtaPinsReadyNudgeNonce] = useState(0);
-
-  // Soft nudge when user edits pins again (rate-limited)
   const [ctaSoftNudgeNonce, setCtaSoftNudgeNonce] = useState(0);
-
-  // Stop teaching nudges once user has opened planner at least once
   const [hasOpenedPlannerOnce, setHasOpenedPlannerOnce] = useState(false);
 
-  // Track pin editing activity
   const [lastPinEditAt, setLastPinEditAt] = useState(0);
   const lastSoftNudgeAtRef = useRef(0);
   const prevPinsReadyRef = useRef(false);
   const softNudgeTimerRef = useRef<number | null>(null);
 
-  // ✅ Quick Route press animation controls
   const quickRouteControls = useAnimationControls();
   const quickRouteAnimatingRef = useRef(false);
   const quickRoutePulseTimerRef = useRef<number | null>(null);
 
-  // ✅ Planner CTA pulse (only for a short time so it feels intentional)
   const [plannerPulseOn, setPlannerPulseOn] = useState(true);
   const plannerPulseTimerRef = useRef<number | null>(null);
 
-  // ✅ Recenter
   const [recenterNonce, setRecenterNonce] = useState(0);
   const recenterDisabled = !fromLocation;
   const recenterStrokeColor = recenterDisabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
 
-  // ✅ Alternatives pipeline
+  // ✅ Match Undo behavior: legend is only usable when a route exists
+  const legendDisabled = !hasRoute;
+  const legendStrokeColor = legendDisabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
+
   const [routeAlternativesNonce, setRouteAlternativesNonce] = useState(0);
   const [variantsReady, setVariantsReady] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<"easy" | "hard" | null>(null);
 
-  // ✅ This MUST be declared before any effect that uses it
   const allowInitialPulse = !ctaHasInteracted && !pinsReady;
 
-  // ✅ Resolving overlay (super lean)
   const [resolving, setResolving] = useState(false);
   const resolvingStartRef = useRef<number>(0);
   const resolvingHideTimerRef = useRef<number | null>(null);
@@ -159,7 +176,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     resolvingStartRef.current = Date.now();
     setResolving(true);
 
-    // 🔒 Failsafe — never hang forever
     if (resolvingFailTimerRef.current) window.clearTimeout(resolvingFailTimerRef.current);
 
     resolvingFailTimerRef.current = window.setTimeout(() => {
@@ -175,9 +191,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     setRouteAlternativesNonce((n) => n + 1);
   }
 
-  // ----------------------------
-  // ✅ UNIVERSAL TOAST (STYLE COMES FROM globals.css)
-  // ----------------------------
   function showBanner(
     message: string,
     opts?: {
@@ -203,12 +216,10 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     });
   }
 
-  // Normalize place strings for comparison (trim, lowercase, collapse spaces)
   function normalizePlace(s: string) {
     return s.trim().toLowerCase().replace(/\s+/g, " ");
   }
 
-  // Keep refs in sync with state
   useEffect(() => {
     fromLocationRef.current = fromLocation;
   }, [fromLocation]);
@@ -221,21 +232,25 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     setLastPinEditAt(Date.now());
   }
 
-  function closePlannerWithExitThenBounceCTA() {
-    if (!generatorOpen) return;
-    setPlannerExiting(true);
-    setGeneratorOpen(false);
+  function minimizePlanner() {
+    setGeneratorOpen(true);
+    setGeneratorMinimized(true);
+    setSearchActive(false);
+    setCtaBounceNonce((n) => n + 1);
   }
 
   function openPlanner() {
     setPlannerPulseOn(false);
     setCtaHasInteracted(true);
     setHasOpenedPlannerOnce(true);
-    setPlannerExiting(false);
+
     setGeneratorOpen(true);
+    setGeneratorMinimized(false);
+
+    setSearchActive(true);
   }
 
-  async function handleGenerate(params: { from: string; to: string }) {
+  async function handleGenerate(params: { from: string; to: string; variant: "easy" | "hard" }) {
     const silent = (): never => {
       const err = new Error("HF_GUARDRAIL");
       (err as any).hfSilent = true;
@@ -274,14 +289,17 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
     setIsTooFar(false);
 
-    // ✅ Alternatives pipeline
+    // ✅ keep map + UI aligned to the variant they picked
+    setSelectedVariant(params.variant);
+
     handleGenerateAlternatives();
   }
 
   function handleRouteDrawn() {
-    // With alternatives, this may fire from map sweeps/segments; keep it as "route exists"
     setHasRoute(true);
-    closePlannerWithExitThenBounceCTA();
+
+    setSearchActive(false);
+    minimizePlanner();
   }
 
   function handleClearRoute() {
@@ -290,7 +308,35 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     setVariantsReady(false);
     setSelectedVariant(null);
     setClearRouteNonce((n) => n + 1);
+    setLegendOpen(false);
   }
+  useEffect(() => {
+    if (!legendOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLegendOpen(false);
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+
+      // If click is on the button, let the normal handler run.
+      if (legendButtonRef.current && legendButtonRef.current.contains(t)) return;
+
+      // Close if clicking outside the popover wrapper.
+      if (legendWrapRef.current && !legendWrapRef.current.contains(t)) {
+        setLegendOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [legendOpen]);
 
   function canQuickRoute(): boolean {
     const from = fromLocationRef.current ?? fromLocation;
@@ -332,7 +378,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     setCtaHasInteracted(true);
     setHasOpenedPlannerOnce(true);
 
-    // clear previous route state and request a new one
     setHasRoute(false);
     setVariantsReady(false);
     setSelectedVariant(null);
@@ -346,7 +391,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
 
     quickRouteAnimatingRef.current = true;
 
-    // ✅ trigger route immediately
     runQuickRoute();
 
     try {
@@ -407,21 +451,19 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     };
   }, []);
 
-  // ✅ STRONG CALLOUT: when pins become ready (false -> true)
   useEffect(() => {
     const prev = prevPinsReadyRef.current;
     prevPinsReadyRef.current = pinsReady;
 
-    if (!prev && pinsReady && !generatorOpen && !plannerExiting && !hasOpenedPlannerOnce) {
+    if (!prev && pinsReady && !plannerFullyOpen && !hasOpenedPlannerOnce) {
       setPlannerPulseOn(false);
       setCtaPinsReadyNudgeNonce((n) => n + 1);
       showPinsReadyHint();
     }
-  }, [pinsReady, generatorOpen, plannerExiting, hasOpenedPlannerOnce]);
+  }, [pinsReady, plannerFullyOpen, hasOpenedPlannerOnce]);
 
-  // ✅ Quick Route pulse: only briefly
   useEffect(() => {
-    const shouldShowQuick = pinsReady && !hasRoute && !generatorOpen && !plannerExiting;
+    const shouldShowQuick = pinsReady && !hasRoute && !plannerFullyOpen;
 
     const clearPulseTimer = () => {
       if (quickRoutePulseTimerRef.current) {
@@ -453,15 +495,12 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       }, 19200);
     }
 
-    return () => {
-      clearPulseTimer();
-    };
-  }, [pinsReady, hasRoute, generatorOpen, plannerExiting, ctaHasInteracted, quickRouteControls]);
+    return () => clearPulseTimer();
+  }, [pinsReady, hasRoute, plannerFullyOpen, ctaHasInteracted, quickRouteControls]);
 
-  // ✅ SOFT NUDGE: when pins are already ready and user edits pins again
   useEffect(() => {
     if (!pinsReady) return;
-    if (generatorOpen || plannerExiting) return;
+    if (plannerFullyOpen) return;
     if (hasOpenedPlannerOnce) return;
 
     if (softNudgeTimerRef.current) window.clearTimeout(softNudgeTimerRef.current);
@@ -479,9 +518,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     return () => {
       if (softNudgeTimerRef.current) window.clearTimeout(softNudgeTimerRef.current);
     };
-  }, [lastPinEditAt, pinsReady, generatorOpen, plannerExiting, hasOpenedPlannerOnce]);
+  }, [lastPinEditAt, pinsReady, plannerFullyOpen, hasOpenedPlannerOnce]);
 
-  // ✅ Stop the initial Planner CTA heartbeat after ~2 beats
   useEffect(() => {
     const clear = () => {
       if (plannerPulseTimerRef.current) {
@@ -538,8 +576,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const useReturnBounce = ctaBounceNonce > 0;
   const usePinsReadyCallout = !useReturnBounce && ctaPinsReadyNudgeNonce > 0;
   const useSoftNudge = !useReturnBounce && !usePinsReadyCallout && ctaSoftNudgeNonce > 0;
+
   const showQuickRouteCTA = pinsReady && !hasRoute;
-  const showPlannerCTA = !showQuickRouteCTA; // ✅ Option 1: never show both
+  const showPlannerCTA = !showQuickRouteCTA;
 
   return (
     <main className="fixed inset-0 bg-white overscroll-none" aria-label="Dashboard">
@@ -563,7 +602,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
             setHasRoute(false);
             setClearRouteNonce((n) => n + 1);
 
-            // ✅ editing pins invalidates variant state
             setVariantsReady(false);
             setSelectedVariant(null);
 
@@ -576,7 +614,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
             fromLocationRef.current = next;
             setFromLocation(next);
 
-            // ✅ editing pins invalidates variant state
             setHasRoute(false);
             setClearRouteNonce((n) => n + 1);
             setVariantsReady(false);
@@ -593,7 +630,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
             setSelectedVariant((prev) => prev ?? "easy");
             setHasRoute(true);
 
-            // clear failsafe immediately on success
             if (resolvingFailTimerRef.current) window.clearTimeout(resolvingFailTimerRef.current);
 
             const MIN_MS = 450;
@@ -622,10 +658,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
             aria-label="Finding route"
             role="status"
           >
-            {/* Darker wash + stronger blur so it’s visible on bright maps */}
             <div className="absolute inset-0 bg-black/18 backdrop-blur-[6px]" />
-
-            {/* Centered status pill (higher contrast) */}
             <div className="absolute inset-0 flex items-center justify-center px-4">
               <motion.div
                 initial={{ scale: 0.98, y: 6, opacity: 0 }}
@@ -634,7 +667,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                 transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
                 className="relative"
               >
-                {/* Mixed halo (subtle white rim + toned-down emerald glow) */}
                 <div
                   aria-hidden="true"
                   className="absolute -inset-3 rounded-[28px] pointer-events-none"
@@ -642,7 +674,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     boxShadow: "0 0 0 1px rgba(255,255,255,0.10), 0 0 26px rgba(16,185,129,0.22)",
                   }}
                 />
-
                 <div
                   className={[
                     "relative",
@@ -688,266 +719,392 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
         }}
       >
         <div className="relative h-full w-full pointer-events-none">
-          {!generatorOpen && !plannerExiting && (
-            <div className="absolute top-3 left-0 right-0 z-[60] flex justify-center px-2.5 pointer-events-none">
-              <div className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1">
-                <div className="flex flex-col gap-3">
-                  {showPlannerCTA &&
-                    (useReturnBounce ? (
-                      <motion.div
-                        key={`return-${ctaBounceNonce}`}
-                        initial={{ y: 0, scale: 1 }}
-                        animate={{ y: [0, -5, 0], scale: [1, 1.008, 1] }}
-                        transition={{ duration: 0.36, ease: "easeOut" }}
-                      >
-                        <PlannerCTA onClick={openPlanner} />
-                      </motion.div>
-                    ) : usePinsReadyCallout ? (
-                      <motion.div
-                        key={`pins-ready-${ctaPinsReadyNudgeNonce}`}
-                        className="relative"
-                        initial={{ scale: 1, y: 0, opacity: 1 }}
-                        animate={{ y: [0, -3, 0], scale: [1, 1.01, 1] }}
-                        transition={{ duration: 0.35, ease: "easeOut" }}
-                      >
+          {/* ✅ TOP OVERLAY AREA */}
+          <div className="absolute top-3 left-0 right-0 z-[210] flex justify-center px-2.5 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1">
+              <div className="flex flex-col gap-3">
+                {/* ✅ CTAs exist when planner is NOT fully open (closed or peek) */}
+                {(!generatorOpen || generatorMinimized) && (
+                  <>
+                    {showPlannerCTA &&
+                      (useReturnBounce ? (
                         <motion.div
-                          aria-hidden="true"
-                          className={[
-                            "pointer-events-none absolute -inset-2",
-                            QUICK_ROUTE_ROUNDED,
-                          ].join(" ")}
-                          initial={{ opacity: 0, scale: 0.99 }}
-                          animate={{ opacity: [0, 0.25, 0], scale: [0.99, 1.01, 1.015] }}
-                          transition={{ duration: 0.6, ease: "easeOut" }}
-                          style={{
-                            border: "1px solid rgba(255,255,255,0.45)",
-                            boxShadow: "0 0 0 4px rgba(59,130,246,0.10)",
-                          }}
-                        />
-
-                        <PlannerCTA onClick={openPlanner} />
-                      </motion.div>
-                    ) : useSoftNudge ? (
-                      <motion.div
-                        key={`soft-${ctaSoftNudgeNonce}`}
-                        className="relative"
-                        initial={{ scale: 1, y: 0 }}
-                        animate={{ scale: [1, 1.01, 1], y: [0, -3, 0] }}
-                        transition={{ duration: 0.32, ease: "easeOut" }}
-                      >
-                        <motion.div
-                          aria-hidden="true"
-                          className={[
-                            "pointer-events-none absolute -inset-2",
-                            QUICK_ROUTE_ROUNDED,
-                          ].join(" ")}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: [0, 0.18, 0] }}
-                          transition={{ duration: 0.55, ease: "easeOut" }}
-                          style={{
-                            border: "1px solid rgba(255,255,255,0.40)",
-                            boxShadow: "0 0 0 4px rgba(59,130,246,0.08)",
-                          }}
-                        />
-
-                        <PlannerCTA onClick={openPlanner} />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        initial={{ scale: 1 }}
-                        animate={allowInitialPulse && plannerPulseOn ? HEARTBEAT : { scale: 1 }}
-                      >
-                        <PlannerCTA onClick={openPlanner} />
-                      </motion.div>
-                    ))}
-
-                  {/* ✅ Quick Route */}
-                  <AnimatePresence initial={false}>
-                    {showQuickRouteCTA && !generatorOpen && !plannerExiting && (
-                      <motion.div
-                        key={`quick-route-${ctaBounceNonce}`}
-                        initial={{ opacity: 0, y: 10, scale: 0.99 }}
-                        animate={QUICK_ROUTE_BOUNCE_IN}
-                        exit={{ opacity: 0, y: 6, scale: 0.99 }}
-                        style={{ willChange: "transform" }}
-                      >
-                        <motion.button
-                          type="button"
-                          onClick={handleQuickRoutePress}
-                          disabled={quickRouteAnimatingRef.current}
-                          animate={quickRouteControls}
-                          style={{ transformOrigin: "center", willChange: "transform" }}
-                          className={
-                            "group relative w-full overflow-hidden " +
-                            QUICK_ROUTE_ROUNDED +
-                            " px-4 py-3 " +
-                            "bg-white/12 saturate-150 " +
-                            "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
-                            "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
-                            "before:pointer-events-none before:absolute before:inset-0 " +
-                            "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
-                          }
+                          key={`return-${ctaBounceNonce}`}
+                          initial={{ y: 0, scale: 1 }}
+                          animate={{ y: [0, -5, 0], scale: [1, 1.008, 1] }}
+                          transition={{ duration: 0.36, ease: "easeOut" }}
                         >
-                          <span className="relative z-10 block pr-10 text-left">
-                            <span className="block text-sm font-semibold leading-none text-black">
-                              Quick Route
+                          <PlannerCTA onClick={openPlanner} />
+                        </motion.div>
+                      ) : usePinsReadyCallout ? (
+                        <motion.div
+                          key={`pins-ready-${ctaPinsReadyNudgeNonce}`}
+                          className="relative"
+                          initial={{ scale: 1, y: 0, opacity: 1 }}
+                          animate={{ y: [0, -3, 0], scale: [1, 1.01, 1] }}
+                          transition={{ duration: 0.35, ease: "easeOut" }}
+                        >
+                          <motion.div
+                            aria-hidden="true"
+                            className={[
+                              "pointer-events-none absolute -inset-2",
+                              QUICK_ROUTE_ROUNDED,
+                            ].join(" ")}
+                            initial={{ opacity: 0, scale: 0.99 }}
+                            animate={{ opacity: [0, 0.25, 0], scale: [0.99, 1.01, 1.015] }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                            style={{
+                              border: "1px solid rgba(255,255,255,0.45)",
+                              boxShadow: "0 0 0 4px rgba(59,130,246,0.10)",
+                            }}
+                          />
+                          <PlannerCTA onClick={openPlanner} />
+                        </motion.div>
+                      ) : useSoftNudge ? (
+                        <motion.div
+                          key={`soft-${ctaSoftNudgeNonce}`}
+                          className="relative"
+                          initial={{ scale: 1, y: 0 }}
+                          animate={{ scale: [1, 1.01, 1], y: [0, -3, 0] }}
+                          transition={{ duration: 0.32, ease: "easeOut" }}
+                        >
+                          <motion.div
+                            aria-hidden="true"
+                            className={[
+                              "pointer-events-none absolute -inset-2",
+                              QUICK_ROUTE_ROUNDED,
+                            ].join(" ")}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: [0, 0.18, 0] }}
+                            transition={{ duration: 0.55, ease: "easeOut" }}
+                            style={{
+                              border: "1px solid rgba(255,255,255,0.40)",
+                              boxShadow: "0 0 0 4px rgba(59,130,246,0.08)",
+                            }}
+                          />
+                          <PlannerCTA onClick={openPlanner} />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ scale: 1 }}
+                          animate={allowInitialPulse && plannerPulseOn ? HEARTBEAT : { scale: 1 }}
+                        >
+                          <PlannerCTA onClick={openPlanner} />
+                        </motion.div>
+                      ))}
+
+                    {/* ✅ Quick Route */}
+                    <AnimatePresence initial={false}>
+                      {showQuickRouteCTA && (
+                        <motion.div
+                          key={`quick-route-${ctaBounceNonce}`}
+                          initial={{ opacity: 0, y: 10, scale: 0.99 }}
+                          animate={QUICK_ROUTE_BOUNCE_IN}
+                          exit={{ opacity: 0, y: 6, scale: 0.99 }}
+                          style={{ willChange: "transform" }}
+                        >
+                          <motion.button
+                            type="button"
+                            onClick={handleQuickRoutePress}
+                            disabled={quickRouteAnimatingRef.current}
+                            animate={quickRouteControls}
+                            style={{ transformOrigin: "center", willChange: "transform" }}
+                            className={
+                              "group relative w-full overflow-hidden " +
+                              QUICK_ROUTE_ROUNDED +
+                              " px-4 py-3 " +
+                              "bg-white/12 saturate-150 " +
+                              "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
+                              "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
+                              "before:pointer-events-none before:absolute before:inset-0 " +
+                              "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                            }
+                          >
+                            <span className="relative z-10 block pr-10 text-left">
+                              <span className="block text-sm font-semibold leading-none text-black">
+                                Quick Route
+                              </span>
+
+                              <ChevronRight
+                                className={[
+                                  "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
+                                  "h-5 w-5 shrink-0 text-black transition-transform duration-200",
+                                  "group-hover:translate-x-1",
+                                  "group-active:translate-x-1",
+                                  "group-focus-visible:translate-x-1",
+                                ].join(" ")}
+                                strokeWidth={2.5}
+                                aria-hidden="true"
+                              />
                             </span>
+                          </motion.button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                            <ChevronRight
-                              className={[
-                                "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
-                                "h-5 w-5 shrink-0 text-black transition-transform duration-200",
-                                "group-hover:translate-x-1",
-                                "group-active:translate-x-1",
-                                "group-focus-visible:translate-x-1",
-                              ].join(" ")}
-                              strokeWidth={2.5}
-                              aria-hidden="true"
-                            />
-                          </span>
-                        </motion.button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  {/* Secondary access to planner (always visible when Quick Route is visible) */}
-                  {showQuickRouteCTA && !generatorOpen && !plannerExiting && (
-                    <motion.button
-                      type="button"
-                      onClick={openPlanner}
-                      whileTap={{ scale: 0.98 }}
-                      className={
-                        "group relative w-full overflow-hidden " +
-                        QUICK_ROUTE_ROUNDED +
-                        " px-4 py-3 " +
-                        "bg-white/12 saturate-150 " +
-                        "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
-                        "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
-                        "before:pointer-events-none before:absolute before:inset-0 " +
-                        "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
-                      }
-                    >
-                      <span className="relative z-10 block pr-10 text-left">
-                        <span className="block text-sm font-semibold leading-none text-black">
-                          Plan Route Instead
-                        </span>
+                    {/* Plan Route Instead */}
+                    <AnimatePresence initial={false}>
+                      {showQuickRouteCTA && !plannerFullyOpen && (
+                        <motion.div
+                          key={`plan-instead-${ctaBounceNonce}`}
+                          initial={{ opacity: 0, y: 10, scale: 0.99 }}
+                          animate={QUICK_ROUTE_BOUNCE_IN}
+                          exit={{ opacity: 0, y: 6, scale: 0.99 }}
+                          style={{ willChange: "transform" }}
+                        >
+                          <motion.button
+                            type="button"
+                            onClick={openPlanner}
+                            whileTap={{ scale: 0.98 }}
+                            className={
+                              "group relative w-full overflow-hidden " +
+                              QUICK_ROUTE_ROUNDED +
+                              " px-4 py-3 " +
+                              "bg-white/12 saturate-150 " +
+                              "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
+                              "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)] " +
+                              "before:pointer-events-none before:absolute before:inset-0 " +
+                              "before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                            }
+                          >
+                            <span className="relative z-10 block pr-10 text-left">
+                              <span className="block text-sm font-semibold leading-none text-black">
+                                Plan Route Instead
+                              </span>
 
-                        <ChevronRight
-                          className={[
-                            "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
-                            "h-5 w-5 shrink-0 text-black transition-transform duration-200",
-                            "group-hover:translate-x-1",
-                            "group-active:translate-x-1",
-                            "group-focus-visible:translate-x-1",
-                          ].join(" ")}
-                          strokeWidth={2.5}
-                          aria-hidden="true"
-                        />
-                      </span>
-                    </motion.button>
-                  )}
+                              <ChevronRight
+                                className={[
+                                  "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2",
+                                  "h-5 w-5 shrink-0 text-black transition-transform duration-200",
+                                  "group-hover:translate-x-1",
+                                  "group-active:translate-x-1",
+                                  "group-focus-visible:translate-x-1",
+                                ].join(" ")}
+                                strokeWidth={2.5}
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </motion.button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </>
+                )}
 
-                  {/* ✅ RECENTER */}
-                  <div
-                    className="fixed right-3 z-[80] pointer-events-auto"
-                    style={{
-                      bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 0.75rem + 3.75rem)`,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      aria-label="Recenter map"
-                      disabled={recenterDisabled}
-                      onClick={() => setRecenterNonce((n) => n + 1)}
-                      className={[
-                        "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
-                        "rounded-2xl",
-                      ].join(" ")}
-                      style={{
-                        width: 48,
-                        height: 48,
-                        background: recenterDisabled
-                          ? "rgba(160,170,185,0.18)"
-                          : "rgba(255,255,255,0.22)",
-                        border: recenterDisabled
-                          ? "1px solid rgba(255,255,255,0.22)"
-                          : "1px solid rgba(255,255,255,0.40)",
-                        backdropFilter: "blur(26px)",
-                        WebkitBackdropFilter: "blur(26px)",
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
-                      }}
-                    >
-                      <div
-                        aria-hidden
-                        className="absolute inset-0 pointer-events-none rounded-2xl"
+                {/* ✅ Legend + Right controls share the same Y */}
+                <div className="mt-2 flex items-start justify-between gap-3 pointer-events-none">
+                  {/* ✅ Right buttons */}
+                  <div className="flex justify-end mt-2">
+                    <div className="flex flex-col items-end gap-3">
+                      {/* Recenter */}
+                      <button
+                        type="button"
+                        aria-label="Recenter map"
+                        disabled={recenterDisabled}
+                        onClick={() => setRecenterNonce((n) => n + 1)}
+                        className={[
+                          "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
+                          "rounded-2xl",
+                        ].join(" ")}
                         style={{
-                          background:
-                            "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+                          width: 48,
+                          height: 48,
+                          background: recenterDisabled
+                            ? "rgba(160,170,185,0.18)"
+                            : "rgba(255,255,255,0.22)",
+                          border: recenterDisabled
+                            ? "1px solid rgba(255,255,255,0.22)"
+                            : "1px solid rgba(255,255,255,0.40)",
+                          backdropFilter: "blur(26px)",
+                          WebkitBackdropFilter: "blur(26px)",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
                         }}
-                      />
-
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="24"
-                        height="24"
-                        fill="none"
-                        stroke={recenterStrokeColor}
-                        strokeWidth="2.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="relative z-10"
-                        aria-hidden="true"
                       >
-                        <circle cx="12" cy="12" r="3.5" />
-                        <path d="M12 2v4" />
-                        <path d="M12 18v4" />
-                        <path d="M2 12h4" />
-                        <path d="M18 12h4" />
-                      </svg>
-                    </button>
-                  </div>
+                        <div
+                          aria-hidden
+                          className="absolute inset-0 pointer-events-none rounded-2xl"
+                          style={{
+                            background:
+                              "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+                          }}
+                        />
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="24"
+                          height="24"
+                          fill="none"
+                          stroke={recenterStrokeColor}
+                          strokeWidth="2.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="relative z-10"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="3.5" />
+                          <path d="M12 2v4" />
+                          <path d="M12 18v4" />
+                          <path d="M2 12h4" />
+                          <path d="M18 12h4" />
+                        </svg>
+                      </button>
 
-                  {/* ✅ CLEAR ROUTE */}
-                  <div
-                    className="fixed right-3 z-[80] pointer-events-auto"
-                    style={{
-                      bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 0.75rem)`,
-                    }}
-                  >
-                    <ClearRouteButton onClick={handleClearRoute} disabled={!hasRoute} />
+                      {/* Clear */}
+                      <ClearRouteButton onClick={handleClearRoute} disabled={!hasRoute} />
+
+                      {/* Legend: icon + popover */}
+                      <div className="relative pointer-events-auto" ref={legendWrapRef}>
+                        <button
+                          type="button"
+                          aria-label={legendOpen ? "Hide legend" : "Show legend"}
+                          aria-pressed={legendOpen}
+                          ref={legendButtonRef}
+                          disabled={legendDisabled}
+                          onClick={() => {
+                            if (legendDisabled) return;
+                            setLegendOpen((v) => !v);
+                          }}
+                          className={[
+                            "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
+                            "rounded-2xl",
+                          ].join(" ")}
+                          style={{
+                            width: 48,
+                            height: 48,
+                            background: legendDisabled
+                              ? "rgba(160,170,185,0.18)"
+                              : "rgba(255,255,255,0.22)",
+                            border: legendDisabled
+                              ? "1px solid rgba(255,255,255,0.22)"
+                              : "1px solid rgba(255,255,255,0.40)",
+                            backdropFilter: "blur(26px)",
+                            WebkitBackdropFilter: "blur(26px)",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
+                          }}
+                        >
+                          <div
+                            aria-hidden
+                            className="absolute inset-0 pointer-events-none rounded-2xl"
+                            style={{
+                              background:
+                                "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+                            }}
+                          />
+
+                          {/* “list/legend” icon */}
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="24"
+                            height="24"
+                            fill="none"
+                            stroke={legendStrokeColor}
+                            strokeWidth="2.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="relative z-10"
+                            aria-hidden="true"
+                          >
+                            <circle cx="6" cy="7" r="1.6" />
+                            <circle cx="6" cy="12" r="1.6" />
+                            <circle cx="6" cy="17" r="1.6" />
+                            <path d="M10 7h8" />
+                            <path d="M10 12h8" />
+                            <path d="M10 17h8" />
+                          </svg>
+                        </button>
+
+                        <AnimatePresence>
+                          {legendOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, x: 8, scale: 0.985 }}
+                              animate={{ opacity: 1, x: 0, scale: 1 }}
+                              exit={{ opacity: 0, x: 8, scale: 0.985 }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 520,
+                                damping: 34,
+                                mass: 0.9,
+                              }}
+                              className={[
+                                "absolute right-[calc(48px+12px)] top-[-10px]",
+                                "w-[220px]", // ✅ slightly wider so nothing wraps
+                                "rounded-2xl border border-white/30",
+                                "bg-white/20 saturate-150",
+                                "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
+                                "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
+                                "overflow-hidden",
+                              ].join(" ")}
+                              style={{ pointerEvents: "auto" }}
+                            >
+                              <div className="relative px-4 py-3">
+                                {/* ✅ explicit close button so you can ALWAYS close it */}
+                                <button
+                                  type="button"
+                                  aria-label="Close legend"
+                                  onClick={() => setLegendOpen(false)}
+                                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20 border border-white/30 text-slate-900/80 active:scale-95"
+                                >
+                                  <span className="text-base leading-none">×</span>
+                                </button>
+
+                                <DashboardLegendPanel />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Legend */}
-          <div
-            className="fixed left-3 z-[79] pointer-events-auto"
-            style={{
-              bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 5.125rem)`,
-            }}
-          >
-            <DashboardLegend visible={!!destination} />
           </div>
 
-          {/* ✅ PLANNER PANEL */}
-          <AnimatePresence
-            initial={false}
-            onExitComplete={() => {
-              setPlannerExiting(false);
-              setCtaBounceNonce((n) => n + 1);
-            }}
-          >
-            {generatorOpen && (
-              <motion.div
-                key="planner-panel"
-                className="absolute top-3 left-0 right-0 z-[200] flex justify-center px-2.5 pointer-events-none"
-                initial={{ y: 0, scale: 1, opacity: 1 }}
-                animate={{ y: 0, scale: 1, opacity: 1 }}
-                exit={{ y: [0, -10, 14], scale: [1, 1.015, 0.98], opacity: [1, 1, 0] }}
-                transition={{ duration: 0.42, ease: [0.22, 1.25, 0.36, 1] }}
-              >
-                <div className="pointer-events-auto w-full max-w-[min(100%,48rem)] px-1">
+          {/* ✅ PLANNER SHEET (single card; minimized = card slides down; pill is the only handle) */}
+          {generatorOpen && (
+            <div
+              className="fixed left-0 right-0 z-[220] flex justify-center px-2.5 pointer-events-none"
+              style={{
+                bottom: `calc(${FOOTER_H}px + env(safe-area-inset-bottom) + 10px)`,
+              }}
+            >
+              {/* wrapper stays non-interactive so map can pan */}
+              <div className="w-full max-w-[min(100%,48rem)] px-1 pointer-events-none relative">
+                {/* ✅ THE ONE REAL SHEET */}
+                <motion.div
+                  className="w-full"
+                  initial={false}
+                  animate={{ y: generatorMinimized ? PLANNER_MIN_Y : 0, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.9 }}
+                  drag="y"
+                  dragControls={plannerDragControls}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  dragListener={false} // ✅ only pill / handle can start drag
+                  dragConstraints={{ top: 0, bottom: PLANNER_HIDE_Y }}
+                  dragElastic={0.14}
+                  dragMomentum={false}
+                  onDragEnd={(_, info) => {
+                    const shouldDismiss =
+                      generatorMinimized && (info.offset.y > 185 || info.velocity.y > 1250);
+                    const shouldMinimize = info.offset.y > 90 || info.velocity.y > 900;
+                    const shouldOpen = info.offset.y < -40 || info.velocity.y < -600;
+
+                    if (shouldDismiss) {
+                      // ✅ fully hide the planner card
+                      setGeneratorOpen(false);
+                      setGeneratorMinimized(false);
+                      return;
+                    }
+
+                    if (shouldMinimize) minimizePlanner();
+                    else if (shouldOpen) openPlanner();
+                  }}
+                  style={{
+                    // ✅ IMPORTANT: don’t disable pointer events when minimized,
+                    // otherwise the *real* gray pill can’t start the drag.
+                    pointerEvents: "auto",
+                    touchAction: "auto",
+                  }}
+                >
                   <DownhillGenerator
                     fromLabel={fromLabelDisplay}
                     blocked={isTooFar || !fromLocation}
@@ -968,8 +1125,13 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         setSelectedVariant(null);
                       }
                     }}
-                    open={generatorOpen}
-                    onClose={closePlannerWithExitThenBounceCTA}
+                    open={true}
+                    onClose={minimizePlanner}
+                    onMinimize={minimizePlanner}
+                    onHandlePointerDown={(e) => {
+                      e.stopPropagation();
+                      plannerDragControls.start(e);
+                    }}
                     onGenerate={handleGenerate}
                     onDestinationSelected={(loc) => {
                       const next = { name: loc.name, lat: loc.lat, lng: loc.lng } as Destination;
@@ -988,16 +1150,37 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                     }}
                     variantsReady={variantsReady}
                     selectedVariant={selectedVariant}
-                    onVariantSelected={(v) => {
-                      // Selecting Easy/Hard should only change the highlighted variant,
-                      // not mark a route as generated/active.
-                      setSelectedVariant(v);
-                    }}
+                    onVariantSelected={(v) => setSelectedVariant(v)}
                   />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </motion.div>
+
+                {/* ✅ INVISIBLE HANDLE OVERLAY (no second pill UI) */}
+                {generatorMinimized && (
+                  <div
+                    className="absolute left-0 right-0 pointer-events-auto"
+                    style={{
+                      bottom: 0,
+                      // Covers the visible “peek” strip (where the *internal* pill is),
+                      // plus a bit of extra finger room.
+                      height: PLANNER_PEEK_H + 18,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      aria-label="Open route planner"
+                      onClick={openPlanner}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        plannerDragControls.start(e);
+                      }}
+                      style={{ touchAction: "none" }}
+                      className="h-full w-full bg-transparent"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

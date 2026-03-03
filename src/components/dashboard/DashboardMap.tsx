@@ -1109,7 +1109,7 @@ export default function DashboardMap({
     <div
       ref={mapContainerRef}
       className="absolute inset-0 w-full h-full bg-[#e5e3df]"
-      style={{ touchAction: "none" }}
+      style={{ touchAction: "pan-y" }}
     />
   );
 }
