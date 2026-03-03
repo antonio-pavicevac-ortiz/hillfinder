@@ -1,7 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 type Suggestion = {
   id: string;
@@ -25,6 +31,8 @@ export default function DownhillGenerator({
   variantsReady = false,
   selectedVariant,
   onVariantSelected,
+  onMinimize,
+  onHandlePointerDown,
 }: {
   fromLabel: string;
   blocked?: boolean;
@@ -33,10 +41,18 @@ export default function DownhillGenerator({
   onToChange?: (next: string) => void;
   onClose: () => void;
   onGenerate: (params: { from: string; to: string; variant: Variant }) => Promise<void> | void;
-  onDestinationSelected?: (loc: { name: string; lat: number; lng: number }) => void;
+  onDestinationSelected?: (loc: {
+    name: string;
+    lat: string | number;
+    lng: string | number;
+  }) => void;
   variantsReady?: boolean;
   selectedVariant?: Variant | null;
   onVariantSelected?: (v: Variant | null) => void;
+  onMinimize?: () => void;
+
+  // ✅ NEW: allows parent bottom-sheet drag to start ONLY from the gray pill
+  onHandlePointerDown?: (e: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -55,7 +71,6 @@ export default function DownhillGenerator({
   const [generatedKey, setGeneratedKey] = useState<string>("");
 
   // Remembers the last variant we committed via the Generate button.
-  // Used to re-assert variant when async results resolve, without firing on simple toggle clicks.
   const lastCommittedRef = useRef<{ key: string; variant: Variant; ts: number } | null>(null);
 
   // After clicking Generate, we lock controls until parent says we're done
@@ -111,8 +126,6 @@ export default function DownhillGenerator({
   function startWaitTimer() {
     clearWaitTimer();
 
-    // If parent never flips variantsReady true (or something fails upstream),
-    // we must not leave the UI stuck forever.
     waitTimerRef.current = window.setTimeout(() => {
       setWaitingForVariants(false);
       setLoading(false);
@@ -159,28 +172,23 @@ export default function DownhillGenerator({
 
     try {
       // ✅ Commit variant to parent ONLY on Generate
-      // Also remember it so we can re-assert after async results resolve.
       lastCommittedRef.current = { key: nextKey, variant: uiVariant, ts: Date.now() };
       onVariantSelected?.(uiVariant);
 
       // ✅ Give parent/state a beat to apply before generation runs
       await nextFrame(2);
 
-      // ✅ Generate using the chosen variant
+      // ✅ Generate using chosen variant
       await onGenerate({ from: fromLabel, to: dest, variant: uiVariant });
 
-      // ✅ Re-assert the chosen variant after generation completes.
-      // Some parent flows may temporarily default back to "easy" once results arrive.
-      // We want the rendered route to stay aligned with the variant the user generated.
+      // ✅ Re-assert chosen variant after generation completes.
       onVariantSelected?.(uiVariant);
 
-      // ✅ if generation finished, unlock UI now (even if variantsReady never flips)
+      // ✅ unlock UI
       setGeneratedKey(`${dest}::${uiVariant}`);
       setMessage("");
       setWaitingForVariants(false);
 
-      // Close immediately so the parent AnimatePresence exit runs smoothly.
-      // rAF avoids competing with the last state updates in this tick.
       requestAnimationFrame(() => onClose());
     } catch (err: any) {
       setWaitingForVariants(false);
@@ -193,8 +201,6 @@ export default function DownhillGenerator({
       setMessage(err?.message ?? "Something went wrong generating the route.");
     } finally {
       setLoading(false);
-
-      // ✅ hard stop: never allow UI to remain locked after the async finishes
       setWaitingForVariants(false);
       clearWaitTimer();
     }
@@ -208,14 +214,9 @@ export default function DownhillGenerator({
       setWaitingForVariants(false);
       clearWaitTimer();
 
-      // ✅ Only re-assert a variant if it was previously committed via Generate.
-      // This prevents an upstream "auto-generate on selectedVariant change" from triggering
-      // when the user merely taps Easy/Hard.
       const commit = lastCommittedRef.current;
       if (!commit) return;
 
-      // If we already marked this key as generated, or we're still in the "waiting" phase,
-      // re-assert the committed variant to prevent snapping back to defaults.
       const fresh = Date.now() - commit.ts < 15000;
       const sameKey = commit.key === generatedKey;
       if (fresh && (sameKey || waitingForVariants)) {
@@ -224,7 +225,7 @@ export default function DownhillGenerator({
     }
   }, [variantsReady, open, generatedKey, waitingForVariants, onVariantSelected]);
 
-  // ✅ Clear timer on close/unmount (prevents “stuck computing” across open/close)
+  // ✅ Clear timer on close/unmount
   useEffect(() => {
     if (!open) {
       clearWaitTimer();
@@ -262,17 +263,9 @@ export default function DownhillGenerator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo]);
 
-  /**
-   * ✅ IMPORTANT:
-   * The UI is the source of truth for variant selection.
-   * The parent can change `selectedVariant` as part of its own state machine
-   * (including temporarily clearing it), so we only *adopt* the parent value
-   * when our local UI has no selection yet.
-   */
+  // Hydrate from parent only if UI has no selection
   useEffect(() => {
     if (!open) return;
-
-    // Only hydrate from parent if we haven't chosen anything locally yet.
     if (uiVariant == null && selectedVariant != null) {
       setUiVariant(selectedVariant);
     }
@@ -334,9 +327,6 @@ export default function DownhillGenerator({
     return () => window.clearTimeout(t);
   }, [trimmedTo, open, MAPBOX_TOKEN]);
 
-  const SPRING_IN = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 } as const;
-  const SPRING_OUT = { type: "spring", stiffness: 360, damping: 38, mass: 0.9 } as const;
-
   function stateFor(variant: Variant): BtnState {
     if (!canPickDifficulty) return "disabled";
     if (uiVariant === variant) return "selected";
@@ -349,7 +339,6 @@ export default function DownhillGenerator({
 
     setUiVariant(v);
 
-    // kill any suggestion UI / focus state that might be intercepting taps
     suppressOpenRef.current = true;
     setSuggestOpen(false);
     setSuggestions([]);
@@ -371,14 +360,12 @@ export default function DownhillGenerator({
   const disabledClass =
     "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]";
 
-  // READY (destination entered): light tint + GREY text (B version)
   const easyReady =
     "bg-emerald-200/80 text-slate-600 border-emerald-300/80 shadow-[0_10px_26px_rgba(16,185,129,0.14)] hover:bg-emerald-200/95 hover:shadow-[0_14px_34px_rgba(16,185,129,0.18)] cursor-pointer font-semibold focus-visible:ring-emerald-300/70";
 
   const hardReady =
     "bg-rose-200/80 text-slate-600 border-rose-300/80 shadow-[0_10px_26px_rgba(244,63,94,0.12)] hover:bg-rose-200/95 hover:shadow-[0_14px_34px_rgba(244,63,94,0.16)] cursor-pointer font-semibold focus-visible:ring-rose-300/70";
 
-  // SELECTED: deeper + WHITE text + stronger halo glow
   const easySelectedClass =
     "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-500/55 shadow-[0_18px_46px_rgba(16,185,129,0.45),0_0_0_6px_rgba(16,185,129,0.10)] cursor-pointer font-extrabold focus-visible:ring-emerald-500/80";
 
@@ -391,334 +378,344 @@ export default function DownhillGenerator({
     "absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold transition-all duration-150";
 
   return (
-    <AnimatePresence initial={false}>
-      {open && (
-        <div className="w-full">
-          <motion.div
-            className={[
-              "pointer-events-auto w-full",
-              "bg-white/70 backdrop-blur-xl",
-              "rounded-2xl border border-white/30 shadow-xl p-5",
-              "relative isolate",
-            ].join(" ")}
-            style={{ touchAction: "none" }}
-          >
-            {/* Header */}
-            <div className="mb-4">
-              <div className="flex justify-center mb-3">
-                <button
-                  type="button"
-                  aria-label="Close planner"
-                  className="group w-full flex justify-center py-4 -my-2 cursor-grab active:cursor-grabbing"
-                  onClick={onClose}
+    <div className="w-full">
+      <motion.div
+        className={[
+          "pointer-events-auto w-full",
+          "bg-white/70 backdrop-blur-xl",
+          "rounded-2xl border border-white/30 shadow-xl p-5",
+          "relative isolate",
+        ].join(" ")}
+        // ✅ Allow taps/clicks on controls on mobile.
+        // Keep gestures snappy without disabling click synthesis.
+        style={{ touchAction: "auto" }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
+      >
+        {/* Header */}
+        <div className="mb-4">
+          <div className="flex justify-center mb-3">
+            <button
+              type="button"
+              aria-label="Minimize planner"
+              className="group w-full flex justify-center py-4 -my-2 cursor-grab active:cursor-grabbing"
+              style={{ touchAction: "none" }}
+              onPointerDown={(e) => {
+                // Prevent Mapbox (behind) from interpreting this gesture.
+                e.stopPropagation();
+                onHandlePointerDown?.(e);
+              }}
+              onClick={() => {
+                (onMinimize ?? onClose)();
+              }}
+            >
+              <div className="h-1.5 w-12 rounded-full bg-gray-400/60 transition-colors duration-200 group-hover:bg-gray-600/70 group-active:bg-gray-600/70" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-center">
+            <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
+          </div>
+        </div>
+
+        <label className="block text-sm font-medium text-gray-700">From</label>
+        <input
+          type="text"
+          value={fromLabel}
+          readOnly
+          className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-default"
+        />
+
+        <label className="block text-sm font-medium text-gray-700">To</label>
+
+        <div className="relative mb-4">
+          <input
+            type="text"
+            value={to}
+            ref={toInputRef}
+            onChange={(e) => {
+              const next = e.target.value;
+
+              userEditingRef.current = true;
+              window.setTimeout(() => (userEditingRef.current = false), 350);
+
+              setTo(next);
+              onToChange?.(next);
+
+              setMessage("");
+              setGeneratedKey("");
+              setWaitingForVariants(false);
+              clearWaitTimer();
+
+              // destination changed => reset local + parent selection
+              setUiVariant(null);
+              onVariantSelected?.(null);
+
+              suppressOpenRef.current = false;
+              setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
+            }}
+            onFocus={() => {
+              isFocusedRef.current = true;
+              if (suggestions.length && !suppressOpenRef.current) setSuggestOpen(true);
+            }}
+            onBlur={() => {
+              isFocusedRef.current = false;
+              window.setTimeout(() => setSuggestOpen(false), 140);
+            }}
+            placeholder="Enter destination"
+            className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500"
+          />
+
+          <AnimatePresence>
+            {showSuggest && (
+              <motion.div
+                initial={{ opacity: 0, y: -3, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -3, scale: 0.985 }}
+                transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
+                className={[
+                  "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
+                  "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
+                  "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
+                  "pointer-events-auto",
+                ].join(" ")}
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.98)",
+                  backdropFilter: "blur(20px)",
+                  WebkitBackdropFilter: "blur(20px)",
+                }}
+              >
+                <div className="max-h-56 overflow-auto divide-y divide-slate-200/40">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="w-full text-left px-3 py-3 text-sm font-medium text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10 transition"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        suppressOpenRef.current = true;
+                        abortRef.current?.abort();
+                        abortRef.current = null;
+
+                        setTo(s.placeName);
+                        onToChange?.(s.placeName);
+
+                        setSuggestOpen(false);
+                        setMessage("");
+                        setGeneratedKey("");
+                        setWaitingForVariants(false);
+                        clearWaitTimer();
+
+                        setUiVariant(null);
+                        onVariantSelected?.(null);
+
+                        onDestinationSelected?.({
+                          name: s.placeName,
+                          lat: s.lat,
+                          lng: s.lng,
+                        });
+
+                        isFocusedRef.current = false;
+                        toInputRef.current?.blur();
+
+                        window.setTimeout(() => {
+                          suppressOpenRef.current = false;
+                        }, 200);
+                      }}
+                    >
+                      <div className="truncate">{s.placeName}</div>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Easy/Hard toggle */}
+        <div className="mt-3">
+          {(() => {
+            const showWaitingHint = waitingForVariants;
+
+            const easyState = stateFor("easy");
+            const hardState = stateFor("hard");
+
+            const easyClass =
+              easyState === "disabled"
+                ? disabledClass
+                : easyState === "selected"
+                  ? easySelectedClass
+                  : easyReady;
+
+            const hardClass =
+              hardState === "disabled"
+                ? disabledClass
+                : hardState === "selected"
+                  ? hardSelectedClass
+                  : hardReady;
+
+            return (
+              <>
+                <div
+                  className={[
+                    "grid grid-cols-2 gap-2 rounded-2xl p-2",
+                    "bg-slate-200/45 border border-slate-300/60 ring-1 ring-black/5",
+                    "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
+                    "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
+                  ].join(" ")}
                 >
-                  <div className="h-1.5 w-12 rounded-full bg-gray-400/60 transition-colors duration-200 group-hover:bg-gray-600/70 group-active:bg-gray-600/70" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-center">
-                <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
-              </div>
-            </div>
-
-            <label className="block text-sm font-medium text-gray-700">From</label>
-            <input
-              type="text"
-              value={fromLabel}
-              readOnly
-              className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-default"
-            />
-
-            <label className="block text-sm font-medium text-gray-700">To</label>
-
-            <div className="relative mb-4">
-              <input
-                type="text"
-                value={to}
-                ref={toInputRef}
-                onChange={(e) => {
-                  const next = e.target.value;
-
-                  userEditingRef.current = true;
-                  window.setTimeout(() => (userEditingRef.current = false), 350);
-
-                  setTo(next);
-                  onToChange?.(next);
-
-                  setMessage("");
-                  setGeneratedKey("");
-                  setWaitingForVariants(false);
-                  clearWaitTimer();
-
-                  // destination changed => reset local + parent selection
-                  setUiVariant(null);
-                  onVariantSelected?.(null);
-
-                  suppressOpenRef.current = false;
-                  setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
-                }}
-                onFocus={() => {
-                  isFocusedRef.current = true;
-                  if (suggestions.length && !suppressOpenRef.current) setSuggestOpen(true);
-                }}
-                onBlur={() => {
-                  isFocusedRef.current = false;
-                  window.setTimeout(() => setSuggestOpen(false), 140);
-                }}
-                placeholder="Enter destination"
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500"
-              />
-
-              <AnimatePresence>
-                {showSuggest && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -3, scale: 0.985 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -3, scale: 0.985 }}
-                    transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
-                    className={[
-                      "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
-                      "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
-                      "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
-                      "pointer-events-auto",
-                    ].join(" ")}
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.98)",
-                      backdropFilter: "blur(20px)",
-                      WebkitBackdropFilter: "blur(20px)",
+                  {/* EASY */}
+                  <button
+                    type="button"
+                    disabled={!canPickDifficulty}
+                    onClick={() => pickDifficulty("easy")}
+                    aria-pressed={uiVariant === "easy"}
+                    className={[baseBtn, easyClass].join(" ")}
+                    style={{ touchAction: "manipulation" }}
+                    onPointerDownCapture={(e) => {
+                      e.stopPropagation();
                     }}
                   >
-                    <div className="max-h-56 overflow-auto divide-y divide-slate-200/40">
-                      {suggestions.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          className="w-full text-left px-3 py-3 text-sm font-medium text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10 transition"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            suppressOpenRef.current = true;
-                            abortRef.current?.abort();
-                            abortRef.current = null;
+                    <span
+                      className={dotBase}
+                      style={{
+                        background:
+                          easyState === "disabled"
+                            ? "rgba(156,163,175,0.85)"
+                            : easyState === "selected"
+                              ? "rgba(255,255,255,0.95)"
+                              : "rgba(100,116,139,0.85)",
+                      }}
+                      aria-hidden="true"
+                    />
+                    <span className="text-center">Easy</span>
 
-                            setTo(s.placeName);
-                            onToChange?.(s.placeName);
-
-                            setSuggestOpen(false);
-                            setMessage("");
-                            setGeneratedKey("");
-                            setWaitingForVariants(false);
-                            clearWaitTimer();
-
-                            // destination changed => reset selection local + parent
-                            setUiVariant(null);
-                            onVariantSelected?.(null);
-
-                            onDestinationSelected?.({
-                              name: s.placeName,
-                              lat: s.lat,
-                              lng: s.lng,
-                            });
-
-                            isFocusedRef.current = false;
-                            toInputRef.current?.blur();
-
-                            window.setTimeout(() => {
-                              suppressOpenRef.current = false;
-                            }, 200);
-                          }}
-                        >
-                          <div className="truncate">{s.placeName}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Easy/Hard toggle */}
-            <div className="mt-3">
-              {(() => {
-                const showWaitingHint = waitingForVariants;
-
-                const easyState = stateFor("easy");
-                const hardState = stateFor("hard");
-
-                const easyClass =
-                  easyState === "disabled"
-                    ? disabledClass
-                    : easyState === "selected"
-                      ? easySelectedClass
-                      : easyReady;
-
-                const hardClass =
-                  hardState === "disabled"
-                    ? disabledClass
-                    : hardState === "selected"
-                      ? hardSelectedClass
-                      : hardReady;
-
-                return (
-                  <>
-                    <div
+                    <span
+                      aria-hidden="true"
                       className={[
-                        "grid grid-cols-2 gap-2 rounded-2xl p-2",
-                        "bg-slate-200/45 border border-slate-300/60 ring-1 ring-black/5",
-                        "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
-                        "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
+                        checkBase,
+                        uiVariant === "easy" ? "opacity-100 scale-100" : "opacity-0 scale-95",
+                        "bg-white/18 ring-1 ring-white/35 text-white",
+                        "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
                       ].join(" ")}
                     >
-                      {/* EASY */}
-                      <button
-                        type="button"
-                        disabled={!canPickDifficulty}
-                        onClick={() => pickDifficulty("easy")}
-                        aria-pressed={uiVariant === "easy"}
-                        className={[baseBtn, easyClass].join(" ")}
-                      >
-                        <span
-                          className={dotBase}
-                          style={{
-                            background:
-                              easyState === "disabled"
-                                ? "rgba(156,163,175,0.85)"
-                                : easyState === "selected"
-                                  ? "rgba(255,255,255,0.95)"
-                                  : "rgba(100,116,139,0.85)",
-                          }}
-                          aria-hidden="true"
-                        />
-                        <span className="text-center">Easy</span>
+                      ✓
+                    </span>
+                  </button>
 
-                        <span
-                          aria-hidden="true"
-                          className={[
-                            checkBase,
-                            easyState === "selected"
-                              ? "opacity-100 scale-100"
-                              : "opacity-0 scale-95",
-                            "bg-white/18 ring-1 ring-white/35 text-white",
-                            "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
-                          ].join(" ")}
-                        >
-                          ✓
-                        </span>
-                      </button>
+                  {/* HARD */}
+                  <button
+                    type="button"
+                    disabled={!canPickDifficulty}
+                    onClick={() => pickDifficulty("hard")}
+                    aria-pressed={uiVariant === "hard"}
+                    className={[baseBtn, hardClass].join(" ")}
+                    style={{ touchAction: "manipulation" }}
+                    onPointerDownCapture={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <span
+                      className={dotBase}
+                      style={{
+                        background:
+                          hardState === "disabled"
+                            ? "rgba(156,163,175,0.85)"
+                            : hardState === "selected"
+                              ? "rgba(255,255,255,0.95)"
+                              : "rgba(100,116,139,0.85)",
+                      }}
+                      aria-hidden="true"
+                    />
+                    <span className="text-center">Hard</span>
 
-                      {/* HARD */}
-                      <button
-                        type="button"
-                        disabled={!canPickDifficulty}
-                        onClick={() => pickDifficulty("hard")}
-                        aria-pressed={uiVariant === "hard"}
-                        className={[baseBtn, hardClass].join(" ")}
-                      >
-                        <span
-                          className={dotBase}
-                          style={{
-                            background:
-                              hardState === "disabled"
-                                ? "rgba(156,163,175,0.85)"
-                                : hardState === "selected"
-                                  ? "rgba(255,255,255,0.95)"
-                                  : "rgba(100,116,139,0.85)",
-                          }}
-                          aria-hidden="true"
-                        />
-                        <span className="text-center">Hard</span>
+                    <span
+                      aria-hidden="true"
+                      className={[
+                        checkBase,
+                        uiVariant === "hard" ? "opacity-100 scale-100" : "opacity-0 scale-95",
+                        "bg-white/18 ring-1 ring-white/35 text-white",
+                        "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
+                      ].join(" ")}
+                    >
+                      ✓
+                    </span>
+                  </button>
+                </div>
 
-                        <span
-                          aria-hidden="true"
-                          className={[
-                            checkBase,
-                            hardState === "selected"
-                              ? "opacity-100 scale-100"
-                              : "opacity-0 scale-95",
-                            "bg-white/18 ring-1 ring-white/35 text-white",
-                            "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
-                          ].join(" ")}
-                        >
-                          ✓
-                        </span>
-                      </button>
-                    </div>
+                {showWaitingHint && (
+                  <p className="mt-2 text-center text-xs text-slate-500">Computing your route…</p>
+                )}
 
-                    {showWaitingHint && (
-                      <p className="mt-2 text-center text-xs text-slate-500">
-                        Computing your route…
-                      </p>
-                    )}
-
-                    {!showWaitingHint && hasDestination && (
-                      <p className="mt-2 text-center text-xs text-slate-600">
-                        Pick <span className="font-semibold">Easy</span> or{" "}
-                        <span className="font-semibold">Hard</span>.
-                      </p>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* Generate */}
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => void handleGenerate()}
-                disabled={!canGenerate}
-                className={[
-                  "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
-
-                  // ✅ Keep the button green when a route is already generated for this destination+variant.
-                  // It's still disabled (via disabled={!canGenerate}), but it should *look* successful.
-                  canGenerate || isGenerated
-                    ? [
-                        "bg-emerald-500",
-                        "text-white",
-                        "border border-emerald-500/60",
-                        "shadow-[0_12px_30px_rgba(16,185,129,0.35)]",
-                        isGenerated ? "cursor-default" : "hover:bg-emerald-600",
-                      ].join(" ")
-                    : [
-                        "bg-gray-200",
-                        "text-gray-500",
-                        "border border-slate-300/70",
-                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
-                        "cursor-not-allowed",
-                      ].join(" "),
-                ].join(" ")}
-              >
-                {loading
-                  ? "Generating…"
-                  : waitingForVariants
-                    ? "Working…"
-                    : isGenerated
-                      ? "Route Generated"
-                      : "Generate Route"}
-              </button>
-
-              {blocked && (
-                <p className="mt-2 text-center text-xs text-rose-600">
-                  This route is currently blocked. Try a closer destination.
-                </p>
-              )}
-            </div>
-
-            {message && (
-              <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">
-                {message}
-              </p>
-            )}
-
-            {!MAPBOX_TOKEN && (
-              <p className="mt-3 text-center text-xs text-slate-600">
-                Missing <span className="font-mono">NEXT_PUBLIC_MAPBOX_TOKEN</span> — autocomplete
-                disabled.
-              </p>
-            )}
-          </motion.div>
+                {!showWaitingHint && hasDestination && (
+                  <p className="mt-2 text-center text-xs text-slate-600">
+                    Pick <span className="font-semibold">Easy</span> or{" "}
+                    <span className="font-semibold">Hard</span>.
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
-      )}
-    </AnimatePresence>
+
+        {/* Generate */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => void handleGenerate()}
+            disabled={!canGenerate}
+            style={{ touchAction: "manipulation" }}
+            onPointerDownCapture={(e) => {
+              e.stopPropagation();
+              onHandlePointerDown?.(e);
+            }}
+            className={[
+              "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
+              canGenerate || isGenerated
+                ? [
+                    "bg-emerald-500",
+                    "text-white",
+                    "border border-emerald-500/60",
+                    "shadow-[0_12px_30px_rgba(16,185,129,0.35)]",
+                    isGenerated ? "cursor-default" : "hover:bg-emerald-600",
+                  ].join(" ")
+                : [
+                    "bg-gray-200",
+                    "text-gray-500",
+                    "border border-slate-300/70",
+                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
+                    "cursor-not-allowed",
+                  ].join(" "),
+            ].join(" ")}
+          >
+            {loading
+              ? "Generating…"
+              : waitingForVariants
+                ? "Working…"
+                : isGenerated
+                  ? "Route Generated"
+                  : "Generate Route"}
+          </button>
+
+          {blocked && (
+            <p className="mt-2 text-center text-xs text-rose-600">
+              This route is currently blocked. Try a closer destination.
+            </p>
+          )}
+        </div>
+
+        {message && (
+          <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">{message}</p>
+        )}
+
+        {!MAPBOX_TOKEN && (
+          <p className="mt-3 text-center text-xs text-slate-600">
+            Missing <span className="font-mono">NEXT_PUBLIC_MAPBOX_TOKEN</span> — autocomplete will
+            be disabled.
+          </p>
+        )}
+      </motion.div>
+    </div>
   );
 }
