@@ -892,9 +892,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                 )}
 
                 {/* ✅ Legend + Right controls share the same Y */}
-                <div className="mt-2 flex items-start justify-between gap-3 pointer-events-none">
+                <div className="mt-2 flex items-start justify-between gap-3 pointer-events-auto">
                   {/* ✅ Right buttons */}
-                  <div className="flex justify-end mt-2">
+                  <div className="flex justify-end mt-2 pointer-events-auto">
                     <div className="flex flex-col items-end gap-3">
                       {/* Recenter */}
                       <button
@@ -902,6 +902,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         aria-label="Recenter map"
                         disabled={recenterDisabled}
                         onClick={() => setRecenterNonce((n) => n + 1)}
+                        onPointerDownCapture={(e) => e.stopPropagation()}
                         className={[
                           "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
                           "rounded-2xl",
@@ -949,7 +950,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                       </button>
 
                       {/* Clear */}
-                      <ClearRouteButton onClick={handleClearRoute} disabled={!hasRoute} />
+                      <div onPointerDownCapture={(e) => e.stopPropagation()}>
+                        <ClearRouteButton onClick={handleClearRoute} disabled={!hasRoute} />
+                      </div>
 
                       {/* Legend: icon + popover */}
                       <div className="relative pointer-events-auto" ref={legendWrapRef}>
@@ -963,6 +966,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                             if (legendDisabled) return;
                             setLegendOpen((v) => !v);
                           }}
+                          onPointerDownCapture={(e) => e.stopPropagation()}
                           className={[
                             "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
                             "rounded-2xl",
