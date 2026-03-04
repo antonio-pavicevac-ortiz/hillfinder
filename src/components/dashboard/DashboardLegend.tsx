@@ -7,20 +7,20 @@ type Props = {
 
 export function DashboardLegendPanel({ className }: Props) {
   const Row = ({ color, label }: { color: string; label: string }) => (
-    <div className="flex items-center gap-3 whitespace-nowrap">
+    <div className="flex items-center gap-2 whitespace-nowrap">
       <span
-        className="inline-block h-3 w-3 shrink-0 rounded-full border border-white/35 shadow-sm"
+        className="inline-block h-[14px] w-[14px] shrink-0 rounded-full border border-white/35 shadow-sm"
         style={{ backgroundColor: color }}
         aria-hidden="true"
       />
-      <span className="text-xs leading-none text-slate-900/90">{label}</span>
+      <span className="text-sm font-medium leading-none text-slate-900/90">{label}</span>
     </div>
   );
 
   return (
     <div className={className ?? ""}>
-      <div className="mb-2 text-sm font-semibold text-slate-900">Legend</div>
-      <div className="flex flex-col gap-2">
+      <div className="mb-2 text-base font-semibold text-slate-900">Legend</div>
+      <div className="flex flex-col gap-2.5">
         <Row color="#22c55e" label="Easy downhill" />
         <Row color="#eab308" label="Medium downhill" />
         <Row color="#ef4444" label="Hard downhill" />
