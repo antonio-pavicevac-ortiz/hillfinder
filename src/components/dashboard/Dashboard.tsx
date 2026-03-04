@@ -351,8 +351,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
     // Decide which side has room. Prefer opening to the right of the icon,
     // but if we’re near the screen edge, flip to the left.
     const rect = btn.getBoundingClientRect();
-    const POPOVER_W = 270; // keep in sync with popover width + padding/shadows
-    const GAP = 12;
+    const POPOVER_W = 300; // keep in sync with popover width + padding/shadows
+    const GAP = 8;
 
     const spaceRight = window.innerWidth - rect.right;
     const spaceLeft = rect.left;
@@ -1064,9 +1064,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                               className={[
                                 "absolute top-[calc(100%+10px)]",
                                 legendSide === "right"
-                                  ? "left-[calc(48px+12px)]"
-                                  : "right-[calc(48px+12px)]",
-                                "w-[260px]",
+                                  ? "left-[calc(48px+8px)]"
+                                  : "right-[calc(48px+8px)]",
+                                "w-[300px]",
                                 "rounded-2xl border border-white/30",
                                 "bg-white/20 saturate-150",
                                 "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
