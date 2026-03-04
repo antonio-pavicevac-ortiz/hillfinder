@@ -76,7 +76,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const legendWrapRef = useRef<HTMLDivElement | null>(null);
   const legendButtonRef = useRef<HTMLButtonElement | null>(null);
   const legendPopoverRef = useRef<HTMLDivElement | null>(null);
-  const [legendSide, setLegendSide] = useState<"left" | "right">("left");
 
   // ✅ dims map while planner is open
   const [searchActive, setSearchActive] = useState(false);
@@ -340,26 +339,6 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [legendOpen]);
-
-  useEffect(() => {
-    if (!legendOpen) return;
-
-    const btn = legendButtonRef.current;
-    if (!btn) return;
-
-    // Decide which side has room. Prefer opening to the right of the icon,
-    // but if we’re near the screen edge, flip to the left.
-    const rect = btn.getBoundingClientRect();
-    const POPOVER_W = 230; // keep in sync with popover width + padding/shadows
-    const GAP = 6;
-
-    const spaceRight = window.innerWidth - rect.right;
-    const spaceLeft = rect.left;
-
-    if (spaceRight >= POPOVER_W + GAP) setLegendSide("right");
-    else if (spaceLeft >= POPOVER_W + GAP) setLegendSide("left");
-    else setLegendSide("left");
   }, [legendOpen]);
 
   function canQuickRoute(): boolean {
@@ -1044,17 +1023,9 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                           {legendOpen && (
                             <motion.div
                               ref={legendPopoverRef}
-                              initial={{
-                                opacity: 0,
-                                x: legendSide === "right" ? -8 : 8,
-                                scale: 0.985,
-                              }}
-                              animate={{ opacity: 1, x: 0, scale: 1 }}
-                              exit={{
-                                opacity: 0,
-                                x: legendSide === "right" ? -8 : 8,
-                                scale: 0.985,
-                              }}
+                              initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 8, scale: 0.985 }}
                               transition={{
                                 type: "spring",
                                 stiffness: 520,
@@ -1062,11 +1033,13 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                                 mass: 0.9,
                               }}
                               className={[
-                                "absolute top-[calc(100%+10px)]",
-                                legendSide === "right"
-                                  ? "left-[calc(48px+6px)]"
-                                  : "right-[calc(48px+6px)]",
-                                "w-[230px]",
+                                // ✅ directly underneath the icon (flush with the icon column)
+                                "absolute top-[calc(100%+8px)] left-0",
+
+                                // ✅ width becomes the longest row (Medium downhill) + padding
+                                "w-max",
+                                "max-w-[min(92vw,22rem)]",
+
                                 "rounded-2xl border border-white/30",
                                 "bg-white/20 saturate-150",
                                 "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
@@ -1075,7 +1048,7 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                               ].join(" ")}
                               style={{
                                 pointerEvents: "auto",
-                                transformOrigin: legendSide === "right" ? "left top" : "right top",
+                                transformOrigin: "left top",
                               }}
                               onPointerDown={(e) => e.stopPropagation()}
                             >
