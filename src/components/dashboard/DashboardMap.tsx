@@ -17,11 +17,6 @@ if (MAPBOX_TOKEN) {
   console.warn("[DashboardMap] Missing NEXT_PUBLIC_MAPBOX_TOKEN — Mapbox may not initialize");
 }
 
-type FromLocation = {
-  lat: number;
-  lng: number;
-  name?: string;
-};
 type Destination = { lat: number; lng: number; name?: string };
 
 export default function DashboardMap({
