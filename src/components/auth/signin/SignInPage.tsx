@@ -16,7 +16,7 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
-  const { data: session, status } = useSession();
+  const { status } = useSession();
 
   useEffect(() => {
     if (status === "authenticated") {

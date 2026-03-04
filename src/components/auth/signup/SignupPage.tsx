@@ -15,14 +15,14 @@ export function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const { data: session, status } = useSession();
+  const { data: _session, status } = useSession();
   const router = useRouter();
 
   useEffect(() => {
     if (status === "authenticated") {
       router.replace("/dashboard");
     }
-  }, [status]);
+  }, [status, router]);
 
   const {
     register,

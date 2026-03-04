@@ -80,10 +80,10 @@ export default function DownhillGenerator({
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
 
-  const showSuggest = suggestOpen && suggestions.length > 0;
-
   const abortRef = useRef<AbortController | null>(null);
   const toInputRef = useRef<HTMLInputElement | null>(null);
+  // ✅ Autocomplete race protection (ignore stale responses)
+  const suggestReqSeqRef = useRef(0);
 
   // ✅ Failsafe timer: if variantsReady never comes back, unlock UI
   const waitTimerRef = useRef<number | null>(null);
@@ -96,6 +96,10 @@ export default function DownhillGenerator({
   const trimmedTo = useMemo(() => to.trim(), [to]);
   const hasDestination = trimmedTo.length > 0;
   const hasDifficulty = !!uiVariant;
+
+  // ✅ Lock inputs while we are generating / waiting for map variants
+  const controlsLocked = loading || waitingForVariants;
+  const showSuggest = !controlsLocked && suggestOpen && suggestions.length > 0;
 
   const activeKey = hasDestination && uiVariant ? `${trimmedTo}::${uiVariant}` : "";
   const isGenerated = !!activeKey && activeKey === generatedKey;
@@ -111,10 +115,10 @@ export default function DownhillGenerator({
   }
 
   // ✅ allow switching difficulty even if one variant was already generated
-  const canPickDifficulty = hasDestination && !loading && !blocked && !waitingForVariants;
+  const canPickDifficulty = hasDestination && !blocked && !controlsLocked;
 
   const canGenerate =
-    hasDestination && hasDifficulty && !isGenerated && !loading && !blocked && !waitingForVariants;
+    hasDestination && hasDifficulty && !isGenerated && !blocked && !controlsLocked;
 
   function clearWaitTimer() {
     if (waitTimerRef.current != null) {
@@ -231,6 +235,15 @@ export default function DownhillGenerator({
       clearWaitTimer();
       setWaitingForVariants(false);
       setLoading(false);
+
+      // ✅ also close/abort autocomplete when sheet closes
+      setSuggestOpen(false);
+      setSuggestions([]);
+      abortRef.current?.abort();
+      abortRef.current = null;
+      suggestReqSeqRef.current += 1;
+      isFocusedRef.current = false;
+      suppressOpenRef.current = false;
     }
   }, [open]);
 
@@ -274,6 +287,7 @@ export default function DownhillGenerator({
   // Fetch suggestions (debounced + abortable)
   useEffect(() => {
     if (!open) return;
+    if (controlsLocked) return;
 
     if (!MAPBOX_TOKEN) {
       setSuggestions([]);
@@ -292,6 +306,9 @@ export default function DownhillGenerator({
     }
 
     const t = window.setTimeout(async () => {
+      // new request id; any previous responses should be ignored
+      const reqId = ++suggestReqSeqRef.current;
+
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -306,6 +323,12 @@ export default function DownhillGenerator({
         const res = await fetch(url, { signal: controller.signal });
         const data = await res.json();
 
+        // Ignore stale responses
+        if (controller.signal.aborted) return;
+        if (reqId !== suggestReqSeqRef.current) return;
+        if (!isFocusedRef.current || suppressOpenRef.current) return;
+        if (controlsLocked) return;
+
         const items: Suggestion[] = (data?.features ?? [])
           .map((f: any) => ({
             id: String(f.id ?? f.place_name),
@@ -316,7 +339,7 @@ export default function DownhillGenerator({
           .filter((s: any) => Number.isFinite(s.lng) && Number.isFinite(s.lat));
 
         setSuggestions(items);
-        setSuggestOpen(isFocusedRef.current && !suppressOpenRef.current && items.length > 0);
+        setSuggestOpen(items.length > 0);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         setSuggestions([]);
@@ -325,7 +348,27 @@ export default function DownhillGenerator({
     }, 220);
 
     return () => window.clearTimeout(t);
-  }, [trimmedTo, open, MAPBOX_TOKEN]);
+  }, [trimmedTo, open, MAPBOX_TOKEN, controlsLocked]);
+
+  // ✅ If controls become locked, force-close suggestions and cancel any in-flight autocomplete
+  useEffect(() => {
+    if (!controlsLocked) return;
+
+    suppressOpenRef.current = true;
+    setSuggestOpen(false);
+    setSuggestions([]);
+
+    abortRef.current?.abort();
+    abortRef.current = null;
+    suggestReqSeqRef.current += 1;
+
+    // Re-allow opening shortly after unlock
+    const t = window.setTimeout(() => {
+      suppressOpenRef.current = false;
+    }, 200);
+
+    return () => window.clearTimeout(t);
+  }, [controlsLocked]);
 
   function stateFor(variant: Variant): BtnState {
     if (!canPickDifficulty) return "disabled";
@@ -422,6 +465,7 @@ export default function DownhillGenerator({
         <label className="block text-sm font-medium text-gray-700">From</label>
         <input
           type="text"
+          placeholder="Current location"
           value={fromLabel}
           readOnly
           className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-default"
@@ -432,9 +476,13 @@ export default function DownhillGenerator({
         <div className="relative mb-4">
           <input
             type="text"
+            placeholder="Search for a destination"
             value={to}
             ref={toInputRef}
+            disabled={controlsLocked}
+            aria-disabled={controlsLocked}
             onChange={(e) => {
+              if (controlsLocked) return;
               const next = e.target.value;
 
               userEditingRef.current = true;
@@ -456,15 +504,28 @@ export default function DownhillGenerator({
               setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
             }}
             onFocus={() => {
+              if (controlsLocked) return;
               isFocusedRef.current = true;
               if (suggestions.length && !suppressOpenRef.current) setSuggestOpen(true);
             }}
             onBlur={() => {
               isFocusedRef.current = false;
-              window.setTimeout(() => setSuggestOpen(false), 140);
+              // Delay close so a suggestion click can land
+              window.setTimeout(() => {
+                if (!isFocusedRef.current) setSuggestOpen(false);
+              }, 120);
             }}
-            placeholder="Enter destination"
-            className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSuggestOpen(false);
+                setMessage("");
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className={[
+              "w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500",
+              controlsLocked ? "bg-gray-100 text-gray-500 cursor-not-allowed" : "bg-white",
+            ].join(" ")}
           />
 
           <AnimatePresence>
@@ -491,9 +552,17 @@ export default function DownhillGenerator({
                     <button
                       key={s.id}
                       type="button"
-                      className="w-full text-left px-3 py-3 text-sm font-medium text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10 transition"
+                      disabled={controlsLocked}
+                      aria-disabled={controlsLocked}
+                      className={[
+                        "w-full text-left px-3 py-3 text-sm font-medium transition",
+                        controlsLocked
+                          ? "text-slate-400 cursor-not-allowed"
+                          : "text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10",
+                      ].join(" ")}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
+                        if (controlsLocked) return;
                         suppressOpenRef.current = true;
                         abortRef.current?.abort();
                         abortRef.current = null;
@@ -663,12 +732,14 @@ export default function DownhillGenerator({
         <div className="mt-4">
           <button
             type="button"
-            onClick={() => void handleGenerate()}
+            onClick={() => {
+              if (controlsLocked || !canGenerate) return;
+              void handleGenerate();
+            }}
             disabled={!canGenerate}
             style={{ touchAction: "manipulation" }}
             onPointerDownCapture={(e) => {
               e.stopPropagation();
-              onHandlePointerDown?.(e);
             }}
             className={[
               "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",

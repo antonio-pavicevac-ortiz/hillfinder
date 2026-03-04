@@ -75,6 +75,8 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
   const [legendOpen, setLegendOpen] = useState(false);
   const legendWrapRef = useRef<HTMLDivElement | null>(null);
   const legendButtonRef = useRef<HTMLButtonElement | null>(null);
+  const legendPopoverRef = useRef<HTMLDivElement | null>(null);
+  const [legendSide, setLegendSide] = useState<"left" | "right">("left");
 
   // ✅ dims map while planner is open
   const [searchActive, setSearchActive] = useState(false);
@@ -324,10 +326,12 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       // If click is on the button, let the normal handler run.
       if (legendButtonRef.current && legendButtonRef.current.contains(t)) return;
 
-      // Close if clicking outside the popover wrapper.
-      if (legendWrapRef.current && !legendWrapRef.current.contains(t)) {
-        setLegendOpen(false);
-      }
+      // If click is inside the wrapper or inside the popover, keep open.
+      const inWrap = !!legendWrapRef.current && legendWrapRef.current.contains(t);
+      const inPopover = !!legendPopoverRef.current && legendPopoverRef.current.contains(t);
+      if (inWrap || inPopover) return;
+
+      setLegendOpen(false);
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -336,6 +340,26 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", onPointerDown);
     };
+  }, [legendOpen]);
+
+  useEffect(() => {
+    if (!legendOpen) return;
+
+    const btn = legendButtonRef.current;
+    if (!btn) return;
+
+    // Decide which side has room. Prefer opening to the right of the icon,
+    // but if we’re near the screen edge, flip to the left.
+    const rect = btn.getBoundingClientRect();
+    const POPOVER_W = 270; // keep in sync with popover width + padding/shadows
+    const GAP = 12;
+
+    const spaceRight = window.innerWidth - rect.right;
+    const spaceLeft = rect.left;
+
+    if (spaceRight >= POPOVER_W + GAP) setLegendSide("right");
+    else if (spaceLeft >= POPOVER_W + GAP) setLegendSide("left");
+    else setLegendSide("left");
   }, [legendOpen]);
 
   function canQuickRoute(): boolean {
@@ -1019,9 +1043,18 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                         <AnimatePresence>
                           {legendOpen && (
                             <motion.div
-                              initial={{ opacity: 0, x: 8, scale: 0.985 }}
+                              ref={legendPopoverRef}
+                              initial={{
+                                opacity: 0,
+                                x: legendSide === "right" ? -8 : 8,
+                                scale: 0.985,
+                              }}
                               animate={{ opacity: 1, x: 0, scale: 1 }}
-                              exit={{ opacity: 0, x: 8, scale: 0.985 }}
+                              exit={{
+                                opacity: 0,
+                                x: legendSide === "right" ? -8 : 8,
+                                scale: 0.985,
+                              }}
                               transition={{
                                 type: "spring",
                                 stiffness: 520,
@@ -1029,15 +1062,22 @@ export default function Dashboard({ user }: { user: DashboardUser }) {
                                 mass: 0.9,
                               }}
                               className={[
-                                "absolute right-[calc(48px+12px)] top-[-10px]",
-                                "w-[220px]", // ✅ slightly wider so nothing wraps
+                                "absolute top-[calc(100%+10px)]",
+                                legendSide === "right"
+                                  ? "left-[calc(48px+12px)]"
+                                  : "right-[calc(48px+12px)]",
+                                "w-[260px]",
                                 "rounded-2xl border border-white/30",
                                 "bg-white/20 saturate-150",
                                 "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
                                 "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
                                 "overflow-hidden",
                               ].join(" ")}
-                              style={{ pointerEvents: "auto" }}
+                              style={{
+                                pointerEvents: "auto",
+                                transformOrigin: legendSide === "right" ? "left top" : "right top",
+                              }}
+                              onPointerDown={(e) => e.stopPropagation()}
                             >
                               <div className="relative px-4 py-3">
                                 {/* ✅ explicit close button so you can ALWAYS close it */}
