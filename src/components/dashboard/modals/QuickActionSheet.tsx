@@ -47,7 +47,7 @@ export default function QuickActionsSheet({
               onUseLocation();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-green-100 hover:bg-green-200 px-4 py-3 rounded-xl"
+            className="w-full flex items-center gap-3 bg-green-100 hover:bg-green-200 border border-green-200 px-4 py-3 rounded-xl"
           >
             <MapPin className="text-green-700" />
             Use My Location
@@ -63,8 +63,8 @@ export default function QuickActionsSheet({
             className={[
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition border",
               canQuickRoute
-                ? "bg-rose-100 hover:bg-rose-200 border-rose-200"
-                : "bg-rose-100/40 text-slate-400 border-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] cursor-not-allowed",
+                ? "bg-rose-100 hover:bg-rose-200 border border-rose-200"
+                : "bg-rose-100/40 border border-rose-200/50 text-slate-400 cursor-not-allowed",
             ].join(" ")}
           >
             <Zap className={canQuickRoute ? "text-rose-700" : "text-slate-400"} />
@@ -80,7 +80,7 @@ export default function QuickActionsSheet({
               onStartRoute();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-blue-100 hover:bg-blue-200 px-4 py-3 rounded-xl"
+            className="w-full flex items-center gap-3 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-4 py-3 rounded-xl"
           >
             <Route className="text-blue-700" />
             Plan Your Route
@@ -91,7 +91,7 @@ export default function QuickActionsSheet({
               onViewSaved();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-yellow-100 hover:bg-yellow-200 px-4 py-3 rounded-xl"
+            className="w-full flex items-center gap-3 bg-yellow-100 hover:bg-yellow-200 border border-yellow-200 px-4 py-3 rounded-xl"
           >
             <Star className="text-yellow-700" />
             View Saved Spots
