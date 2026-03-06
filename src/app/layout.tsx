@@ -6,17 +6,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen overflow-x-hidden">
-        {/* ✅ Put Toaster at body level so fixed positioning is truly viewport-based */}
-
         <Providers>
           <main className="min-h-screen bg-hillfinder-gradient">{children}</main>
-          <Toaster
-            position="top-center"
-            toastOptions={{
-              className: "hf-toast hf-toast--drop",
-            }}
-          />
         </Providers>
+
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            className: "hf-toast hf-toast--drop",
+          }}
+          style={{ zIndex: 9999 }}
+        />
       </body>
     </html>
   );
