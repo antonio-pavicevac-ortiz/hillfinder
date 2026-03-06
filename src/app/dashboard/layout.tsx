@@ -1,4 +1,4 @@
-import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import DashboardHeader from "@/components/dashboard/ui/DashboardHeader";
 import { requireUser } from "@/lib/auth/requireUser";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {

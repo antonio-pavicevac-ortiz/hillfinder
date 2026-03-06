@@ -33,8 +33,10 @@ body {
 
   /* Hillfinder toast card styling (applied globally via <Toaster /> in layout.tsx) */
   [data-sonner-toast].hf-toast {
-    @apply rounded-2xl px-4 py-2 text-center text-sm font-medium leading-snug
-      shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
+    @apply max-w-sm w-fit rounded-2xl px-5 py-3 text-center text-sm font-medium leading-snug
+  shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
+
+    margin-top: calc(env(safe-area-inset-top) + 5rem);
   }
 
   /* ✅ Neutral (default) — Sonner toast that is NOT an error */
@@ -118,11 +120,40 @@ body {
 
 @keyframes hf-toast-drop {
   from {
+    transform: translateY(-22px) scale(0.97);
     opacity: 0;
-    transform: translateY(-10px);
   }
+
   to {
+    transform: translateY(0px) scale(1);
     opacity: 1;
-    transform: translateY(0);
   }
+}
+
+/* -----------------------------
+   Map controls
+   ----------------------------- */
+.hf-map .mapboxgl-ctrl-icon {
+  filter: saturate(0) brightness(0.15);
+}
+
+/* -----------------------------
+   Sonner toaster container centering (top-center only)
+   ----------------------------- */
+[data-sonner-toaster][data-position="top-center"] {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+
+  width: 100vw !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+
+  /* Let the map be draggable behind the toaster, but keep toasts clickable */
+  pointer-events: none;
+}
+
+[data-sonner-toaster][data-position="top-center"] [data-sonner-toast] {
+  pointer-events: auto;
 }
