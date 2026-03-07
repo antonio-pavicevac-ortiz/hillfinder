@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import DashboardMap from "@/components/dashboard/map/DashboardMap";
 import MapControls from "@/components/dashboard/map/MapControls";
@@ -11,13 +11,14 @@ import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/modals/QuickActionSheet";
 import { toast } from "sonner";
+
 type Destination = { lat: number; lng: number; name?: string };
 type FromLocation = { lat: number; lng: number; name?: string };
 
 type Variant = "easy" | "hard";
 
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const R = 6371; // km
+  const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
   const lat1 = (a.lat * Math.PI) / 180;
@@ -57,9 +58,11 @@ export default function Dashboard() {
   const [recenterNonce, setRecenterNonce] = useState(0);
   const [clearRouteNonce, setClearRouteNonce] = useState(0);
   const [clearDestinationNonce, setClearDestinationNonce] = useState(0);
-  const quickRouteEnabled = !!destination; // or: !!destination && !!fromLocation
+  const quickRouteEnabled = !!destination;
 
   const [blocked, setBlocked] = useState(false);
+  const hasShownUndoHintRef = useRef(false);
+  const [routeBusy, setRouteBusy] = useState(false);
 
   const TOO_FAR_KM = 30;
 
@@ -84,6 +87,17 @@ export default function Dashboard() {
     setDestination(next);
     setPlannerTo(next.name ?? "");
     clearRoute();
+
+    if (!hasShownUndoHintRef.current) {
+      toast("Tap the middle button to change destination", {
+        id: "undo-destination-hint",
+        duration: 4000,
+        icon: "🌿",
+      });
+
+      hasShownUndoHintRef.current = true;
+    }
+
     return true;
   }
 
@@ -91,44 +105,57 @@ export default function Dashboard() {
     setHasRoute(false);
     setVariantsReady(false);
     setSelectedVariant(null);
+    setRouteBusy(false);
+    toast.dismiss("hf-route-loading");
     setClearRouteNonce((n) => n + 1);
   }
 
   function undoDestination() {
-    // Remove destination marker + route visuals and reset planner destination text.
     setDestination(null);
     setPlannerTo("");
     setBlocked(false);
     setHasRoute(false);
     setVariantsReady(false);
     setSelectedVariant(null);
+    setRouteBusy(false);
+    toast.dismiss("hf-route-loading");
     setClearRouteNonce((n) => n + 1);
     setClearDestinationNonce((n) => n + 1);
   }
 
+  useEffect(() => {
+    if (!routeBusy) return;
+
+    const id = "hf-route-loading";
+
+    toast.loading("Finding downhill routes…", {
+      id,
+      duration: Infinity,
+    });
+
+    return () => {
+      toast.dismiss(id);
+    };
+  }, [routeBusy]);
+
   return (
     <main className="fixed inset-0 bg-white">
-      {/* MAP CONTROLS */}
       <MapControls
         hasRoute={hasRoute}
         onClearRoute={clearRoute}
         onRecenter={() => setRecenterNonce((n) => n + 1)}
         hasDestination={!!destination}
         onUndoDestination={() => {
-          // 1) remove destination marker on map
           setClearDestinationNonce((n) => n + 1);
-
-          // 2) clear destination state + planner input
           setDestination(null);
           setPlannerTo("");
           setBlocked(false);
-
-          // 3) clear route visuals/state too (optional but usually desired)
+          setRouteBusy(false);
+          toast.dismiss("hf-route-loading");
           clearRoute();
         }}
       />
 
-      {/* MAP */}
       <DashboardMap
         destination={destination}
         fromLocation={fromLocation}
@@ -138,8 +165,11 @@ export default function Dashboard() {
         routeActive={hasRoute}
         routeAlternativesNonce={routeAlternativesNonce}
         selectedVariant={selectedVariant}
+        onRouteBusyChange={setRouteBusy}
         onVariantsReady={() => {
           console.log("[Dashboard] variantsReady true");
+          setRouteBusy(false);
+          toast.dismiss("hf-route-loading");
           setVariantsReady(true);
           setHasRoute(true);
         }}
@@ -153,7 +183,6 @@ export default function Dashboard() {
         }}
       />
 
-      {/* HEADER (visual overlay; map gestures pass through except header controls) */}
       <header
         className="fixed top-0 left-0 right-0 z-20 pointer-events-none"
         style={{ height: HEADER_H }}
@@ -163,7 +192,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* FOOTER (visual overlay; map gestures pass through except button) */}
       <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
         <div className={`${glassBar} border-t border-white/25 pointer-events-none`}>
           <div
@@ -178,7 +206,6 @@ export default function Dashboard() {
         </div>
       </footer>
 
-      {/* QUICK ACTIONS */}
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
@@ -187,20 +214,15 @@ export default function Dashboard() {
           setRecenterNonce((n) => n + 1);
         }}
         onQuickRoute={() => {
-          // Quick Route is a one-tap action: do NOT open the planner card.
-          // Only runs when a destination exists (QuickActionsSheet should already disable otherwise).
-          if (!destination) return;
+          if (!destination || routeBusy) return;
 
           setQaOpen(false);
-
-          // Kick off alternatives generation (easy/hard), defaulting selection to easy.
           setVariantsReady(false);
           setSelectedVariant("easy");
           setRouteAlternativesNonce((n) => n + 1);
         }}
         onStartRoute={() => {
           setQaOpen(false);
-          // Ensure the planner doesn't immediately auto-close due to stale variantsReady
           setVariantsReady(false);
           setSelectedVariant(null);
           setGeneratorOpen(true);
@@ -209,7 +231,6 @@ export default function Dashboard() {
         quickRouteEnabled={quickRouteEnabled}
       />
 
-      {/* DOWNHILL GENERATOR */}
       <DownhillGenerator
         open={generatorOpen}
         fromLabel={
@@ -234,12 +255,8 @@ export default function Dashboard() {
         selectedVariant={selectedVariant}
         onVariantSelected={(v) => setSelectedVariant(v)}
         onGenerate={async ({ variant }) => {
-          // IMPORTANT: flip variantsReady off immediately so the planner loader can show.
-          // If variantsReady is still true from a previous route, the planner will auto-close.
           setVariantsReady(false);
           setSelectedVariant(variant);
-          // If user typed a destination but didn't pick a suggestion (no lat/lng yet),
-          // geocode the text so the map has a destination marker to route to.
           const q = plannerTo.trim();
 
           if (q && (!destination || (destination.name ?? "").trim() !== q)) {
@@ -263,11 +280,13 @@ export default function Dashboard() {
                 };
 
                 const accepted = commitDestination(next);
-                if (!accepted) return;
+                if (!accepted) {
+                  setRouteBusy(false);
+                  toast.dismiss("hf-route-loading");
+                  return;
+                }
               }
-            } catch {
-              // If geocoding fails, let the map-side (click-to-set) flow handle it.
-            }
+            } catch {}
           }
 
           setRouteAlternativesNonce((n) => n + 1);
