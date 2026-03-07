@@ -6,7 +6,6 @@ import { resampleCoords } from "@/lib/map/resampleCoords";
 import { computeRouteStats, scoreEasy } from "@/lib/map/routeDifficulty";
 import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
-
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -18,14 +17,14 @@ if (MAPBOX_TOKEN) {
 }
 
 type Destination = { lat: number; lng: number; name?: string };
-
 type VariantKey = "easy" | "hard";
-
 type Variant = {
   coords: [number, number][];
   elevations: number[];
   score: number;
 };
+
+const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
 
 export default function DashboardMap({
   destination,
@@ -68,38 +67,46 @@ export default function DashboardMap({
   const fromMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // Cache of decoded 256x256 terrain tiles: key -> Promise<RGBA data>
   const tileCacheRef = useRef<Map<TileKey, Promise<Uint8ClampedArray>>>(new Map());
 
   const getElevationRef = useRef<
     ((map: mapboxgl.Map, lng: number, lat: number) => Promise<number>) | null
   >(null);
 
-  // Route fetch cancellation / race protection
   const routeReqIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Remember last destination that successfully produced a route (optional snap-back behavior)
   const lastGoodDestRef = useRef<mapboxgl.LngLat | null>(null);
 
   const variantsRef = useRef<{ easy: Variant; hard: Variant } | null>(null);
 
-  // Keep latest selectedVariant for async functions (avoid stale closures)
   const selectedVariantRef = useRef<VariantKey | null>(null);
+  const renderedRouteModeRef = useRef<"overview" | "detail" | null>(null);
+  const sweepRef = useRef(createRouteSweepController());
+
   useEffect(() => {
     selectedVariantRef.current = selectedVariant ?? null;
   }, [selectedVariant]);
 
-  const sweepRef = useRef(createRouteSweepController());
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!fromLocation) return;
 
-  // --- Gesture + controls UX knobs ---
-  // Offset the Mapbox control stack downward so it sits under your custom top-left overlay.
-  // If Mapbox controls feel “unresponsive”, they may be sitting under an overlay.
-  // Increasing this pushes the top-left Mapbox control stack further down.
-  // Tweak until it clears your Undo / custom icons cleanly.
+    const existing = fromMarkerRef.current?.getLngLat();
+    if (
+      existing &&
+      Math.abs(existing.lng - fromLocation.lng) < 0.00005 &&
+      Math.abs(existing.lat - fromLocation.lat) < 0.00005
+    ) {
+      return;
+    }
+
+    const ll = new mapboxgl.LngLat(fromLocation.lng, fromLocation.lat);
+    ensureFromMarker(map, ll);
+  }, [fromLocation]);
+
   const TOP_LEFT_CONTROLS_OFFSET_PX = 400;
-
-  // "busy" owner id so we don't clear busy for a newer request
   const busyReqIdRef = useRef(0);
 
   function setRouteBusy(busy: boolean, reqId?: number) {
@@ -109,20 +116,17 @@ export default function DashboardMap({
       return;
     }
 
-    // If a reqId was provided, only clear if we still own busy.
     if (typeof reqId === "number" && busyReqIdRef.current !== reqId) return;
 
     busyReqIdRef.current = 0;
     onRouteBusyChange?.(false);
   }
 
-  // --- Small helpers ---
   function clamp(n: number, min: number, max: number) {
     return Math.max(min, Math.min(max, n));
   }
 
   function haversineMeters(a: [number, number], b: [number, number]) {
-    // coords are [lng, lat]
     const R = 6_371_000;
     const toRad = (d: number) => (d * Math.PI) / 180;
     const dLat = toRad(b[1] - a[1]);
@@ -159,10 +163,8 @@ export default function DashboardMap({
     if (!Number.isFinite(routeMeters) || routeMeters <= 0) return true;
     if (!Number.isFinite(baselineMeters) || baselineMeters <= 0) return false;
 
-    // 1) Detour ratio vs baseline
     if (routeMeters > baselineMeters * maxDetourRatio) return true;
 
-    // 2) Loopiness vs straight-line distance
     const straight = straightLineMeters(from, to);
     if (straight > 0) {
       const loopiness = routeMeters / straight;
@@ -175,7 +177,6 @@ export default function DashboardMap({
   function isNearDuplicateRoute(a: [number, number][], b: [number, number][]) {
     if (a.length < 2 || b.length < 2) return true;
 
-    // Quick checks: endpoint proximity + length similarity
     const aStart = a[0];
     const aEnd = a[a.length - 1];
     const bStart = b[0];
@@ -184,14 +185,12 @@ export default function DashboardMap({
     const startDist = haversineMeters(aStart, bStart);
     const endDist = haversineMeters(aEnd, bEnd);
 
-    // If endpoints don't match for same OD, it's not a dup
     if (startDist > 40 || endDist > 40) return false;
 
     const aLen = routeLengthMeters(a);
     const bLen = routeLengthMeters(b);
     const diff = Math.abs(aLen - bLen);
 
-    // If lengths are within ~3% or 60m (whichever larger), treat as dup
     return diff < Math.max(60, aLen * 0.03);
   }
 
@@ -212,41 +211,48 @@ export default function DashboardMap({
     const dLat = metersToDegreesLat(meters);
     const dLng = metersToDegreesLng(meters, mid.lat);
 
-    // 8-way detours around midpoint
     return [
-      new mapboxgl.LngLat(mid.lng + dLng, mid.lat), // E
-      new mapboxgl.LngLat(mid.lng - dLng, mid.lat), // W
-      new mapboxgl.LngLat(mid.lng, mid.lat + dLat), // N
-      new mapboxgl.LngLat(mid.lng, mid.lat - dLat), // S
-      new mapboxgl.LngLat(mid.lng + dLng, mid.lat + dLat), // NE
-      new mapboxgl.LngLat(mid.lng + dLng, mid.lat - dLat), // SE
-      new mapboxgl.LngLat(mid.lng - dLng, mid.lat + dLat), // NW
-      new mapboxgl.LngLat(mid.lng - dLng, mid.lat - dLat), // SW
+      new mapboxgl.LngLat(mid.lng + dLng, mid.lat),
+      new mapboxgl.LngLat(mid.lng - dLng, mid.lat),
+      new mapboxgl.LngLat(mid.lng, mid.lat + dLat),
+      new mapboxgl.LngLat(mid.lng, mid.lat - dLat),
+      new mapboxgl.LngLat(mid.lng + dLng, mid.lat + dLat),
+      new mapboxgl.LngLat(mid.lng + dLng, mid.lat - dLat),
+      new mapboxgl.LngLat(mid.lng - dLng, mid.lat + dLat),
+      new mapboxgl.LngLat(mid.lng - dLng, mid.lat - dLat),
     ];
+  }
+
+  function clearOverviewRoute(map: mapboxgl.Map) {
+    const id = "route-overview";
+
+    try {
+      if (map.getLayer(id)) map.removeLayer(id);
+    } catch {}
+    try {
+      if (map.getSource(id)) map.removeSource(id);
+    } catch {}
   }
 
   function invalidateRouteNow(reason: string) {
     const map = mapRef.current;
     if (!map) return;
 
-    // Stop any in-flight fetches / animations
     abortRef.current?.abort();
     sweepRef.current.clear(map);
 
-    // Clear all drawn route layers/sources
+    clearOverviewRoute(map);
     clearRouteLayers(map);
 
-    // Reset local caches so stale state can't re-render
     lastGoodDestRef.current = null;
     variantsRef.current = null;
+    renderedRouteModeRef.current = null;
 
-    // Bump req id so any pending timers no-op
     routeReqIdRef.current += 1;
     setRouteBusy(false);
     // console.log(`[DashboardMap] route invalidated: ${reason}`);
   }
 
-  // --- Markers + geocoding ---
   function createCircleEl(color: string) {
     const el = document.createElement("div");
     el.style.width = "32px";
@@ -255,8 +261,6 @@ export default function DashboardMap({
     el.style.borderRadius = "50%";
     el.style.border = "3px solid white";
     el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
-
-    // Critical: allow Mapbox to own touch gestures; marker itself should not trigger browser gestures.
     el.style.touchAction = "none";
     return el;
   }
@@ -266,6 +270,7 @@ export default function DashboardMap({
     if (!token) return "Dropped Pin";
 
     const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1`;
+
     try {
       const res = await fetch(url);
       const data = await res.json();
@@ -332,23 +337,14 @@ export default function DashboardMap({
     }
 
     const el = createCircleEl("#2563eb");
-    const marker = new mapboxgl.Marker({ element: el, draggable: true, anchor: "center" })
+    const marker = new mapboxgl.Marker({ element: el, draggable: false, anchor: "center" })
       .setLngLat(lngLat)
       .addTo(map);
-
-    marker.on("dragstart", () => invalidateRouteNow("dest marker dragstart"));
-
-    marker.on("dragend", () => {
-      invalidateRouteNow("dest marker dragend");
-      const ll = marker.getLngLat();
-      void notifyDestinationPicked(ll);
-    });
 
     destMarkerRef.current = marker;
     return marker;
   }
 
-  // --- Directions fetching ---
   async function fetchDirectionsRoute(params: {
     from: mapboxgl.LngLat;
     to: mapboxgl.LngLat;
@@ -380,11 +376,8 @@ export default function DashboardMap({
     );
 
     const stats = computeRouteStats(elevations);
-
-    // Base score: lower = easier, higher = harder
     const baseScore = scoreEasy(stats);
 
-    // Distance penalty so “easy” doesn't win via silly detours
     const geomMeters = routeLengthMeters(coords);
     const distMeters = meta?.distanceMeters ?? geomMeters;
 
@@ -394,10 +387,34 @@ export default function DashboardMap({
     return { coords, elevations, score: baseScore + distancePenalty } as Variant;
   }
 
-  function drawVariantRoute(map: mapboxgl.Map, variant: Variant) {
-    clearRouteLayers(map);
-    sweepRef.current.clear(map);
+  function drawOverviewRoute(map: mapboxgl.Map, coords: [number, number][]) {
+    const id = "route-overview";
 
+    clearOverviewRoute(map);
+
+    map.addSource(id, {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: coords },
+        properties: {},
+      },
+    });
+
+    map.addLayer({
+      id,
+      type: "line",
+      source: id,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#2563eb",
+        "line-width": 6,
+        "line-opacity": 0.88,
+      },
+    } as any);
+  }
+
+  function drawVariantRoute(map: mapboxgl.Map, variant: Variant) {
     const segments = classifySegments(variant.elevations, variant.coords);
 
     segments.forEach((segment, index) => {
@@ -437,14 +454,31 @@ export default function DashboardMap({
       } as any);
     });
 
-    if (segments.length > 0) {
+    if (segments.length > 0 && map.getZoom() >= DETAIL_ROUTE_ZOOM_THRESHOLD) {
       sweepRef.current.ensure(map, variant.coords);
       setTimeout(() => {
         const m = mapRef.current;
         if (!m) return;
+        if (m.getZoom() < DETAIL_ROUTE_ZOOM_THRESHOLD) return;
         sweepRef.current.run(m);
       }, 120);
     }
+  }
+
+  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+    const nextMode = map.getZoom() < DETAIL_ROUTE_ZOOM_THRESHOLD ? "overview" : "detail";
+
+    clearOverviewRoute(map);
+    clearRouteLayers(map);
+    sweepRef.current.clear(map);
+
+    if (nextMode === "overview") {
+      drawOverviewRoute(map, variant.coords);
+    } else {
+      drawVariantRoute(map, variant);
+    }
+
+    renderedRouteModeRef.current = nextMode;
   }
 
   async function drawRouteBetweenPoints(
@@ -471,60 +505,14 @@ export default function DashboardMap({
         )
       );
 
-      const segments = classifySegments(elevations, coords);
+      const variant: Variant = {
+        coords,
+        elevations,
+        score: scoreEasy(computeRouteStats(elevations)),
+      };
 
-      clearRouteLayers(map);
-      sweepRef.current.clear(map);
-
-      segments.forEach((segment, index) => {
-        const color =
-          segment.difficulty === "easy"
-            ? "#22c55e"
-            : segment.difficulty === "medium"
-              ? "#eab308"
-              : segment.difficulty === "uphill"
-                ? "#7f1d1d"
-                : "#ef4444";
-
-        const id = `route-segment-${index}`;
-
-        try {
-          if (map.getLayer(id)) map.removeLayer(id);
-        } catch {}
-        try {
-          if (map.getSource(id)) map.removeSource(id);
-        } catch (err: any) {}
-
-        map.addSource(id, {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            geometry: { type: "LineString", coordinates: segment.coords },
-            properties: {},
-          },
-        });
-
-        map.addLayer({
-          id,
-          type: "line",
-          source: id,
-          layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": color, "line-width": 5, "line-opacity": 0.9 },
-        } as any);
-      });
-
-      if (segments.length > 0) {
-        sweepRef.current.ensure(map, coords);
-        onRouteDrawn?.();
-
-        const safeReqId = reqId;
-        setTimeout(() => {
-          if (safeReqId !== routeReqIdRef.current) return;
-          const m = mapRef.current;
-          if (!m) return;
-          sweepRef.current.run(m);
-        }, 120);
-      }
+      renderVariantForZoom(map, variant);
+      onRouteDrawn?.();
     };
 
     try {
@@ -584,13 +572,11 @@ export default function DashboardMap({
     setRouteBusy(true, reqId);
 
     try {
-      // 1) First try normal alternatives
       const baseData = await fetchDirectionsRoute({ from, to, signal: controller.signal });
       if (reqId !== routeReqIdRef.current) return;
 
       const baseRoutes: any[] = Array.isArray(baseData?.routes) ? baseData.routes : [];
 
-      // Baseline: shortest route among returned routes (fallback to geometry estimate)
       let baselineMeters = Infinity;
       for (const r of baseRoutes) {
         const d = typeof r?.distance === "number" ? r.distance : undefined;
@@ -599,7 +585,6 @@ export default function DashboardMap({
 
       const candidates: Variant[] = [];
 
-      // Build candidates from base routes (up to 4)
       for (const r of baseRoutes.slice(0, 4)) {
         const raw = r?.geometry?.coordinates as [number, number][] | undefined;
         if (!raw?.length) continue;
@@ -609,8 +594,9 @@ export default function DashboardMap({
         const geomMeters = routeLengthMeters(coords);
         const distMeters = typeof r?.distance === "number" ? r.distance : geomMeters;
 
-        if (!Number.isFinite(baselineMeters) || baselineMeters === Infinity)
+        if (!Number.isFinite(baselineMeters) || baselineMeters === Infinity) {
           baselineMeters = distMeters;
+        }
 
         if (
           isSillyRoute({
@@ -635,7 +621,6 @@ export default function DashboardMap({
         );
       }
 
-      // 2) Fallback: generate detour candidates if not enough uniques
       if (candidates.length < 2) {
         const mid = midpoint(from, to);
         const trip = from.distanceTo(to) ?? 1500;
@@ -651,6 +636,7 @@ export default function DashboardMap({
             via: wp,
             signal: controller.signal,
           });
+
           const detourRoutes: any[] = Array.isArray(detourData?.routes) ? detourData.routes : [];
           if (!detourRoutes.length) continue;
 
@@ -685,8 +671,6 @@ export default function DashboardMap({
 
       if (reqId !== routeReqIdRef.current) return;
 
-      // ✅ If our filtering was too strict (common on long trips), fall back to the first
-      // returned route so we still draw *something* and can resolve the planner UI.
       if (candidates.length === 0) {
         const first = baseRoutes[0];
         const raw = first?.geometry?.coordinates as [number, number][] | undefined;
@@ -704,16 +688,13 @@ export default function DashboardMap({
         }
       }
 
-      // If we still have nothing, bail.
       if (candidates.length === 0) return;
 
-      // 3) Pick easy/hard by score (lower = easier, higher = harder)
       const sorted = [...candidates].sort((a, b) => a.score - b.score);
 
       let easy = sorted[0];
       let hard = sorted[sorted.length - 1];
 
-      // If extremes are effectively the same path, pick the next-best option to ensure variety
       if (sorted.length > 1 && isNearDuplicateRoute(easy.coords, hard.coords)) {
         for (let i = sorted.length - 2; i >= 0; i--) {
           if (!isNearDuplicateRoute(easy.coords, sorted[i].coords)) {
@@ -734,14 +715,13 @@ export default function DashboardMap({
       variantsRef.current = { easy, hard };
       onVariantsReady?.();
 
-      // Default selection to easy
       if (!selectedVariantRef.current) {
         selectedVariantRef.current = "easy";
         onVariantSelected?.("easy");
       }
 
       const initial = selectedVariantRef.current ?? "easy";
-      drawVariantRoute(map, initial === "hard" ? hard : easy);
+      renderVariantForZoom(map, initial === "hard" ? hard : easy);
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("generateAlternativesBetweenPoints error:", err);
@@ -750,16 +730,13 @@ export default function DashboardMap({
     }
   }
 
-  // --- Controls styling injection (component-owned) ---
   const controlsCssText = useMemo(() => {
     return `
-      /* Position the Mapbox top-left control stack below our custom top-left overlay */
       .hf-map .mapboxgl-ctrl-top-left {
         top: var(--hf-mapbox-top-left-offset, 84px);
         left: 7px;
       }
 
-      /* Frosted-glass look to match Hillfinder UI */
       .hf-map .mapboxgl-ctrl-group {
         border: 1px solid rgba(255,255,255,0.45);
         border-radius: 16px;
@@ -770,31 +747,25 @@ export default function DashboardMap({
         -webkit-backdrop-filter: blur(14px);
       }
 
-      /* Buttons */
       .hf-map .mapboxgl-ctrl-group button {
         width: 42px;
         height: 42px;
       }
 
-      /* Subtle separators + hover */
       .hf-map .mapboxgl-ctrl-group button + button { border-top: 1px solid rgba(0,0,0,0.06); }
       .hf-map .mapboxgl-ctrl-group button:hover { background: rgba(255,255,255,0.85); }
       .hf-map .mapboxgl-ctrl-group button:active { background: rgba(255,255,255,0.92); }
 
-      /* Make icons read as “rich black” */
       .hf-map .mapboxgl-ctrl-icon { filter: saturate(0) brightness(0.15); }
 
-      /* Keep controls above the map canvas but below heavy overlays/modals */
       .hf-map .mapboxgl-ctrl-top-left { z-index: 6; }
     `;
   }, []);
 
-  // ✅ Map init + gesture capture (CSS-first; Mapbox owns gestures)
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
     if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && !mapboxgl.accessToken) return;
 
-    // Lock page scroll to prevent iOS rubber-banding. Avoid any preventDefault gesture handlers.
     const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevBodyOverflow = document.body.style.overflow;
     const prevBodyHeight = document.body.style.height;
@@ -805,7 +776,6 @@ export default function DashboardMap({
     document.body.style.height = "100%";
     (document.body.style as any).overscrollBehavior = "none";
 
-    // Inject per-component CSS for Mapbox controls
     const controlsStyleEl = document.createElement("style");
     controlsStyleEl.setAttribute("data-hf-mapbox-controls", "true");
     controlsStyleEl.textContent = controlsCssText;
@@ -821,7 +791,19 @@ export default function DashboardMap({
 
     mapRef.current = map;
 
-    // Let Mapbox fully own gestures; this prevents the “pinch zoom in but can't zoom out” iOS bug.
+    const rerenderForZoom = () => {
+      const v = variantsRef.current;
+      if (!v) return;
+
+      const nextMode = map.getZoom() < DETAIL_ROUTE_ZOOM_THRESHOLD ? "overview" : "detail";
+      if (renderedRouteModeRef.current === nextMode) return;
+
+      const active = (selectedVariantRef.current ?? "easy") === "hard" ? v.hard : v.easy;
+      renderVariantForZoom(map, active);
+    };
+
+    map.on("zoomend", rerenderForZoom);
+
     map.dragPan.enable();
     map.touchZoomRotate.enable();
     map.touchZoomRotate.disableRotation();
@@ -829,7 +811,6 @@ export default function DashboardMap({
     map.scrollZoom.enable();
     map.keyboard.enable();
 
-    // Container gesture CSS: ensure browser doesn't treat this as a page-scroll surface.
     const containerEl = map.getContainer();
     const canvasContainerEl = map.getCanvasContainer();
 
@@ -838,21 +819,11 @@ export default function DashboardMap({
     (containerEl.style as any).overscrollBehavior = "none";
     (canvasContainerEl.style as any).overscrollBehavior = "none";
 
-    // Offset Mapbox controls under your top-left overlay
     containerEl.style.setProperty(
       "--hf-mapbox-top-left-offset",
       `${TOP_LEFT_CONTROLS_OFFSET_PX}px`
     );
 
-    const geolocate = new mapboxgl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-      showUserHeading: true,
-      showUserLocation: true,
-    });
-    map.addControl(geolocate, "top-right");
-
-    // Seed FROM immediately (prevents “missing from” UI flicker)
     try {
       const center = map.getCenter();
       ensureFromMarker(map, center);
@@ -876,15 +847,12 @@ export default function DashboardMap({
         lng: lngLat.lng,
       });
 
-      if (allowed === false) {
-        return;
-      }
+      if (allowed === false) return;
 
       ensureDestMarker(mapRef.current, lngLat);
       void notifyDestinationPicked(lngLat);
     }
 
-    // Reliable click/tap selection without extra touch listeners
     let lastTapAt = 0;
     map.on("click", (e) => {
       const now = Date.now();
@@ -895,7 +863,6 @@ export default function DashboardMap({
     });
 
     map.on("load", () => {
-      // Terrain
       try {
         map.addSource("mapbox-dem", {
           type: "raster-dem",
@@ -906,7 +873,6 @@ export default function DashboardMap({
         map.setTerrain({ source: "mapbox-dem", exaggeration: 1 });
       } catch {}
 
-      // Initial GPS
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords;
@@ -940,6 +906,15 @@ export default function DashboardMap({
       } catch {}
 
       try {
+        clearOverviewRoute(map);
+        clearRouteLayers(map);
+      } catch {}
+
+      try {
+        map.off("zoomend", rerenderForZoom);
+      } catch {}
+
+      try {
         map.remove();
       } catch {}
       mapRef.current = null;
@@ -954,25 +929,37 @@ export default function DashboardMap({
     };
   }, [controlsCssText]);
 
-  // Mirror destination marker + fly to it (do not auto-draw)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // If destination is cleared, remove the marker.
     if (!destination) {
       try {
         destMarkerRef.current?.remove();
       } catch {}
       destMarkerRef.current = null;
+
+      clearOverviewRoute(map);
+      clearRouteLayers(map);
+      sweepRef.current.clear(map);
+      renderedRouteModeRef.current = null;
+
       return;
     }
 
+    const existing = destMarkerRef.current?.getLngLat();
+    const changed =
+      !existing ||
+      Math.abs(existing.lng - destination.lng) > 0.00005 ||
+      Math.abs(existing.lat - destination.lat) > 0.00005;
+
     ensureDestMarker(map, [destination.lng, destination.lat]);
-    map.flyTo({ center: [destination.lng, destination.lat], zoom: 15, essential: true });
+
+    if (changed) {
+      map.flyTo({ center: [destination.lng, destination.lat], zoom: 15, essential: true });
+    }
   }, [destination]);
 
-  // Draw route only when routeRequestNonce changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -985,17 +972,21 @@ export default function DashboardMap({
     void drawRouteBetweenPoints(map, from, to);
   }, [routeRequestNonce]);
 
-  // Clear route when parent bumps the nonce
   useEffect(() => {
     const map = mapRef.current;
     if (clearRouteNonce == null) return;
     if (!map) return;
 
+    abortRef.current?.abort();
+    routeReqIdRef.current += 1;
+
+    clearOverviewRoute(map);
     clearRouteLayers(map);
     sweepRef.current.clear(map);
 
     lastGoodDestRef.current = null;
     variantsRef.current = null;
+    renderedRouteModeRef.current = null;
     setRouteBusy(false);
   }, [clearRouteNonce]);
 
@@ -1004,43 +995,69 @@ export default function DashboardMap({
     if (!map) return;
     if (clearDestinationNonce == null) return;
 
-    // Remove destination marker
+    abortRef.current?.abort();
+    routeReqIdRef.current += 1;
+
     try {
       destMarkerRef.current?.remove();
     } catch {}
     destMarkerRef.current = null;
 
-    // Clear any drawn routes/sweeps tied to the destination
+    clearOverviewRoute(map);
     clearRouteLayers(map);
     sweepRef.current.clear(map);
     lastGoodDestRef.current = null;
     variantsRef.current = null;
+    renderedRouteModeRef.current = null;
     setRouteBusy(false);
   }, [clearDestinationNonce]);
 
-  // Recenter map on the FROM location when requested
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (!recenterNonce) return; // optional: prevents running on mount
+    if (!recenterNonce) return;
 
-    // Prefer parent state; fall back to the marker (works even if parent state is temporarily null)
-    const markerLL = fromMarkerRef.current?.getLngLat();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const ll = new mapboxgl.LngLat(longitude, latitude);
 
-    const lng = fromLocation?.lng ?? markerLL?.lng;
-    const lat = fromLocation?.lat ?? markerLL?.lat;
+        const existing = fromMarkerRef.current?.getLngLat();
 
-    if (lng == null || lat == null) return;
+        if (
+          !existing ||
+          Math.abs(existing.lng - ll.lng) > 0.00005 ||
+          Math.abs(existing.lat - ll.lat) > 0.00005
+        ) {
+          ensureFromMarker(map, ll);
+        }
+        void notifyFromPicked(ll, { immediateName: "Current location" });
 
-    map.easeTo({
-      center: [lng, lat],
-      zoom: Math.max(map.getZoom(), 14),
-      duration: 550,
-      essential: true,
-    });
-  }, [recenterNonce, fromLocation]);
+        map.easeTo({
+          center: [longitude, latitude],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 550,
+          essential: true,
+        });
+      },
+      () => {
+        const markerLL = fromMarkerRef.current?.getLngLat();
+        const lng = fromLocation?.lng ?? markerLL?.lng;
+        const lat = fromLocation?.lat ?? markerLL?.lat;
 
-  // Build + draw two alternatives when requested
+        if (lng == null || lat == null) return;
+
+        map.easeTo({
+          center: [lng, lat],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 550,
+          essential: true,
+        });
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  }, [recenterNonce]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -1053,27 +1070,18 @@ export default function DashboardMap({
     void generateAlternativesBetweenPoints(map, from, to);
   }, [routeAlternativesNonce]);
 
-  // Switch the rendered variant when selected
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     if (!selectedVariant) return;
 
+    selectedVariantRef.current = selectedVariant;
+
     const v = variantsRef.current;
     if (!v) return;
 
-    drawVariantRoute(map, selectedVariant === "hard" ? v.hard : v.easy);
+    renderVariantForZoom(map, selectedVariant === "hard" ? v.hard : v.easy);
   }, [selectedVariant]);
-
-  // Keep the FROM marker synced with parent state
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (!fromLocation) return;
-
-    const ll = new mapboxgl.LngLat(fromLocation.lng, fromLocation.lat);
-    ensureFromMarker(map, ll);
-  }, [fromLocation]);
 
   return (
     <div
