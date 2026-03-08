@@ -175,9 +175,9 @@ export default function DownhillGenerator({
     waitTimerRef.current = window.setTimeout(() => {
       setWaitingForVariants(false);
       setLoading(false);
-      setMessage("Route is taking longer than expected — try again.");
+      setMessage("Still working on your route — it should appear shortly.");
       waitTimerRef.current = null;
-    }, 12000);
+    }, 18000);
   }
 
   async function handleGenerate(destOverride?: string) {
@@ -545,146 +545,169 @@ export default function DownhillGenerator({
                 <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
               </div>
               <ShimmerBar visible={loading || waitingForVariants} />
-
-              <label className="block text-sm font-medium text-gray-700">From</label>
-              <input
-                type="text"
-                placeholder="Current location"
-                value={fromLabel}
-                readOnly
-                className="w-full mt-1 mb-4 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-default"
-              />
-
-              <label className="block text-sm font-medium text-gray-700">To</label>
-
               <div className="relative mb-4">
-                <input
-                  type="text"
-                  placeholder="Search for a destination"
-                  value={to}
-                  ref={toInputRef}
-                  disabled={controlsLocked}
-                  aria-disabled={controlsLocked}
-                  onChange={(e) => {
-                    if (controlsLocked) return;
-                    const next = e.target.value;
-
-                    userEditingRef.current = true;
-                    window.setTimeout(() => (userEditingRef.current = false), 350);
-
-                    setTo(next);
-                    onToChange?.(next);
-
-                    setGeneratedKey("");
-                    setWaitingForVariants(false);
-                    clearWaitTimer();
-
-                    setUiVariant(null);
-                    onVariantSelected?.(null);
-
-                    suppressOpenRef.current = false;
-                    setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
-                    setMessage("");
-                  }}
-                  onFocus={() => {
-                    if (controlsLocked) return;
-                    isFocusedRef.current = true;
-                    if (suggestions.length && !suppressOpenRef.current) setSuggestOpen(true);
-                  }}
-                  onBlur={() => {
-                    isFocusedRef.current = false;
-                    window.setTimeout(() => {
-                      if (!isFocusedRef.current) setSuggestOpen(false);
-                    }, 120);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      setSuggestOpen(false);
-                      setMessage("");
-                      (e.target as HTMLInputElement).blur();
-                    }
-                  }}
-                  className={[
-                    "w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500",
-                    controlsLocked ? "bg-gray-100 text-gray-500 cursor-not-allowed" : "bg-white",
-                  ].join(" ")}
+                <div
+                  aria-hidden="true"
+                  className="absolute left-[10px] top-[28px] bottom-[28px] w-px bg-slate-300/80"
                 />
 
-                <AnimatePresence>
-                  {showSuggest && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -3, scale: 0.985 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -3, scale: 0.985 }}
-                      transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
-                      className={[
-                        "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
-                        "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
-                        "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
-                        "pointer-events-auto",
-                      ].join(" ")}
-                      style={{
-                        backgroundColor: "rgba(255,255,255,0.98)",
-                        backdropFilter: "blur(20px)",
-                        WebkitBackdropFilter: "blur(20px)",
-                      }}
-                    >
-                      <div className="max-h-56 overflow-auto divide-y divide-slate-200/40">
-                        {suggestions.map((s) => (
-                          <button
-                            key={s.id}
-                            type="button"
-                            disabled={controlsLocked}
-                            aria-disabled={controlsLocked}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    {" "}
+                    <div
+                      aria-hidden="true"
+                      className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
+                    />
+                    <label className="w-8 shrink-0 text-sm font-medium text-gray-700">From</label>
+                    <input
+                      type="text"
+                      placeholder="Current location"
+                      value={fromLabel}
+                      readOnly
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-default"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {" "}
+                    <div
+                      aria-hidden="true"
+                      className="h-5 w-5 shrink-0 rounded-full border-2 border-sky-600 bg-white shadow-sm"
+                    />
+                    <label className="w-8 shrink-0 text-sm font-medium text-gray-700">To</label>
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder="Search for a destination"
+                        value={to}
+                        ref={toInputRef}
+                        disabled={controlsLocked}
+                        aria-disabled={controlsLocked}
+                        onChange={(e) => {
+                          if (controlsLocked) return;
+                          const next = e.target.value;
+
+                          userEditingRef.current = true;
+                          window.setTimeout(() => (userEditingRef.current = false), 350);
+
+                          setTo(next);
+                          onToChange?.(next);
+
+                          setGeneratedKey("");
+                          setWaitingForVariants(false);
+                          clearWaitTimer();
+
+                          setUiVariant(null);
+                          onVariantSelected?.(null);
+
+                          suppressOpenRef.current = false;
+                          setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
+                          setMessage("");
+                        }}
+                        onFocus={() => {
+                          if (controlsLocked) return;
+                          isFocusedRef.current = true;
+                          if (suggestions.length && !suppressOpenRef.current) setSuggestOpen(true);
+                        }}
+                        onBlur={() => {
+                          isFocusedRef.current = false;
+                          window.setTimeout(() => {
+                            if (!isFocusedRef.current) setSuggestOpen(false);
+                          }, 120);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setSuggestOpen(false);
+                            setMessage("");
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        className={[
+                          "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500",
+                          controlsLocked
+                            ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                            : "bg-white",
+                        ].join(" ")}
+                      />
+
+                      <AnimatePresence>
+                        {showSuggest && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -3, scale: 0.985 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -3, scale: 0.985 }}
+                            transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
                             className={[
-                              "w-full text-left px-3 py-3 text-sm font-medium transition",
-                              controlsLocked
-                                ? "text-slate-400 cursor-not-allowed"
-                                : "text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10",
+                              "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
+                              "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
+                              "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
+                              "pointer-events-auto",
                             ].join(" ")}
-                            onPointerDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }}
-                            onClick={() => {
-                              if (controlsLocked) return;
-                              suppressOpenRef.current = true;
-                              abortRef.current?.abort();
-                              abortRef.current = null;
-
-                              setTo(s.placeName);
-                              setMessage("");
-                              onToChange?.(s.placeName);
-
-                              setSuggestOpen(false);
-                              setGeneratedKey("");
-                              setWaitingForVariants(false);
-                              clearWaitTimer();
-
-                              setUiVariant(null);
-                              onVariantSelected?.(null);
-
-                              onDestinationSelected?.({
-                                name: s.placeName,
-                                lat: s.lat,
-                                lng: s.lng,
-                              });
-
-                              isFocusedRef.current = false;
-                              toInputRef.current?.blur();
-
-                              window.setTimeout(() => {
-                                suppressOpenRef.current = false;
-                              }, 200);
+                            style={{
+                              backgroundColor: "rgba(255,255,255,0.98)",
+                              backdropFilter: "blur(20px)",
+                              WebkitBackdropFilter: "blur(20px)",
                             }}
                           >
-                            <div className="truncate">{s.placeName}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                            <div className="max-h-56 overflow-auto divide-y divide-slate-200/40">
+                              {suggestions.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  disabled={controlsLocked}
+                                  aria-disabled={controlsLocked}
+                                  className={[
+                                    "w-full text-left px-3 py-3 text-sm font-medium transition",
+                                    controlsLocked
+                                      ? "text-slate-400 cursor-not-allowed"
+                                      : "text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10",
+                                  ].join(" ")}
+                                  onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={() => {
+                                    if (controlsLocked) return;
+                                    suppressOpenRef.current = true;
+                                    abortRef.current?.abort();
+                                    abortRef.current = null;
+
+                                    setTo(s.placeName);
+                                    setMessage("");
+                                    onToChange?.(s.placeName);
+
+                                    setSuggestOpen(false);
+                                    setGeneratedKey("");
+                                    setWaitingForVariants(false);
+                                    clearWaitTimer();
+
+                                    setUiVariant(null);
+                                    onVariantSelected?.(null);
+
+                                    onDestinationSelected?.({
+                                      name: s.placeName,
+                                      lat: s.lat,
+                                      lng: s.lng,
+                                    });
+
+                                    isFocusedRef.current = false;
+                                    toInputRef.current?.blur();
+
+                                    window.setTimeout(() => {
+                                      suppressOpenRef.current = false;
+                                    }, 200);
+                                  }}
+                                >
+                                  <div className="truncate">{s.placeName}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-3">
