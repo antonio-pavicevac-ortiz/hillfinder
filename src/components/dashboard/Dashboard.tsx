@@ -123,6 +123,14 @@ export default function Dashboard() {
     setClearDestinationNonce((n) => n + 1);
   }
 
+  async function waitForMapStateToSettle() {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+  }
+
   useEffect(() => {
     if (!routeBusy) return;
 
@@ -137,6 +145,12 @@ export default function Dashboard() {
       toast.dismiss(id);
     };
   }, [routeBusy]);
+
+  useEffect(() => {
+    if (!generatorOpen) return;
+    if (!variantsReady) return;
+    setGeneratorOpen(false);
+  }, [generatorOpen, variantsReady]);
 
   return (
     <main className="fixed inset-0 bg-white">
@@ -172,6 +186,7 @@ export default function Dashboard() {
           toast.dismiss("hf-route-loading");
           setVariantsReady(true);
           setHasRoute(true);
+          setGeneratorOpen(false);
         }}
         onVariantSelected={(v) => setSelectedVariant(v)}
         onFromPicked={(loc) => {
@@ -255,6 +270,8 @@ export default function Dashboard() {
         selectedVariant={selectedVariant}
         onVariantSelected={(v) => setSelectedVariant(v)}
         onGenerate={async ({ variant }) => {
+          if (routeBusy) return;
+
           setVariantsReady(false);
           setSelectedVariant(variant);
           const q = plannerTo.trim();
@@ -286,9 +303,15 @@ export default function Dashboard() {
                   return;
                 }
               }
-            } catch {}
+            } catch {
+              setRouteBusy(false);
+              toast.dismiss("hf-route-loading");
+              return;
+            }
           }
 
+          setSelectedVariant(variant);
+          await waitForMapStateToSettle();
           setRouteAlternativesNonce((n) => n + 1);
         }}
         blocked={blocked}

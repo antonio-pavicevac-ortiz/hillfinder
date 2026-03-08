@@ -223,6 +223,32 @@ export default function DashboardMap({
     ];
   }
 
+  function detourWaypointRings(from: mapboxgl.LngLat, to: mapboxgl.LngLat) {
+    const mid = midpoint(from, to);
+    const trip = from.distanceTo(to) ?? 1500;
+
+    const radii = [
+      clamp(trip * 0.05, 90, 180),
+      clamp(trip * 0.09, 160, 320),
+      clamp(trip * 0.14, 260, 520),
+      clamp(trip * 0.2, 360, 760),
+    ];
+
+    const seen = new Set<string>();
+    const waypoints: mapboxgl.LngLat[] = [];
+
+    for (const radius of radii) {
+      for (const wp of detourWaypoints(mid, radius)) {
+        const key = `${wp.lng.toFixed(5)},${wp.lat.toFixed(5)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        waypoints.push(wp);
+      }
+    }
+
+    return waypoints;
+  }
+
   function clearOverviewRoute(map: mapboxgl.Map) {
     const id = "route-overview";
 
@@ -622,10 +648,7 @@ export default function DashboardMap({
       }
 
       if (candidates.length < 2) {
-        const mid = midpoint(from, to);
-        const trip = from.distanceTo(to) ?? 1500;
-        const approxMeters = clamp(trip * 0.06, 120, 420);
-        const waypoints = detourWaypoints(mid, approxMeters);
+        const waypoints = detourWaypointRings(from, to);
 
         for (const wp of waypoints) {
           if (reqId !== routeReqIdRef.current) return;
@@ -640,32 +663,42 @@ export default function DashboardMap({
           const detourRoutes: any[] = Array.isArray(detourData?.routes) ? detourData.routes : [];
           if (!detourRoutes.length) continue;
 
-          const raw = detourRoutes[0]?.geometry?.coordinates as [number, number][] | undefined;
-          if (!raw?.length) continue;
+          for (const detourRoute of detourRoutes.slice(0, 2)) {
+            const raw = detourRoute?.geometry?.coordinates as [number, number][] | undefined;
+            if (!raw?.length) continue;
 
-          const coords = resampleCoords(raw);
+            const coords = resampleCoords(raw);
+            const geomMeters = routeLengthMeters(coords);
+            const distMeters =
+              typeof detourRoute?.distance === "number" ? detourRoute.distance : geomMeters;
 
-          const geomMeters = routeLengthMeters(coords);
-          const distMeters =
-            typeof detourRoutes[0]?.distance === "number" ? detourRoutes[0].distance : geomMeters;
+            if (
+              isSillyRoute({
+                from,
+                to,
+                routeMeters: distMeters,
+                baselineMeters,
+                maxDetourRatio: 1.28,
+                maxLoopiness: 2.35,
+              })
+            ) {
+              continue;
+            }
 
-          if (
-            isSillyRoute({
-              from,
-              to,
-              routeMeters: distMeters,
-              baselineMeters,
-              maxDetourRatio: 1.12,
-              maxLoopiness: 2.0,
-            })
-          ) {
-            continue;
+            if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
+
+            candidates.push(
+              await buildVariant(map, coords, {
+                distanceMeters: distMeters,
+                durationSeconds:
+                  typeof detourRoute?.duration === "number" ? detourRoute.duration : undefined,
+              })
+            );
+
+            if (candidates.length >= 6) break;
           }
 
-          if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
-
-          candidates.push(await buildVariant(map, coords, { distanceMeters: distMeters }));
-          if (candidates.length >= 4) break;
+          if (candidates.length >= 6) break;
         }
       }
 
@@ -695,6 +728,21 @@ export default function DashboardMap({
       let easy = sorted[0];
       let hard = sorted[sorted.length - 1];
 
+      const MIN_SCORE_GAP = 0.22;
+
+      if (sorted.length > 1 && Math.abs(hard.score - easy.score) < MIN_SCORE_GAP) {
+        const sufficientlyDifferent = sorted.findLast(
+          (candidate) =>
+            candidate !== easy &&
+            Math.abs(candidate.score - easy.score) >= MIN_SCORE_GAP &&
+            !isNearDuplicateRoute(candidate.coords, easy.coords)
+        );
+
+        if (sufficientlyDifferent) {
+          hard = sufficientlyDifferent;
+        }
+      }
+
       if (sorted.length > 1 && isNearDuplicateRoute(easy.coords, hard.coords)) {
         for (let i = sorted.length - 2; i >= 0; i--) {
           if (!isNearDuplicateRoute(easy.coords, sorted[i].coords)) {
@@ -713,7 +761,6 @@ export default function DashboardMap({
       }
 
       variantsRef.current = { easy, hard };
-      onVariantsReady?.();
 
       if (!selectedVariantRef.current) {
         selectedVariantRef.current = "easy";
@@ -722,6 +769,7 @@ export default function DashboardMap({
 
       const initial = selectedVariantRef.current ?? "easy";
       renderVariantForZoom(map, initial === "hard" ? hard : easy);
+      onVariantsReady?.();
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("generateAlternativesBetweenPoints error:", err);
