@@ -30,6 +30,7 @@ export default function DashboardMap({
   destination,
   clearRouteNonce,
   onRouteDrawn,
+  onRouteFailed,
   onDestinationPicked,
   routeRequestNonce,
   routeActive,
@@ -47,6 +48,7 @@ export default function DashboardMap({
   destination?: Destination | null;
   clearRouteNonce?: number;
   onRouteDrawn?: () => void;
+  onRouteFailed?: (message?: string) => void;
   onDestinationPicked?: (loc: { name: string; lat: number; lng: number }) => void;
   routeRequestNonce?: number;
   routeActive?: boolean;
@@ -558,6 +560,7 @@ export default function DashboardMap({
           destMarkerRef.current.setLngLat(fallback);
           void notifyDestinationPicked(fallback);
         }
+        onRouteFailed?.("We couldn’t generate a route for that selection.");
         return;
       }
 
@@ -576,6 +579,7 @@ export default function DashboardMap({
         destMarkerRef.current.setLngLat(fallback);
         void notifyDestinationPicked(fallback);
       }
+      onRouteFailed?.("Something went wrong generating the route.");
     } finally {
       setRouteBusy(false, reqId);
     }
@@ -721,8 +725,10 @@ export default function DashboardMap({
         }
       }
 
-      if (candidates.length === 0) return;
-
+      if (candidates.length === 0) {
+        onRouteFailed?.("We couldn’t generate a route for that selection.");
+        return;
+      }
       const sorted = [...candidates].sort((a, b) => a.score - b.score);
 
       let easy = sorted[0];
@@ -769,10 +775,12 @@ export default function DashboardMap({
 
       const initial = selectedVariantRef.current ?? "easy";
       renderVariantForZoom(map, initial === "hard" ? hard : easy);
+      onRouteDrawn?.();
       onVariantsReady?.();
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("generateAlternativesBetweenPoints error:", err);
+      onRouteFailed?.("Something went wrong generating the route.");
     } finally {
       setRouteBusy(false, reqId);
     }
@@ -854,7 +862,6 @@ export default function DashboardMap({
 
     map.dragPan.enable();
     map.touchZoomRotate.enable();
-    map.touchZoomRotate.disableRotation();
     map.doubleClickZoom.enable();
     map.scrollZoom.enable();
     map.keyboard.enable();
@@ -1123,12 +1130,35 @@ export default function DashboardMap({
     if (!map) return;
     if (!selectedVariant) return;
 
-    selectedVariantRef.current = selectedVariant;
-
     const v = variantsRef.current;
     if (!v) return;
 
-    renderVariantForZoom(map, selectedVariant === "hard" ? v.hard : v.easy);
+    const active = selectedVariant === "hard" ? v.hard : v.easy;
+
+    renderVariantForZoom(map, active);
+
+    if (active.coords.length >= 2) {
+      const bounds = new mapboxgl.LngLatBounds();
+
+      active.coords.forEach(([lng, lat]) => {
+        bounds.extend([lng, lat]);
+      });
+
+      const isHard = selectedVariant === "hard";
+
+      map.fitBounds(bounds, {
+        padding: {
+          top: isHard ? 110 : 140,
+          right: 40,
+          bottom: 140,
+          left: 40,
+        },
+        duration: 700,
+        curve: 1.4,
+        essential: true,
+        maxZoom: isHard ? 17 : 16,
+      });
+    }
   }, [selectedVariant]);
 
   return (
