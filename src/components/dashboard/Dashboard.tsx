@@ -106,7 +106,6 @@ export default function Dashboard() {
     setVariantsReady(false);
     setSelectedVariant(null);
     setRouteBusy(false);
-    toast.dismiss("hf-route-loading");
     setClearRouteNonce((n) => n + 1);
   }
 
@@ -118,7 +117,6 @@ export default function Dashboard() {
     setVariantsReady(false);
     setSelectedVariant(null);
     setRouteBusy(false);
-    toast.dismiss("hf-route-loading");
     setClearRouteNonce((n) => n + 1);
     setClearDestinationNonce((n) => n + 1);
   }
@@ -131,20 +129,20 @@ export default function Dashboard() {
     });
   }
 
-  useEffect(() => {
-    if (!routeBusy) return;
+  function handleRouteReady() {
+    setRouteBusy(false);
+    setVariantsReady(true);
+    setHasRoute(true);
+    setGeneratorOpen(false);
+  }
 
-    const id = "hf-route-loading";
-
-    toast.loading("Finding downhill routes…", {
-      id,
-      duration: Infinity,
-    });
-
-    return () => {
-      toast.dismiss(id);
-    };
-  }, [routeBusy]);
+  function handleRouteFailed(message?: string) {
+    setRouteBusy(false);
+    setVariantsReady(false);
+    if (message) {
+      toast.error(message);
+    }
+  }
 
   useEffect(() => {
     if (!generatorOpen) return;
@@ -165,7 +163,6 @@ export default function Dashboard() {
           setPlannerTo("");
           setBlocked(false);
           setRouteBusy(false);
-          toast.dismiss("hf-route-loading");
           clearRoute();
         }}
       />
@@ -176,17 +173,15 @@ export default function Dashboard() {
         recenterNonce={recenterNonce}
         clearRouteNonce={clearRouteNonce}
         clearDestinationNonce={clearDestinationNonce}
+        onRouteDrawn={handleRouteReady}
+        onRouteFailed={handleRouteFailed}
         routeActive={hasRoute}
         routeAlternativesNonce={routeAlternativesNonce}
         selectedVariant={selectedVariant}
         onRouteBusyChange={setRouteBusy}
         onVariantsReady={() => {
           console.log("[Dashboard] variantsReady true");
-          setRouteBusy(false);
-          toast.dismiss("hf-route-loading");
-          setVariantsReady(true);
-          setHasRoute(true);
-          setGeneratorOpen(false);
+          handleRouteReady();
         }}
         onVariantSelected={(v) => setSelectedVariant(v)}
         onFromPicked={(loc) => {
@@ -232,6 +227,7 @@ export default function Dashboard() {
           if (!destination || routeBusy) return;
 
           setQaOpen(false);
+          clearRoute();
           setVariantsReady(false);
           setSelectedVariant("easy");
           setRouteAlternativesNonce((n) => n + 1);
@@ -272,6 +268,7 @@ export default function Dashboard() {
         onGenerate={async ({ variant }) => {
           if (routeBusy) return;
 
+          clearRoute();
           setVariantsReady(false);
           setSelectedVariant(variant);
           const q = plannerTo.trim();
@@ -299,14 +296,12 @@ export default function Dashboard() {
                 const accepted = commitDestination(next);
                 if (!accepted) {
                   setRouteBusy(false);
-                  toast.dismiss("hf-route-loading");
-                  return;
+                  throw Object.assign(new Error("blocked destination"), { hfSilent: true });
                 }
               }
             } catch {
               setRouteBusy(false);
-              toast.dismiss("hf-route-loading");
-              return;
+              throw Object.assign(new Error("geocoding failed"), { hfSilent: true });
             }
           }
 

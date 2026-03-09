@@ -131,6 +131,7 @@ export default function DownhillGenerator({
   const suggestReqSeqRef = useRef(0);
 
   const waitTimerRef = useRef<number | null>(null);
+  const failTimerRef = useRef<number | null>(null);
 
   const userEditingRef = useRef(false);
   const isFocusedRef = useRef(false);
@@ -167,17 +168,33 @@ export default function DownhillGenerator({
       window.clearTimeout(waitTimerRef.current);
       waitTimerRef.current = null;
     }
+
+    if (failTimerRef.current != null) {
+      window.clearTimeout(failTimerRef.current);
+      failTimerRef.current = null;
+    }
   }
 
   function startWaitTimer() {
     clearWaitTimer();
 
     waitTimerRef.current = window.setTimeout(() => {
+      setMessage("Still working on your route — this is taking longer than usual.");
+      waitTimerRef.current = null;
+    }, 8000);
+
+    failTimerRef.current = window.setTimeout(() => {
       setWaitingForVariants(false);
       setLoading(false);
-      setMessage("Still working on your route — it should appear shortly.");
-      waitTimerRef.current = null;
-    }, 18000);
+      setGeneratedKey("");
+      lastCommittedRef.current = null;
+      setMessage("Please try another destination.");
+      onToast?.({
+        kind: "error",
+        message: "We couldn’t generate a route. Please try again.",
+      });
+      failTimerRef.current = null;
+    }, 25000);
   }
 
   async function handleGenerate(destOverride?: string) {
@@ -214,7 +231,7 @@ export default function DownhillGenerator({
 
     setLoading(true);
     setWaitingForVariants(true);
-    setMessage("Computing your route…");
+    setMessage("Finding downhill routes…");
     startWaitTimer();
 
     try {
@@ -226,8 +243,7 @@ export default function DownhillGenerator({
       await onGenerate({ from: fromLabel, to: dest, variant: uiVariant });
 
       onVariantSelected?.(uiVariant);
-
-      setMessage("Computing your route…");
+      setMessage("Finding downhill routes…");
     } catch (err: any) {
       setWaitingForVariants(false);
       clearWaitTimer();
@@ -384,6 +400,7 @@ export default function DownhillGenerator({
     if (!canPickDifficulty) return;
 
     setUiVariant(v);
+    setMessage("");
 
     suppressOpenRef.current = true;
     setSuggestOpen(false);
@@ -452,7 +469,7 @@ export default function DownhillGenerator({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="absolute inset-0 z-[16] flex items-center justify-center pointer-events-auto"
+            className="absolute inset-0 z-[16] flex items-center justify-center px-6 pointer-events-auto"
             onClick={(e) => {
               e.stopPropagation();
             }}
@@ -460,14 +477,14 @@ export default function DownhillGenerator({
               e.stopPropagation();
             }}
           >
-            <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
+            <div className="absolute inset-0 bg-black/28 backdrop-blur-[1px]" aria-hidden="true" />
 
             <motion.div
               initial={{ scale: 0.98, y: 6, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.98, y: 6, opacity: 0 }}
               transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.9 }}
-              className="relative z-[1] flex items-center gap-3 rounded-xl bg-black/90 px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)]"
+              className="relative z-[1] inline-flex min-w-[16rem] max-w-[20rem] items-center gap-3 rounded-2xl border border-emerald-500/20 bg-black px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.45)]"
               role="status"
               aria-live="polite"
               aria-label="Loading"
@@ -478,7 +495,9 @@ export default function DownhillGenerator({
                 transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
                 aria-hidden="true"
               />
-              <span className="text-sm font-semibold text-white/90">Loading</span>
+              <span className="text-sm font-semibold text-white/90">
+                {message || "Finding downhill routes…"}
+              </span>
             </motion.div>
           </motion.div>
         )}
@@ -544,7 +563,9 @@ export default function DownhillGenerator({
               <div className="flex items-center justify-center">
                 <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
               </div>
+
               <ShimmerBar visible={loading || waitingForVariants} />
+
               <div className="relative mb-4">
                 <div
                   aria-hidden="true"
@@ -553,7 +574,6 @@ export default function DownhillGenerator({
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    {" "}
                     <div
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
@@ -569,7 +589,6 @@ export default function DownhillGenerator({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {" "}
                     <div
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-sky-600 bg-white shadow-sm"
@@ -822,7 +841,7 @@ export default function DownhillGenerator({
                           transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.8 }}
                           className="mt-2 text-center text-xs text-slate-600"
                         >
-                          Computing your route
+                          Finding downhill routes
                           <InlineDots />
                         </motion.p>
                       )}
@@ -869,7 +888,7 @@ export default function DownhillGenerator({
                 >
                   {loading || waitingForVariants ? (
                     <span className="inline-flex items-center justify-center">
-                      Computing
+                      Finding
                       <InlineDots className="ml-1" />
                     </span>
                   ) : isGenerated ? (
@@ -886,7 +905,7 @@ export default function DownhillGenerator({
                 )}
               </div>
 
-              {message && (
+              {!controlsLocked && message && message !== "Finding downhill routes…" && (
                 <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">
                   {message}
                 </p>
