@@ -221,6 +221,21 @@ export default function DownhillGenerator({
       return;
     }
 
+    const activeDestination = (initialTo ?? "").trim();
+    const hasGeneratedVariantsForDestination =
+      variantsReady &&
+      !!lastCommittedRef.current &&
+      lastCommittedRef.current.key.startsWith(`${dest}::`) &&
+      activeDestination === dest;
+
+    if (hasGeneratedVariantsForDestination) {
+      onVariantSelected?.(uiVariant);
+      setGeneratedKey(nextKey);
+      setMessage("");
+      requestAnimationFrame(() => onClose());
+      return;
+    }
+
     suppressOpenRef.current = true;
     setSuggestOpen(false);
     setSuggestions([]);

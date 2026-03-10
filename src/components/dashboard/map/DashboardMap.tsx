@@ -68,6 +68,7 @@ export default function DashboardMap({
 
   const fromMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const latestDeviceLocationRef = useRef<mapboxgl.LngLat | null>(null);
 
   const tileCacheRef = useRef<Map<TileKey, Promise<Uint8ClampedArray>>>(new Map());
 
@@ -826,6 +827,7 @@ export default function DashboardMap({
     const prevBodyOverflow = document.body.style.overflow;
     const prevBodyHeight = document.body.style.height;
     const prevBodyOverscroll = (document.body.style as any).overscrollBehavior;
+    let watchId: number | null = null;
 
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
@@ -932,12 +934,26 @@ export default function DashboardMap({
         (pos) => {
           const { latitude, longitude } = pos.coords;
           const ll = new mapboxgl.LngLat(longitude, latitude);
+          latestDeviceLocationRef.current = ll;
           ensureFromMarker(map, ll);
           void notifyFromPicked(ll, { immediateName: "Current location" });
           map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
         },
         () => {},
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          const ll = new mapboxgl.LngLat(longitude, latitude);
+          latestDeviceLocationRef.current = ll;
+        },
+        () => {},
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+        }
       );
     });
 
@@ -973,6 +989,10 @@ export default function DashboardMap({
         map.remove();
       } catch {}
       mapRef.current = null;
+
+      if (watchId != null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
 
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
@@ -1076,6 +1096,7 @@ export default function DashboardMap({
       (pos) => {
         const { latitude, longitude } = pos.coords;
         const ll = new mapboxgl.LngLat(longitude, latitude);
+        latestDeviceLocationRef.current = ll;
 
         const existing = fromMarkerRef.current?.getLngLat();
 
