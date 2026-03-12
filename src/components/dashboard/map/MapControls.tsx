@@ -1,8 +1,10 @@
 "use client";
 
+import SaveRouteControl from "@/components/dashboard/SaveRouteControl";
 import ClearRouteButton from "@/components/dashboard/ui/ClearRouteButton";
 import { DashboardLegendPanel } from "@/components/dashboard/ui/DashboardLegend";
 import RecenterButton from "@/components/dashboard/ui/RecenterButton";
+import type { SaveRoutePayload } from "@/types/saved-route";
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
@@ -12,6 +14,8 @@ type Props = {
   recenterDisabled?: boolean;
   hasDestination?: boolean;
   onUndoDestination?: () => void;
+  saveRoute?: SaveRoutePayload | null;
+  onRouteSaved?: () => void;
 };
 
 const HEADER_H = 64;
@@ -23,6 +27,8 @@ export default function MapControls({
   recenterDisabled = false,
   hasDestination = false,
   onUndoDestination,
+  saveRoute = null,
+  onRouteSaved,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -104,6 +110,15 @@ export default function MapControls({
             ariaLabel={showUndoDestination ? "Undo destination" : "Clear route"}
             pulse={showUndoDestination}
           />
+        </div>
+
+        <div
+          className="pointer-events-auto touch-none"
+          onPointerDownCapture={stopMapPointerDown}
+          onTouchStartCapture={stopMapTouchStart}
+          onMouseDownCapture={stopMapMouseDown}
+        >
+          <SaveRouteControl route={saveRoute} onSaved={onRouteSaved} compact />
         </div>
 
         <div

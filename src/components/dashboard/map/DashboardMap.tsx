@@ -6,10 +6,12 @@ import { resampleCoords } from "@/lib/map/resampleCoords";
 import { computeRouteStats, scoreEasy } from "@/lib/map/routeDifficulty";
 import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
+import type { SaveRoutePayload, SavedRouteRecord, SavedRouteSegment } from "@/types/saved-route";
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 } else if (!mapboxgl.accessToken) {
@@ -18,10 +20,14 @@ if (MAPBOX_TOKEN) {
 
 type Destination = { lat: number; lng: number; name?: string };
 type VariantKey = "easy" | "hard";
+
 type Variant = {
   coords: [number, number][];
   elevations: number[];
   score: number;
+  distanceMeters?: number;
+  durationSeconds?: number;
+  segments?: SavedRouteSegment[];
 };
 
 const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
@@ -43,6 +49,8 @@ export default function DashboardMap({
   onVariantSelected,
   clearDestinationNonce,
   onRouteBusyChange,
+  onRouteReady,
+  savedRouteToLoad,
   canAcceptDestination,
 }: {
   destination?: Destination | null;
@@ -53,7 +61,7 @@ export default function DashboardMap({
   routeRequestNonce?: number;
   routeActive?: boolean;
   onFromPicked?: (loc: { name: string; lat: number; lng: number }) => void;
-  fromLocation?: { lat: number; lng: number } | null;
+  fromLocation?: { lat: number; lng: number; name?: string } | null;
   recenterNonce?: number;
   routeAlternativesNonce?: number;
   selectedVariant?: VariantKey | null;
@@ -61,6 +69,8 @@ export default function DashboardMap({
   onVariantSelected?: (v: VariantKey) => void;
   clearDestinationNonce?: number;
   onRouteBusyChange?: (busy: boolean) => void;
+  onRouteReady?: (route: SaveRoutePayload) => void;
+  savedRouteToLoad?: SavedRouteRecord | null;
   canAcceptDestination?: (loc: { lat: number; lng: number }) => boolean;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -80,7 +90,6 @@ export default function DashboardMap({
   const abortRef = useRef<AbortController | null>(null);
 
   const lastGoodDestRef = useRef<mapboxgl.LngLat | null>(null);
-
   const variantsRef = useRef<{ easy: Variant; hard: Variant } | null>(null);
 
   const selectedVariantRef = useRef<VariantKey | null>(null);
@@ -93,8 +102,7 @@ export default function DashboardMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    if (!fromLocation) return;
+    if (!map || !fromLocation) return;
 
     const existing = fromMarkerRef.current?.getLngLat();
     if (
@@ -145,7 +153,9 @@ export default function DashboardMap({
 
   function routeLengthMeters(coords: [number, number][]) {
     let sum = 0;
-    for (let i = 1; i < coords.length; i++) sum += haversineMeters(coords[i - 1], coords[i]);
+    for (let i = 1; i < coords.length; i++) {
+      sum += haversineMeters(coords[i - 1], coords[i]);
+    }
     return sum;
   }
 
@@ -263,7 +273,7 @@ export default function DashboardMap({
     } catch {}
   }
 
-  function invalidateRouteNow(reason: string) {
+  function invalidateRouteNow() {
     const map = mapRef.current;
     if (!map) return;
 
@@ -275,11 +285,11 @@ export default function DashboardMap({
 
     lastGoodDestRef.current = null;
     variantsRef.current = null;
+    selectedVariantRef.current = null;
     renderedRouteModeRef.current = null;
 
     routeReqIdRef.current += 1;
     setRouteBusy(false);
-    // console.log(`[DashboardMap] route invalidated: ${reason}`);
   }
 
   function createCircleEl(color: string) {
@@ -338,10 +348,10 @@ export default function DashboardMap({
       .setLngLat(lngLat)
       .addTo(map);
 
-    marker.on("dragstart", () => invalidateRouteNow("from marker dragstart"));
+    marker.on("dragstart", () => invalidateRouteNow());
 
     marker.on("dragend", () => {
-      invalidateRouteNow("from marker dragend");
+      invalidateRouteNow();
 
       const from = marker.getLngLat();
       void notifyFromPicked(from);
@@ -404,6 +414,7 @@ export default function DashboardMap({
       coords.map(([lng, lat]) => (getElevation ? getElevation(map, lng, lat) : Promise.resolve(0)))
     );
 
+    const segments = classifySegments(elevations, coords);
     const stats = computeRouteStats(elevations);
     const baseScore = scoreEasy(stats);
 
@@ -413,7 +424,14 @@ export default function DashboardMap({
     const km = distMeters / 1000;
     const distancePenalty = km * 0.18;
 
-    return { coords, elevations, score: baseScore + distancePenalty } as Variant;
+    return {
+      coords,
+      elevations,
+      score: baseScore + distancePenalty,
+      distanceMeters: distMeters,
+      durationSeconds: meta?.durationSeconds,
+      segments,
+    } as Variant;
   }
 
   function drawOverviewRoute(map: mapboxgl.Map, coords: [number, number][]) {
@@ -443,9 +461,7 @@ export default function DashboardMap({
     } as any);
   }
 
-  function drawVariantRoute(map: mapboxgl.Map, variant: Variant) {
-    const segments = classifySegments(variant.elevations, variant.coords);
-
+  function drawSegments(map: mapboxgl.Map, segments: SavedRouteSegment[]) {
     segments.forEach((segment, index) => {
       const color =
         segment.difficulty === "easy"
@@ -484,7 +500,8 @@ export default function DashboardMap({
     });
 
     if (segments.length > 0 && map.getZoom() >= DETAIL_ROUTE_ZOOM_THRESHOLD) {
-      sweepRef.current.ensure(map, variant.coords);
+      const coords = segments.flatMap((segment) => segment.coords);
+      sweepRef.current.ensure(map, coords);
       setTimeout(() => {
         const m = mapRef.current;
         if (!m) return;
@@ -492,6 +509,36 @@ export default function DashboardMap({
         sweepRef.current.run(m);
       }, 120);
     }
+  }
+
+  function emitRouteReady(
+    variantKey: VariantKey,
+    variant: Variant,
+    from: mapboxgl.LngLat,
+    to: mapboxgl.LngLat,
+    names?: {
+      fromName?: string;
+      toName?: string;
+    }
+  ) {
+    onRouteReady?.({
+      from: {
+        lat: from.lat,
+        lng: from.lng,
+        name: names?.fromName ?? fromLocation?.name ?? "Start",
+      },
+      to: {
+        lat: to.lat,
+        lng: to.lng,
+        name: names?.toName ?? destination?.name ?? "Destination",
+      },
+      difficulty: variantKey,
+      coords: variant.coords,
+      elevations: variant.elevations,
+      segments: variant.segments,
+      distanceMeters: variant.distanceMeters,
+      durationSeconds: variant.durationSeconds,
+    });
   }
 
   function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
@@ -503,11 +550,90 @@ export default function DashboardMap({
 
     if (nextMode === "overview") {
       drawOverviewRoute(map, variant.coords);
+    } else if (variant.segments?.length) {
+      drawSegments(map, variant.segments);
     } else {
-      drawVariantRoute(map, variant);
+      const computed = classifySegments(variant.elevations, variant.coords);
+      drawSegments(map, computed);
     }
 
     renderedRouteModeRef.current = nextMode;
+
+    console.log("[renderVariantForZoom]", {
+      zoom: map.getZoom(),
+      nextMode,
+      coords: variant.coords.length,
+      segments: variant.segments?.length ?? 0,
+    });
+  }
+
+  function loadSavedRoute(map: mapboxgl.Map, savedRoute: SavedRouteRecord) {
+    abortRef.current?.abort();
+    routeReqIdRef.current += 1;
+
+    clearOverviewRoute(map);
+    clearRouteLayers(map);
+    sweepRef.current.clear(map);
+
+    const from = new mapboxgl.LngLat(savedRoute.from.lng, savedRoute.from.lat);
+    const to = new mapboxgl.LngLat(savedRoute.to.lng, savedRoute.to.lat);
+
+    ensureFromMarker(map, from);
+    ensureDestMarker(map, to);
+
+    const coords = savedRoute.coords;
+    if (!coords.length) return;
+
+    const variant: Variant = {
+      coords,
+      elevations: savedRoute.elevations ?? [],
+      score: 0,
+      distanceMeters: savedRoute.distanceMeters,
+      durationSeconds: savedRoute.durationSeconds,
+      segments: savedRoute.segments,
+    };
+
+    selectedVariantRef.current = savedRoute.difficulty;
+    variantsRef.current = {
+      easy: variant,
+      hard: variant,
+    };
+    lastGoodDestRef.current = to;
+
+    renderVariantForZoom(map, variant);
+
+    emitRouteReady(savedRoute.difficulty, variant, from, to, {
+      fromName: savedRoute.from.name,
+      toName: savedRoute.to.name,
+    });
+
+    const bounds = new mapboxgl.LngLatBounds();
+    coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
+
+    map.fitBounds(bounds, {
+      padding: {
+        top: savedRoute.difficulty === "hard" ? 110 : 140,
+        right: 40,
+        bottom: 140,
+        left: 40,
+      },
+      duration: 700,
+      curve: 1.4,
+      essential: true,
+      maxZoom: savedRoute.difficulty === "hard" ? 17 : 16,
+    });
+
+    setRouteBusy(false);
+    onVariantSelected?.(savedRoute.difficulty);
+    onRouteDrawn?.();
+    onVariantsReady?.();
+
+    console.log("[loadSavedRoute] loading", {
+      id: savedRoute._id ?? savedRoute.name,
+      difficulty: savedRoute.difficulty,
+      coords: savedRoute.coords?.length,
+      segments: savedRoute.segments?.length,
+    });
   }
 
   async function drawRouteBetweenPoints(
@@ -534,13 +660,25 @@ export default function DashboardMap({
         )
       );
 
+      const segments = classifySegments(elevations, coords);
+
       const variant: Variant = {
         coords,
         elevations,
         score: scoreEasy(computeRouteStats(elevations)),
+        distanceMeters: routeLengthMeters(coords),
+        segments,
+      };
+
+      const variantKey = selectedVariantRef.current ?? "easy";
+      selectedVariantRef.current = variantKey;
+      variantsRef.current = {
+        easy: variant,
+        hard: variant,
       };
 
       renderVariantForZoom(map, variant);
+      emitRouteReady(variantKey, variant, from, to);
       onRouteDrawn?.();
     };
 
@@ -621,7 +759,6 @@ export default function DashboardMap({
         if (!raw?.length) continue;
 
         const coords = resampleCoords(raw);
-
         const geomMeters = routeLengthMeters(coords);
         const distMeters = typeof r?.distance === "number" ? r.distance : geomMeters;
 
@@ -730,6 +867,7 @@ export default function DashboardMap({
         onRouteFailed?.("We couldn’t generate a route for that selection.");
         return;
       }
+
       const sorted = [...candidates].sort((a, b) => a.score - b.score);
 
       let easy = sorted[0];
@@ -775,7 +913,10 @@ export default function DashboardMap({
       }
 
       const initial = selectedVariantRef.current ?? "easy";
-      renderVariantForZoom(map, initial === "hard" ? hard : easy);
+      const initialVariant = initial === "hard" ? hard : easy;
+
+      renderVariantForZoom(map, initialVariant);
+      emitRouteReady(initial, initialVariant, from, to);
       onRouteDrawn?.();
       onVariantsReady?.();
     } catch (err: any) {
@@ -1008,12 +1149,20 @@ export default function DashboardMap({
     const map = mapRef.current;
     if (!map) return;
 
+    console.log("[destination effect]", {
+      hasDestination: !!destination,
+      hasVariants: !!variantsRef.current,
+    });
+
     if (!destination) {
+      if (variantsRef.current) return;
+
       try {
         destMarkerRef.current?.remove();
       } catch {}
       destMarkerRef.current = null;
 
+      lastGoodDestRef.current = null;
       clearOverviewRoute(map);
       clearRouteLayers(map);
       sweepRef.current.clear(map);
@@ -1061,8 +1210,11 @@ export default function DashboardMap({
 
     lastGoodDestRef.current = null;
     variantsRef.current = null;
+    selectedVariantRef.current = null;
     renderedRouteModeRef.current = null;
     setRouteBusy(false);
+
+    console.log("[clearRouteNonce] clearing route");
   }, [clearRouteNonce]);
 
   useEffect(() => {
@@ -1083,8 +1235,11 @@ export default function DashboardMap({
     sweepRef.current.clear(map);
     lastGoodDestRef.current = null;
     variantsRef.current = null;
+    selectedVariantRef.current = null;
     renderedRouteModeRef.current = null;
     setRouteBusy(false);
+
+    console.log("[clearDestinationNonce] clearing destination");
   }, [clearDestinationNonce]);
 
   useEffect(() => {
@@ -1149,6 +1304,19 @@ export default function DashboardMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (!savedRouteToLoad) return;
+
+    console.log("[savedRouteToLoad effect]", {
+      id: savedRouteToLoad._id ?? savedRouteToLoad.name,
+      difficulty: savedRouteToLoad.difficulty,
+    });
+
+    loadSavedRoute(map, savedRouteToLoad);
+  }, [savedRouteToLoad]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
     if (!selectedVariant) return;
 
     const v = variantsRef.current;
@@ -1157,6 +1325,13 @@ export default function DashboardMap({
     const active = selectedVariant === "hard" ? v.hard : v.easy;
 
     renderVariantForZoom(map, active);
+
+    const from = fromMarkerRef.current?.getLngLat();
+    const to = destMarkerRef.current?.getLngLat();
+
+    if (from && to) {
+      emitRouteReady(selectedVariant, active, from, to);
+    }
 
     if (active.coords.length >= 2) {
       const bounds = new mapboxgl.LngLatBounds();
@@ -1180,6 +1355,10 @@ export default function DashboardMap({
         maxZoom: isHard ? 17 : 16,
       });
     }
+    console.log("[selectedVariant effect]", {
+      selectedVariant,
+      hasVariants: !!variantsRef.current,
+    });
   }, [selectedVariant]);
 
   return (
