@@ -319,21 +319,22 @@ export default function DownhillGenerator({
     if (!open) return;
 
     const next = (initialTo ?? "").trim();
-    const shouldSync = !userEditingRef.current || to.trim() === "";
 
-    if (shouldSync && next !== to) {
+    if (next !== to) {
       setTo(next);
-      onToChange?.(next);
-
-      setUiVariant(null);
-      onVariantSelected?.(null);
-
-      setGeneratedKey("");
-      setWaitingForVariants(false);
-      clearWaitTimer();
-      setMessage("");
     }
-  }, [open, initialTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    setUiVariant(selectedVariant ?? null);
+  }, [open, initialTo, selectedVariant]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+
+    setGeneratedKey("");
+    setWaitingForVariants(false);
+    clearWaitTimer();
+    setMessage("");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -467,7 +468,7 @@ export default function DownhillGenerator({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[50] pointer-events-none">
+    <div className="fixed inset-0 z-[100] pointer-events-none">
       <div
         className="absolute inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto"
         onClick={() => {
@@ -575,7 +576,7 @@ export default function DownhillGenerator({
                 </button>
               </div>
 
-              <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center mb-3">
                 <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
               </div>
 

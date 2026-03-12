@@ -1,23 +1,20 @@
 "use client";
 
-import { MapPin, Route, Star, Zap } from "lucide-react";
+import { Route, Star, Zap } from "lucide-react";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onUseLocation: () => void;
   onQuickRoute: () => void;
   onStartRoute: () => void;
   onViewSaved: () => void;
-
-  quickRouteEnabled?: boolean; // ✅ NEW
+  quickRouteEnabled?: boolean;
 }
 
 export default function QuickActionsSheet({
   open,
   onClose,
-  onUseLocation,
-  onQuickRoute, // ✅ NEW
+  onQuickRoute,
   onStartRoute,
   onViewSaved,
   quickRouteEnabled,
@@ -26,33 +23,20 @@ export default function QuickActionsSheet({
 
   return (
     <>
-      {/* Overlay */}
       {open && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={onClose} />
+        <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       )}
 
-      {/* Sheet */}
-      {/* Sheet */}
       <div
         className={`
-    fixed left-0 right-0 bottom-0 z-50
-    bg-white/90 backdrop-blur-xl rounded-t-2xl shadow-lg border-t border-black/10
-    transition-transform duration-300
-    ${open ? "translate-y-0 pointer-events-auto" : "translate-y-full pointer-events-none"}
-  `}
+          fixed left-0 right-0 bottom-0 z-50
+          rounded-t-2xl border-t border-black/10
+          bg-white/90 backdrop-blur-xl shadow-lg
+          transition-transform duration-300
+          ${open ? "translate-y-0 pointer-events-auto" : "translate-y-full pointer-events-none"}
+        `}
       >
         <div className="p-6 space-y-4">
-          <button
-            onClick={() => {
-              onUseLocation();
-              onClose();
-            }}
-            className="w-full flex items-center gap-3 bg-green-100 hover:bg-green-200 border border-green-200 px-4 py-3 rounded-xl"
-          >
-            <MapPin className="text-green-700" />
-            Use My Location
-          </button>
-
           <button
             onClick={() => {
               if (!canQuickRoute) return;
@@ -72,7 +56,7 @@ export default function QuickActionsSheet({
           </button>
 
           {!canQuickRoute && (
-            <p className="text-xs text-slate-500 -mt-2 px-1">Set a destination on the map first.</p>
+            <p className="px-1 -mt-2 text-xs text-slate-500">Set a destination on the map first.</p>
           )}
 
           <button
@@ -94,7 +78,7 @@ export default function QuickActionsSheet({
             className="w-full flex items-center gap-3 bg-yellow-100 hover:bg-yellow-200 border border-yellow-200 px-4 py-3 rounded-xl"
           >
             <Star className="text-yellow-700" />
-            View Saved Spots
+            Saved Routes
           </button>
         </div>
       </div>

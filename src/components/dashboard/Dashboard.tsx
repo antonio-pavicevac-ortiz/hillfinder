@@ -10,6 +10,10 @@ import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/modals/QuickActionSheet";
+
+import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
+
+import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
 import { toast } from "sonner";
 
 type Destination = { lat: number; lng: number; name?: string };
@@ -44,6 +48,7 @@ const glassBar =
 export default function Dashboard() {
   const [qaOpen, setQaOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [routesOpen, setRoutesOpen] = useState(false);
 
   const [hasRoute, setHasRoute] = useState(false);
 
@@ -63,6 +68,10 @@ export default function Dashboard() {
   const [blocked, setBlocked] = useState(false);
   const hasShownUndoHintRef = useRef(false);
   const [routeBusy, setRouteBusy] = useState(false);
+
+  const [activeRouteToSave, setActiveRouteToSave] = useState<SaveRoutePayload | null>(null);
+  const [selectedSavedRoute, setSelectedSavedRoute] = useState<SavedRouteRecord | null>(null);
+  const [refreshRoutesKey, setRefreshRoutesKey] = useState(0);
 
   const TOO_FAR_KM = 30;
 
@@ -106,19 +115,8 @@ export default function Dashboard() {
     setVariantsReady(false);
     setSelectedVariant(null);
     setRouteBusy(false);
+    setActiveRouteToSave(null);
     setClearRouteNonce((n) => n + 1);
-  }
-
-  function undoDestination() {
-    setDestination(null);
-    setPlannerTo("");
-    setBlocked(false);
-    setHasRoute(false);
-    setVariantsReady(false);
-    setSelectedVariant(null);
-    setRouteBusy(false);
-    setClearRouteNonce((n) => n + 1);
-    setClearDestinationNonce((n) => n + 1);
   }
 
   async function waitForMapStateToSettle() {
@@ -165,6 +163,8 @@ export default function Dashboard() {
           setRouteBusy(false);
           clearRoute();
         }}
+        saveRoute={activeRouteToSave}
+        onRouteSaved={() => setRefreshRoutesKey((n) => n + 1)}
       />
 
       <DashboardMap
@@ -191,6 +191,10 @@ export default function Dashboard() {
           const next = { name: loc.name, lat: loc.lat, lng: loc.lng };
           commitDestination(next);
         }}
+        onRouteReady={(route) => {
+          setActiveRouteToSave(route);
+        }}
+        savedRouteToLoad={selectedSavedRoute}
       />
 
       <header
@@ -201,6 +205,44 @@ export default function Dashboard() {
           <DashboardHeader />
         </div>
       </header>
+
+      {routesOpen && (
+        <div
+          className="fixed left-4 right-4 z-20 pointer-events-none"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 72px)" }}
+        >
+          <div className="mx-auto max-w-[42rem] pb-3 pointer-events-auto">
+            <RecentRoutesPanel
+              open={routesOpen}
+              onClose={() => setRoutesOpen(false)}
+              refreshKey={refreshRoutesKey}
+              onLoadRoute={(route) => {
+                setSelectedSavedRoute(route);
+                setFromLocation(route.from);
+                setDestination(route.to);
+                setPlannerTo(route.to.name ?? "");
+                setSelectedVariant(route.difficulty);
+                setHasRoute(true);
+                setVariantsReady(true);
+                setRoutesOpen(false);
+
+                setActiveRouteToSave({
+                  name: route.name,
+                  from: route.from,
+                  to: route.to,
+                  difficulty: route.difficulty,
+                  coords: route.coords,
+                  distanceMeters: route.distanceMeters,
+                  durationSeconds: route.durationSeconds,
+                });
+
+                toast.success(`Loaded ${route.name || "saved route"}`);
+              }}
+              activeRouteId={selectedSavedRoute?._id ?? null}
+            />
+          </div>
+        </div>
+      )}
 
       <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
         <div className={`${glassBar} border-t border-white/25 pointer-events-none`}>
@@ -219,14 +261,11 @@ export default function Dashboard() {
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
-        onUseLocation={() => {
-          setQaOpen(false);
-          setRecenterNonce((n) => n + 1);
-        }}
         onQuickRoute={() => {
           if (!destination || routeBusy) return;
 
           setQaOpen(false);
+          setRoutesOpen(false);
           clearRoute();
           setVariantsReady(false);
           setSelectedVariant("easy");
@@ -234,11 +273,16 @@ export default function Dashboard() {
         }}
         onStartRoute={() => {
           setQaOpen(false);
+          setRoutesOpen(false);
           setVariantsReady(false);
           setSelectedVariant(null);
           setGeneratorOpen(true);
         }}
-        onViewSaved={() => setQaOpen(false)}
+        onViewSaved={() => {
+          setQaOpen(false);
+          setGeneratorOpen(false);
+          setRoutesOpen(true);
+        }}
         quickRouteEnabled={quickRouteEnabled}
       />
 
@@ -268,6 +312,7 @@ export default function Dashboard() {
         onGenerate={async ({ variant }) => {
           if (routeBusy) return;
 
+          setRoutesOpen(false);
           clearRoute();
           setVariantsReady(false);
           setSelectedVariant(variant);
