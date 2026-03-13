@@ -616,6 +616,7 @@ export default function DashboardMap({
   function loadSavedRoute(map: mapboxgl.Map, savedRoute: SavedRouteRecord) {
     abortRef.current?.abort();
     routeReqIdRef.current += 1;
+    setRouteBusy(true);
 
     clearOverviewRoute(map);
     clearRouteLayers(map);
@@ -628,7 +629,10 @@ export default function DashboardMap({
     ensureDestMarker(map, to);
 
     const coords = savedRoute.coords;
-    if (!coords.length) return;
+    if (!coords.length) {
+      setRouteBusy(false);
+      return;
+    }
 
     const variant: Variant = {
       coords,
