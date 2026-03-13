@@ -78,3 +78,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to save route" }, { status: 500 });
   }
 }
+
+// DELETE → Remove a saved route for logged-in user
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const routeId = req.nextUrl.searchParams.get("id");
+
+    if (!routeId) {
+      return NextResponse.json({ error: "Missing route id" }, { status: 400 });
+    }
+
+    await connectToDatabase();
+
+    const deleted = await SavedRoute.findOneAndDelete({
+      _id: routeId,
+      userId: session.user.email,
+    });
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Route not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[DELETE /api/routes]", error);
+    return NextResponse.json({ error: "Failed to delete route" }, { status: 500 });
+  }
+}

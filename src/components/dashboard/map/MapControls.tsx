@@ -16,6 +16,7 @@ type Props = {
   onUndoDestination?: () => void;
   saveRoute?: SaveRoutePayload | null;
   onRouteSaved?: () => void;
+  isActiveSavedRoute?: boolean;
 };
 
 const HEADER_H = 64;
@@ -29,6 +30,7 @@ export default function MapControls({
   onUndoDestination,
   saveRoute = null,
   onRouteSaved,
+  isActiveSavedRoute = false,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -118,7 +120,12 @@ export default function MapControls({
           onTouchStartCapture={stopMapTouchStart}
           onMouseDownCapture={stopMapMouseDown}
         >
-          <SaveRouteControl route={saveRoute} onSaved={onRouteSaved} compact />
+          <SaveRouteControl
+            route={saveRoute}
+            onSaved={onRouteSaved}
+            compact
+            isActiveSavedRoute={isActiveSavedRoute}
+          />
         </div>
 
         <div

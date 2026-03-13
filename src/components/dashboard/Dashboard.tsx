@@ -20,6 +20,7 @@ type Destination = { lat: number; lng: number; name?: string };
 type FromLocation = { lat: number; lng: number; name?: string };
 
 type Variant = "easy" | "hard";
+type ActiveRouteSource = "generated" | "saved" | null;
 
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371;
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const [activeRouteToSave, setActiveRouteToSave] = useState<SaveRoutePayload | null>(null);
   const [selectedSavedRoute, setSelectedSavedRoute] = useState<SavedRouteRecord | null>(null);
   const [refreshRoutesKey, setRefreshRoutesKey] = useState(0);
+  const [activeRouteSource, setActiveRouteSource] = useState<ActiveRouteSource>(null);
 
   const TOO_FAR_KM = 30;
 
@@ -116,7 +118,23 @@ export default function Dashboard() {
     setSelectedVariant(null);
     setRouteBusy(false);
     setActiveRouteToSave(null);
+    setSelectedSavedRoute(null);
+    setActiveRouteSource(null);
     setClearRouteNonce((n) => n + 1);
+  }
+
+  function handleDeletedRoute(routeId: string) {
+    setRefreshRoutesKey((n) => n + 1);
+
+    const wasActive = selectedSavedRoute?._id === routeId;
+
+    if (wasActive) {
+      clearRoute();
+      setDestination(null);
+      setPlannerTo("");
+    }
+
+    toast.success("Saved route deleted");
   }
 
   async function waitForMapStateToSettle() {
@@ -148,6 +166,10 @@ export default function Dashboard() {
     setGeneratorOpen(false);
   }, [generatorOpen, variantsReady]);
 
+  useEffect(() => {
+    console.log("[Dashboard] activeRouteSource =", activeRouteSource);
+  }, [activeRouteSource]);
+
   return (
     <main className="fixed inset-0 bg-white">
       <MapControls
@@ -165,6 +187,7 @@ export default function Dashboard() {
         }}
         saveRoute={activeRouteToSave}
         onRouteSaved={() => setRefreshRoutesKey((n) => n + 1)}
+        isActiveSavedRoute={activeRouteSource === "saved"}
       />
 
       <DashboardMap
@@ -193,6 +216,15 @@ export default function Dashboard() {
         }}
         onRouteReady={(route) => {
           setActiveRouteToSave(route);
+
+          setActiveRouteSource((currentSource) => {
+            if (currentSource === "saved") {
+              return "saved";
+            }
+
+            setSelectedSavedRoute(null);
+            return "generated";
+          });
         }}
         savedRouteToLoad={selectedSavedRoute}
       />
@@ -225,6 +257,7 @@ export default function Dashboard() {
                 setHasRoute(true);
                 setVariantsReady(true);
                 setRoutesOpen(false);
+                setActiveRouteSource("saved");
 
                 setActiveRouteToSave({
                   name: route.name,
@@ -239,6 +272,7 @@ export default function Dashboard() {
                 toast.success(`Loaded ${route.name || "saved route"}`);
               }}
               activeRouteId={selectedSavedRoute?._id ?? null}
+              onDeletedRoute={handleDeletedRoute}
             />
           </div>
         </div>
@@ -312,6 +346,7 @@ export default function Dashboard() {
         onGenerate={async ({ variant }) => {
           if (routeBusy) return;
 
+          setQaOpen(false);
           setRoutesOpen(false);
           clearRoute();
           setVariantsReady(false);
