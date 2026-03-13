@@ -222,13 +222,13 @@ export default function DownhillGenerator({
     }
 
     const activeDestination = (initialTo ?? "").trim();
-    const hasGeneratedVariantsForDestination =
+    const hasGeneratedExactRoute =
       variantsReady &&
       !!lastCommittedRef.current &&
-      lastCommittedRef.current.key.startsWith(`${dest}::`) &&
+      lastCommittedRef.current.key === nextKey &&
       activeDestination === dest;
 
-    if (hasGeneratedVariantsForDestination) {
+    if (hasGeneratedExactRoute) {
       onVariantSelected?.(uiVariant);
       setGeneratedKey(nextKey);
       setMessage("");

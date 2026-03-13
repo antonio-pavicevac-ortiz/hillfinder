@@ -3,7 +3,7 @@
 import { classifySegments } from "@/lib/map/classifySegments";
 import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
 import { resampleCoords } from "@/lib/map/resampleCoords";
-import { computeRouteStats, scoreEasy } from "@/lib/map/routeDifficulty";
+import { computeRouteStats, scoreEasy, scoreHard } from "@/lib/map/routeDifficulty";
 import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
 import type { SaveRoutePayload, SavedRouteRecord, SavedRouteSegment } from "@/types/saved-route";
@@ -24,7 +24,8 @@ type VariantKey = "easy" | "hard";
 type Variant = {
   coords: [number, number][];
   elevations: number[];
-  score: number;
+  easyScore: number;
+  hardScore: number;
   distanceMeters?: number;
   durationSeconds?: number;
   segments?: SavedRouteSegment[];
@@ -205,6 +206,34 @@ export default function DashboardMap({
     const diff = Math.abs(aLen - bLen);
 
     return diff < Math.max(60, aLen * 0.03);
+  }
+
+  function pickMostDistinctVariant(base: Variant, candidates: Variant[], mode: "easy" | "hard") {
+    const nonDuplicate = candidates.filter((candidate) => {
+      if (candidate === base) return false;
+      return !isNearDuplicateRoute(base.coords, candidate.coords);
+    });
+
+    if (!nonDuplicate.length) return null;
+
+    return nonDuplicate.reduce((best, candidate) => {
+      const bestScore = mode === "easy" ? best.easyScore : best.hardScore;
+      const candidateScore = mode === "easy" ? candidate.easyScore : candidate.hardScore;
+      const baseScore = mode === "easy" ? base.easyScore : base.hardScore;
+
+      const bestGap = Math.abs(bestScore - baseScore);
+      const candidateGap = Math.abs(candidateScore - baseScore);
+
+      if (candidateGap > bestGap) return candidate;
+
+      if (candidateGap === bestGap) {
+        const bestLen = best.distanceMeters ?? routeLengthMeters(best.coords);
+        const candidateLen = candidate.distanceMeters ?? routeLengthMeters(candidate.coords);
+        if (candidateLen > bestLen) return candidate;
+      }
+
+      return best;
+    });
   }
 
   function metersToDegreesLat(m: number) {
@@ -407,7 +436,11 @@ export default function DashboardMap({
   async function buildVariant(
     map: mapboxgl.Map,
     coords: [number, number][],
-    meta?: { distanceMeters?: number; durationSeconds?: number }
+    meta?: {
+      distanceMeters?: number;
+      durationSeconds?: number;
+      baselineDistanceMeters?: number;
+    }
   ) {
     const getElevation = getElevationRef.current;
     const elevations = await Promise.all(
@@ -416,18 +449,31 @@ export default function DashboardMap({
 
     const segments = classifySegments(elevations, coords);
     const stats = computeRouteStats(elevations);
-    const baseScore = scoreEasy(stats);
 
     const geomMeters = routeLengthMeters(coords);
     const distMeters = meta?.distanceMeters ?? geomMeters;
-
     const km = distMeters / 1000;
-    const distancePenalty = km * 0.18;
+
+    const baselineDistanceMeters =
+      meta?.baselineDistanceMeters && meta.baselineDistanceMeters > 0
+        ? meta.baselineDistanceMeters
+        : distMeters;
+
+    const detourRatio = baselineDistanceMeters > 0 ? distMeters / baselineDistanceMeters : 1;
+
+    // Easy should strongly prefer believable/direct routes
+    const easyDistancePenalty = km * 0.2;
+    const easyDetourPenalty = detourRatio <= 1.08 ? 0 : (detourRatio - 1.08) * 140;
+
+    // Hard can tolerate more wandering, but still not nonsense
+    const hardDistanceBonus = km * 0.08;
+    const hardDetourPenalty = detourRatio <= 1.14 ? 0 : (detourRatio - 1.14) * 70;
 
     return {
       coords,
       elevations,
-      score: baseScore + distancePenalty,
+      easyScore: scoreEasy(stats) + easyDistancePenalty + easyDetourPenalty,
+      hardScore: scoreHard(stats) + hardDistanceBonus + hardDetourPenalty,
       distanceMeters: distMeters,
       durationSeconds: meta?.durationSeconds,
       segments,
@@ -587,7 +633,8 @@ export default function DashboardMap({
     const variant: Variant = {
       coords,
       elevations: savedRoute.elevations ?? [],
-      score: 0,
+      easyScore: 0,
+      hardScore: 0,
       distanceMeters: savedRoute.distanceMeters,
       durationSeconds: savedRoute.durationSeconds,
       segments: savedRoute.segments,
@@ -662,10 +709,13 @@ export default function DashboardMap({
 
       const segments = classifySegments(elevations, coords);
 
+      const stats = computeRouteStats(elevations);
+
       const variant: Variant = {
         coords,
         elevations,
-        score: scoreEasy(computeRouteStats(elevations)),
+        easyScore: scoreEasy(stats),
+        hardScore: scoreHard(stats),
         distanceMeters: routeLengthMeters(coords),
         segments,
       };
@@ -785,6 +835,7 @@ export default function DashboardMap({
           await buildVariant(map, coords, {
             distanceMeters: typeof r?.distance === "number" ? r.distance : undefined,
             durationSeconds: typeof r?.duration === "number" ? r.duration : undefined,
+            baselineDistanceMeters: baselineMeters,
           })
         );
       }
@@ -858,6 +909,7 @@ export default function DashboardMap({
             await buildVariant(map, coords, {
               distanceMeters: distMeters,
               durationSeconds: typeof first?.duration === "number" ? first.duration : undefined,
+              baselineDistanceMeters: baselineMeters,
             })
           );
         }
@@ -868,51 +920,99 @@ export default function DashboardMap({
         return;
       }
 
-      const sorted = [...candidates].sort((a, b) => a.score - b.score);
+      const easySorted = [...candidates].sort((a, b) => a.easyScore - b.easyScore);
+      const hardSorted = [...candidates].sort((a, b) => b.hardScore - a.hardScore);
 
-      let easy = sorted[0];
-      let hard = sorted[sorted.length - 1];
+      let easy = easySorted[0];
+      let hard = hardSorted[0];
 
-      const MIN_SCORE_GAP = 0.22;
+      const distinctFromEasy = pickMostDistinctVariant(easy, hardSorted, "hard");
+      if (distinctFromEasy) {
+        hard = distinctFromEasy;
+      }
 
-      if (sorted.length > 1 && Math.abs(hard.score - easy.score) < MIN_SCORE_GAP) {
-        const sufficientlyDifferent = sorted.findLast(
-          (candidate) =>
-            candidate !== easy &&
-            Math.abs(candidate.score - easy.score) >= MIN_SCORE_GAP &&
-            !isNearDuplicateRoute(candidate.coords, easy.coords)
-        );
-
-        if (sufficientlyDifferent) {
-          hard = sufficientlyDifferent;
+      if (isNearDuplicateRoute(easy.coords, hard.coords)) {
+        const distinctFromHard = pickMostDistinctVariant(hard, easySorted, "easy");
+        if (distinctFromHard) {
+          easy = distinctFromHard;
         }
       }
 
-      if (sorted.length > 1 && isNearDuplicateRoute(easy.coords, hard.coords)) {
-        for (let i = sorted.length - 2; i >= 0; i--) {
-          if (!isNearDuplicateRoute(easy.coords, sorted[i].coords)) {
-            hard = sorted[i];
-            break;
-          }
+      if (isNearDuplicateRoute(easy.coords, hard.coords) && candidates.length > 1) {
+        const longest = [...candidates].sort((a, b) => {
+          const aLen = a.distanceMeters ?? routeLengthMeters(a.coords);
+          const bLen = b.distanceMeters ?? routeLengthMeters(b.coords);
+          return bLen - aLen;
+        })[0];
+
+        if (longest && !isNearDuplicateRoute(easy.coords, longest.coords)) {
+          hard = longest;
         }
-        if (isNearDuplicateRoute(easy.coords, hard.coords)) {
-          for (let i = 1; i < sorted.length; i++) {
-            if (!isNearDuplicateRoute(sorted[i].coords, hard.coords)) {
-              easy = sorted[i];
-              break;
-            }
-          }
+      }
+
+      const MIN_DISTANCE_GAP_METERS = 600;
+
+      const easyDistance = easy.distanceMeters ?? routeLengthMeters(easy.coords);
+      const hardDistance = hard.distanceMeters ?? routeLengthMeters(hard.coords);
+
+      if (
+        Math.abs(hardDistance - easyDistance) < MIN_DISTANCE_GAP_METERS &&
+        hardSorted.length > 1
+      ) {
+        const longer = [...hardSorted]
+          .filter((candidate) => candidate !== easy)
+          .sort((a, b) => {
+            const aLen = a.distanceMeters ?? routeLengthMeters(a.coords);
+            const bLen = b.distanceMeters ?? routeLengthMeters(b.coords);
+            return bLen - aLen;
+          })[0];
+
+        if (longer && !isNearDuplicateRoute(easy.coords, longer.coords)) {
+          hard = longer;
+        }
+      }
+
+      const MIN_HARD_SCORE_GAP = 20;
+
+      const hardScoreGap = Math.abs(hard.hardScore - easy.easyScore);
+
+      if (
+        (Math.abs(hardDistance - easyDistance) < MIN_DISTANCE_GAP_METERS ||
+          hardScoreGap < MIN_HARD_SCORE_GAP) &&
+        hardSorted.length > 1
+      ) {
+        const strongestHard = [...hardSorted]
+          .filter((candidate) => candidate !== easy)
+          .filter((candidate) => !isNearDuplicateRoute(easy.coords, candidate.coords))
+          .sort((a, b) => {
+            const aDistance = a.distanceMeters ?? routeLengthMeters(a.coords);
+            const bDistance = b.distanceMeters ?? routeLengthMeters(b.coords);
+
+            const aStrength = a.hardScore - easy.easyScore + (aDistance - easyDistance) * 0.015;
+            const bStrength = b.hardScore - easy.easyScore + (bDistance - easyDistance) * 0.015;
+
+            return bStrength - aStrength;
+          })[0];
+
+        if (strongestHard) {
+          hard = strongestHard;
         }
       }
 
       variantsRef.current = { easy, hard };
 
-      if (!selectedVariantRef.current) {
-        selectedVariantRef.current = "easy";
-        onVariantSelected?.("easy");
-      }
+      console.log("[generateAlternativesBetweenPoints][variants]", {
+        candidates: candidates.length,
+        easyScore: easy.easyScore,
+        hardScore: hard.hardScore,
+        easyDistance: easy.distanceMeters ?? routeLengthMeters(easy.coords),
+        hardDistance: hard.distanceMeters ?? routeLengthMeters(hard.coords),
+        sameRoute: isNearDuplicateRoute(easy.coords, hard.coords),
+      });
 
-      const initial = selectedVariantRef.current ?? "easy";
+      const initial = selectedVariant ?? selectedVariantRef.current ?? "easy";
+      selectedVariantRef.current = initial;
+
       const initialVariant = initial === "hard" ? hard : easy;
 
       renderVariantForZoom(map, initialVariant);

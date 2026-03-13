@@ -8,10 +8,12 @@ export default function SaveRouteControl({
   route,
   onSaved,
   compact = false,
+  isActiveSavedRoute = false,
 }: {
   route: SaveRoutePayload | null;
   onSaved?: () => void;
   compact?: boolean;
+  isActiveSavedRoute?: boolean;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -21,7 +23,7 @@ export default function SaveRouteControl({
   }, [route]);
 
   async function handleSave() {
-    if (!route || isSaving || saved) return;
+    if (!route || isSaving || saved || isActiveSavedRoute) return;
 
     try {
       setIsSaving(true);
@@ -47,7 +49,15 @@ export default function SaveRouteControl({
     }
   }
 
-  const disabled = !route || isSaving;
+  const disabled = !route || isSaving || isActiveSavedRoute;
+
+  console.log("[SaveRouteControl]", {
+    isActiveSavedRoute,
+    hasRoutePayload: !!route,
+    isSaving,
+    saved,
+    disabled,
+  });
 
   const sharedRound = "rounded-2xl";
 
@@ -61,14 +71,30 @@ export default function SaveRouteControl({
     ? "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)"
     : "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)";
 
+  const ariaLabel = saved
+    ? "Route saved"
+    : isSaving
+      ? "Saving route"
+      : isActiveSavedRoute
+        ? "Route already saved"
+        : "Save route";
+
+  const title = saved
+    ? "Route Saved"
+    : isSaving
+      ? "Saving..."
+      : isActiveSavedRoute
+        ? "This route is already saved"
+        : "Save Route";
+
   if (compact) {
     return (
       <button
         type="button"
         onClick={handleSave}
         disabled={disabled}
-        aria-label={saved ? "Route saved" : isSaving ? "Saving route" : "Save route"}
-        title={saved ? "Route Saved" : isSaving ? "Saving..." : "Save Route"}
+        aria-label={ariaLabel}
+        title={title}
         className={[
           "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
           sharedRound,
@@ -119,6 +145,7 @@ export default function SaveRouteControl({
       type="button"
       onClick={handleSave}
       disabled={disabled}
+      title={title}
       className={[
         "relative w-full flex items-center justify-center gap-2 transition active:scale-95 disabled:cursor-default overflow-hidden",
         sharedRound,
@@ -174,6 +201,13 @@ export default function SaveRouteControl({
             ].join(" ")}
           >
             Route Saved
+          </span>
+        </>
+      ) : isActiveSavedRoute ? (
+        <>
+          <Bookmark strokeWidth={2.6} className="relative z-10 h-4 w-4 text-slate-500/95" />
+          <span className="relative z-10 text-sm font-medium leading-none text-slate-500/95">
+            Already Saved
           </span>
         </>
       ) : (
