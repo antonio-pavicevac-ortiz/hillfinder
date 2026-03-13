@@ -160,6 +160,17 @@ export default function Dashboard() {
     }
   }
 
+  function shortPlaceName(name?: string) {
+    if (!name) return "";
+    return name.split(",")[0];
+  }
+
+  function shortAreaName(name?: string) {
+    if (!name) return "";
+    const parts = name.split(",").map((p) => p.trim());
+    return parts[1] || parts[0] || "";
+  }
+
   useEffect(() => {
     if (!generatorOpen) return;
     if (!variantsReady) return;
@@ -229,6 +240,22 @@ export default function Dashboard() {
         savedRouteToLoad={selectedSavedRoute}
       />
 
+      {routeBusy && activeRouteSource === "saved" && (
+        <div className="fixed inset-0 z-[18] pointer-events-none flex items-center justify-center px-6">
+          <div
+            className={[
+              "inline-flex items-center gap-3 rounded-2xl px-4 py-3",
+              "border border-white/30 bg-white/20",
+              "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
+              "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
+            ].join(" ")}
+          >
+            <div className="h-4 w-4 rounded-full border-2 border-slate-400/40 border-t-slate-800 animate-spin" />
+            <span className="text-sm font-medium text-slate-900/90">Rendering route...</span>
+          </div>
+        </div>
+      )}
+
       <header
         className="fixed top-0 left-0 right-0 z-20 pointer-events-none"
         style={{ height: HEADER_H }}
@@ -249,6 +276,7 @@ export default function Dashboard() {
               onClose={() => setRoutesOpen(false)}
               refreshKey={refreshRoutesKey}
               onLoadRoute={(route) => {
+                setRouteBusy(true);
                 setSelectedSavedRoute(route);
                 setFromLocation(route.from);
                 setDestination(route.to);
@@ -269,7 +297,9 @@ export default function Dashboard() {
                   durationSeconds: route.durationSeconds,
                 });
 
-                toast.success(`Loaded ${route.name || "saved route"}`);
+                toast.success(
+                  `Route loaded\n${shortAreaName(route.from.name)} → ${shortAreaName(route.to.name)}`
+                );
               }}
               activeRouteId={selectedSavedRoute?._id ?? null}
               onDeletedRoute={handleDeletedRoute}

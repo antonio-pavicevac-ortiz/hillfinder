@@ -86,16 +86,6 @@ export default function RecentRoutesPanel({
     }
   }
 
-  useEffect(() => {
-    if (!open) return;
-    fetchRoutes();
-  }, [refreshKey, open]);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
   function onSheetDragEnd(_: PointerEvent, info: PanInfo) {
     if (info.offset.y > DISMISS_Y || info.velocity.y > 900) {
       onClose();
@@ -106,6 +96,27 @@ export default function RecentRoutesPanel({
     e.stopPropagation();
     dragControls.start(e);
   }
+
+  function shortAreaName(name?: string) {
+    if (!name) return "";
+    const parts = name.split(",").map((p) => p.trim());
+    return parts[1] || parts[0] || "";
+  }
+
+  function shortPlaceName(name?: string) {
+    if (!name) return "";
+    return name.split(",")[0];
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    fetchRoutes();
+  }, [refreshKey, open]);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   if (!open || !mounted) return null;
 
@@ -237,8 +248,7 @@ export default function RecentRoutesPanel({
                                     <div className="flex min-w-0 items-start justify-between gap-3">
                                       <div className="min-w-0 flex-1">
                                         <p className="block truncate text-sm font-semibold text-slate-900">
-                                          {route.name ||
-                                            `${route.from.name || "From"} → ${route.to.name || "Destination"}`}
+                                          {`${shortAreaName(route.from.name) || "From"} → ${shortAreaName(route.to.name) || "Destination"}`}
                                         </p>
 
                                         {isActive && (
@@ -256,10 +266,10 @@ export default function RecentRoutesPanel({
 
                                     <p className="mt-2 break-words [overflow-wrap:anywhere] text-xs leading-5 text-slate-600">
                                       <span className="font-semibold text-slate-700">From:</span>{" "}
-                                      {route.from.name || "From"}
+                                      {shortPlaceName(route.from.name) || "From"}
                                       <span className="mx-1.5 text-slate-400">→</span>
                                       <span className="font-semibold text-slate-700">To:</span>{" "}
-                                      {route.to.name || "Destination"}
+                                      {shortPlaceName(route.to.name) || "Destination"}{" "}
                                     </p>
                                   </button>
 
