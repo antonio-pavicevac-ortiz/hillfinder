@@ -245,9 +245,9 @@ export default function RecentRoutesPanel({
                                     onClick={() => onLoadRoute(route)}
                                     className="min-w-0 flex-1 rounded-lg px-1 py-1 text-left transition active:scale-[0.99]"
                                   >
-                                    <div className="flex min-w-0 items-start justify-between gap-3">
+                                    <div className="flex min-w-0 items-start">
                                       <div className="min-w-0 flex-1">
-                                        <p className="block truncate text-sm font-semibold text-slate-900">
+                                        <p className="block text-sm font-semibold leading-5 text-slate-900 break-words sm:truncate">
                                           {`${shortAreaName(route.from.name) || "From"} → ${shortAreaName(route.to.name) || "Destination"}`}
                                         </p>
 
@@ -258,42 +258,53 @@ export default function RecentRoutesPanel({
                                           </div>
                                         )}
                                       </div>
-
-                                      <span className="shrink-0 rounded-full bg-slate-900/6 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                                        {route.difficulty}
-                                      </span>
                                     </div>
 
-                                    <p className="mt-2 break-words [overflow-wrap:anywhere] text-xs leading-5 text-slate-600">
-                                      <span className="font-semibold text-slate-700">From:</span>{" "}
-                                      {shortPlaceName(route.from.name) || "From"}
-                                      <span className="mx-1.5 text-slate-400">→</span>
-                                      <span className="font-semibold text-slate-700">To:</span>{" "}
-                                      {shortPlaceName(route.to.name) || "Destination"}{" "}
-                                    </p>
+                                    <div className="mt-2 space-y-0.5 text-xs leading-5 text-slate-600">
+                                      <div>
+                                        <span className="font-semibold text-slate-700">From:</span>{" "}
+                                        <span>{shortPlaceName(route.from.name) || "From"}</span>
+                                      </div>
+
+                                      <div>
+                                        <span className="font-semibold text-slate-700">To:</span>{" "}
+                                        <span>
+                                          {shortPlaceName(route.to.name) || "Destination"}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </button>
 
-                                  <button
-                                    type="button"
-                                    aria-label={
-                                      isDeleting ? "Deleting route" : "Delete saved route"
-                                    }
-                                    title={isDeleting ? "Deleting..." : "Delete saved route"}
-                                    disabled={isDeleting}
-                                    onClick={(e) => handleDeleteRoute(e, route)}
-                                    className={[
-                                      "flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full border transition active:scale-95",
-                                      isDeleting
-                                        ? "border-slate-200 bg-slate-100 text-slate-400"
-                                        : "border-rose-200/80 bg-rose-50/80 text-rose-600 hover:bg-rose-100",
-                                    ].join(" ")}
-                                  >
-                                    {isDeleting ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} />
-                                    ) : (
-                                      <Trash2 className="h-4 w-4" strokeWidth={2.4} />
-                                    )}
-                                  </button>
+                                  <div className="flex flex-col items-center justify-between gap-2">
+                                    <span className="mb-2 rounded-full bg-slate-900/6 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-600">
+                                      {route.difficulty}
+                                    </span>
+
+                                    <button
+                                      type="button"
+                                      aria-label={
+                                        isDeleting ? "Deleting route" : "Delete saved route"
+                                      }
+                                      title={isDeleting ? "Deleting..." : "Delete saved route"}
+                                      disabled={isDeleting}
+                                      onClick={(e) => handleDeleteRoute(e, route)}
+                                      className={[
+                                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition active:scale-95 sm:h-10 sm:w-10",
+                                        isDeleting
+                                          ? "border-slate-200 bg-slate-100 text-slate-400"
+                                          : "border-rose-200/80 bg-rose-50/80 text-rose-600 hover:bg-rose-100",
+                                      ].join(" ")}
+                                    >
+                                      {isDeleting ? (
+                                        <Loader2
+                                          className="h-4 w-4 animate-spin"
+                                          strokeWidth={2.4}
+                                        />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4" strokeWidth={2.4} />
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             );
