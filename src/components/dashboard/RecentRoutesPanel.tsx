@@ -2,7 +2,7 @@
 
 import type { SavedRouteRecord } from "@/types/saved-route";
 import { AnimatePresence, motion, useDragControls, type PanInfo } from "framer-motion";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Share2, Trash2 } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 
 const DISMISS_Y = 110;
 
@@ -83,6 +84,31 @@ export default function RecentRoutesPanel({
       console.error("[RecentRoutesPanel][Delete]", err);
     } finally {
       setDeletingRouteId(null);
+    }
+  }
+
+  async function handleShareRoute(e: ReactMouseEvent<HTMLButtonElement>, route: SavedRouteRecord) {
+    e.stopPropagation();
+
+    const shareTitle = `${shortAreaName(route.from.name) || "From"} → ${shortAreaName(route.to.name) || "Destination"}`;
+
+    const shareText = `Check out this Hillfinder route:\n${shareTitle}`;
+    const shareUrl = `${window.location.origin}/r/${route._id}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Hillfinder Route: ${shareTitle}`,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Route link copied");
+    } catch (err) {
+      console.error("[RecentRoutesPanel][Share]", err);
     }
   }
 
@@ -160,11 +186,11 @@ export default function RecentRoutesPanel({
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex justify-center mb-1">
+                <div className="mb-1 flex justify-center">
                   <button
                     type="button"
                     aria-label="Minimize routes"
-                    className="group w-full flex justify-center py-3 -my-2 cursor-grab active:cursor-grabbing"
+                    className="group -my-2 flex w-full cursor-grab justify-center py-3 active:cursor-grabbing"
                     style={{ touchAction: "none" }}
                     onPointerDown={handlePillPointerDown}
                     onClick={onClose}
@@ -184,7 +210,7 @@ export default function RecentRoutesPanel({
                         {[0, 1, 2].map((item) => (
                           <div
                             key={item}
-                            className="rounded-xl bg-white/75 px-3 py-3 animate-pulse"
+                            className="animate-pulse rounded-xl bg-white/75 px-3 py-3"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
@@ -217,7 +243,7 @@ export default function RecentRoutesPanel({
                       >
                         <div
                           ref={scrollRef}
-                          className="max-h-40 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain pr-1 pointer-events-auto [touch-action:pan-y]"
+                          className="pointer-events-auto max-h-40 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 [touch-action:pan-y]"
                           style={{ WebkitOverflowScrolling: "touch" }}
                           onTouchStart={(e) => e.stopPropagation()}
                           onTouchMove={(e) => e.stopPropagation()}
@@ -234,20 +260,27 @@ export default function RecentRoutesPanel({
                               >
                                 <div
                                   className={[
-                                    "flex items-stretch gap-2 px-2 py-2 transition",
-                                    "rounded-xl",
+                                    "rounded-xl px-2 py-2 transition",
                                     isActive
                                       ? "bg-emerald-50/90"
                                       : "bg-transparent hover:bg-white/70",
                                   ].join(" ")}
                                 >
-                                  <button
+                                  <div
                                     onClick={() => onLoadRoute(route)}
-                                    className="min-w-0 flex-1 rounded-lg px-1 py-1 text-left transition active:scale-[0.99]"
+                                    className="w-full cursor-pointer rounded-lg px-1 py-1 text-left transition active:scale-[0.99]"
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        onLoadRoute(route);
+                                      }
+                                    }}
                                   >
-                                    <div className="flex min-w-0 items-start">
+                                    <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0 flex-1">
-                                        <p className="block text-sm font-semibold leading-5 text-slate-900 break-words sm:truncate">
+                                        <p className="text-sm font-semibold leading-5 text-slate-900 [overflow-wrap:anywhere]">
                                           {`${shortAreaName(route.from.name) || "From"} → ${shortAreaName(route.to.name) || "Destination"}`}
                                         </p>
 
@@ -257,6 +290,47 @@ export default function RecentRoutesPanel({
                                             Active
                                           </div>
                                         )}
+                                      </div>
+
+                                      <div className="flex shrink-0 items-center gap-2 self-start">
+                                        <span className="rounded-full bg-slate-900/6 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-600">
+                                          {route.difficulty}
+                                        </span>
+
+                                        <button
+                                          type="button"
+                                          aria-label="Share saved route"
+                                          title="Share saved route"
+                                          onClick={(e) => handleShareRoute(e, route)}
+                                          className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50/80 text-sky-600 transition active:scale-95 hover:bg-sky-100"
+                                        >
+                                          <Share2 className="h-4 w-4" strokeWidth={2.4} />
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          aria-label={
+                                            isDeleting ? "Deleting route" : "Delete saved route"
+                                          }
+                                          title={isDeleting ? "Deleting..." : "Delete saved route"}
+                                          disabled={isDeleting}
+                                          onClick={(e) => handleDeleteRoute(e, route)}
+                                          className={[
+                                            "flex h-8 w-8 items-center justify-center rounded-full border transition active:scale-95",
+                                            isDeleting
+                                              ? "border-slate-200 bg-slate-100 text-slate-400"
+                                              : "border-rose-200/80 bg-rose-50/80 text-rose-600 hover:bg-rose-100",
+                                          ].join(" ")}
+                                        >
+                                          {isDeleting ? (
+                                            <Loader2
+                                              className="h-4 w-4 animate-spin"
+                                              strokeWidth={2.4}
+                                            />
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" strokeWidth={2.4} />
+                                          )}
+                                        </button>
                                       </div>
                                     </div>
 
@@ -273,37 +347,6 @@ export default function RecentRoutesPanel({
                                         </span>
                                       </div>
                                     </div>
-                                  </button>
-
-                                  <div className="flex flex-col items-center justify-between gap-2">
-                                    <span className="mb-2 rounded-full bg-slate-900/6 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-600">
-                                      {route.difficulty}
-                                    </span>
-
-                                    <button
-                                      type="button"
-                                      aria-label={
-                                        isDeleting ? "Deleting route" : "Delete saved route"
-                                      }
-                                      title={isDeleting ? "Deleting..." : "Delete saved route"}
-                                      disabled={isDeleting}
-                                      onClick={(e) => handleDeleteRoute(e, route)}
-                                      className={[
-                                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition active:scale-95 sm:h-10 sm:w-10",
-                                        isDeleting
-                                          ? "border-slate-200 bg-slate-100 text-slate-400"
-                                          : "border-rose-200/80 bg-rose-50/80 text-rose-600 hover:bg-rose-100",
-                                      ].join(" ")}
-                                    >
-                                      {isDeleting ? (
-                                        <Loader2
-                                          className="h-4 w-4 animate-spin"
-                                          strokeWidth={2.4}
-                                        />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4" strokeWidth={2.4} />
-                                      )}
-                                    </button>
                                   </div>
                                 </div>
                               </div>
