@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { authOptions } from "./api/auth/[...nextauth]/route";
 
@@ -27,7 +28,7 @@ export default async function HomePage() {
       `}</style>
 
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center">
-        <div className="relative mb-10 flex h-[320px] w-full items-center justify-center sm:h-[360px]">
+        <div className="relative mb-6 flex h-[280px] w-full items-center justify-center sm:h-[320px]">
           <div className="pointer-events-none absolute left-1/2 top-1/2 h-[180px] w-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/25 blur-3xl sm:h-[220px] sm:w-[220px]" />
 
           <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-[260px] -translate-y-1/2 sm:block">
@@ -57,16 +58,16 @@ export default async function HomePage() {
             <Image
               src="/favicon.svg"
               alt=""
-              width={190}
-              height={190}
+              width={170}
+              height={170}
               className="rotate-[8deg] opacity-20 blur-[3px]"
               priority
             />
           </div>
         </div>
 
-        <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-slate-800 sm:text-6xl">
-          Discover the best downhill routes around you.
+        <h1 className="max-w-4xl text-5xl font-bold tracking-tight leading-[1.05] text-slate-800 sm:text-6xl">
+          Discover the best downhill routes around&nbsp;you.
         </h1>
 
         <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
@@ -75,19 +76,19 @@ export default async function HomePage() {
         </p>
 
         <div className="mt-5 mb-10 flex gap-3 sm:flex-row sm:justify-center">
-          <a
+          <Link
             href="/auth/signin"
             className="rounded-xl border border-brandGreen px-6 py-3 font-medium text-brandGreen transition hover:bg-white/40"
           >
             Sign In
-          </a>
+          </Link>
 
-          <a
+          <Link
             href="/auth/signup"
             className="rounded-xl bg-brandGreen px-6 py-3 font-medium text-white shadow-sm transition hover:bg-brandGreen-dark"
           >
             Sign Up
-          </a>
+          </Link>
         </div>
       </div>
     </main>

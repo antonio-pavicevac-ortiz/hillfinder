@@ -2,6 +2,7 @@
 
 import { DashboardUser } from "@/types/user";
 import { signOut } from "next-auth/react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 type DashboardHeaderProps = {
@@ -67,19 +68,19 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
                 {user?.email}
               </div>
 
-              <a
+              <Link
                 href="/dashboard"
                 className="touch-manipulation block px-4 py-2 hover:bg-gray-100 text-gray-700"
               >
                 Dashboard
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/dashboard/profile"
                 className="touch-manipulation block px-4 py-2 hover:bg-gray-100 text-gray-700"
               >
                 Profile
-              </a>
+              </Link>
 
               <button
                 type="button"
@@ -87,13 +88,6 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
               >
                 Settings
               </button>
-
-              <a
-                href="/dashboard/saved"
-                className="touch-manipulation block px-4 py-2 hover:bg-gray-100 text-gray-700"
-              >
-                Saved Routes
-              </a>
 
               <button
                 type="button"

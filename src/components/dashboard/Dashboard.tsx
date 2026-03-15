@@ -65,6 +65,8 @@ export default function Dashboard() {
   const [recenterNonce, setRecenterNonce] = useState(0);
   const [clearRouteNonce, setClearRouteNonce] = useState(0);
   const [clearDestinationNonce, setClearDestinationNonce] = useState(0);
+  const [findDownhillNonce, setFindDownhillNonce] = useState(0);
+
   const quickRouteEnabled = !!destination;
 
   const [blocked, setBlocked] = useState(false);
@@ -172,6 +174,25 @@ export default function Dashboard() {
     return parts[1] || parts[0] || "";
   }
 
+  function handleQuickRoute() {
+    if (!destination || routeBusy) return;
+
+    setQaOpen(false);
+    setRoutesOpen(false);
+    clearRoute();
+    setVariantsReady(false);
+    setSelectedVariant("easy");
+    setRouteAlternativesNonce((n) => n + 1);
+  }
+
+  function handlePlanRoute() {
+    setQaOpen(false);
+    setRoutesOpen(false);
+    setVariantsReady(false);
+    setSelectedVariant(null);
+    setGeneratorOpen(true);
+  }
+
   useEffect(() => {
     if (!generatorOpen) return;
     if (!variantsReady) return;
@@ -271,6 +292,7 @@ export default function Dashboard() {
         recenterNonce={recenterNonce}
         clearRouteNonce={clearRouteNonce}
         clearDestinationNonce={clearDestinationNonce}
+        findDownhillNonce={findDownhillNonce}
         onRouteDrawn={handleRouteReady}
         onRouteFailed={handleRouteFailed}
         routeActive={hasRoute}
@@ -389,27 +411,28 @@ export default function Dashboard() {
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
-        onQuickRoute={() => {
-          if (!destination || routeBusy) return;
+        onQuickRoute={handleQuickRoute}
+        onStartRoute={handlePlanRoute}
+        onViewSaved={() => {
+          setQaOpen(false);
+          setGeneratorOpen(false);
+          setRoutesOpen(true);
+        }}
+        onFindDownhill={async () => {
+          if (!fromLocation) {
+            toast.error("Need your location first");
+            return;
+          }
 
           setQaOpen(false);
           setRoutesOpen(false);
           clearRoute();
           setVariantsReady(false);
           setSelectedVariant("easy");
-          setRouteAlternativesNonce((n) => n + 1);
-        }}
-        onStartRoute={() => {
-          setQaOpen(false);
-          setRoutesOpen(false);
-          setVariantsReady(false);
-          setSelectedVariant(null);
-          setGeneratorOpen(true);
-        }}
-        onViewSaved={() => {
-          setQaOpen(false);
-          setGeneratorOpen(false);
-          setRoutesOpen(true);
+          setActiveRouteSource("generated");
+          setRouteBusy(true);
+
+          setFindDownhillNonce((n) => n + 1);
         }}
         quickRouteEnabled={quickRouteEnabled}
       />
