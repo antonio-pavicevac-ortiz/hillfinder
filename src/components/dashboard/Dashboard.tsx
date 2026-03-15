@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import DashboardMap from "@/components/dashboard/map/DashboardMap";
@@ -74,6 +75,11 @@ export default function Dashboard() {
   const [selectedSavedRoute, setSelectedSavedRoute] = useState<SavedRouteRecord | null>(null);
   const [refreshRoutesKey, setRefreshRoutesKey] = useState(0);
   const [activeRouteSource, setActiveRouteSource] = useState<ActiveRouteSource>(null);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sharedRouteId = searchParams.get("sharedRoute");
+  const handledSharedRouteRef = useRef<string | null>(null);
 
   const TOO_FAR_KM = 30;
 
@@ -160,11 +166,6 @@ export default function Dashboard() {
     }
   }
 
-  function shortPlaceName(name?: string) {
-    if (!name) return "";
-    return name.split(",")[0];
-  }
-
   function shortAreaName(name?: string) {
     if (!name) return "";
     const parts = name.split(",").map((p) => p.trim());
@@ -180,6 +181,69 @@ export default function Dashboard() {
   useEffect(() => {
     console.log("[Dashboard] activeRouteSource =", activeRouteSource);
   }, [activeRouteSource]);
+
+  useEffect(() => {
+    if (!sharedRouteId) return;
+    if (handledSharedRouteRef.current === sharedRouteId) return;
+
+    handledSharedRouteRef.current = sharedRouteId;
+
+    let cancelled = false;
+
+    async function loadSharedRouteIntoDashboard() {
+      try {
+        setRouteBusy(true);
+        setActiveRouteSource("saved");
+
+        const res = await fetch(`/api/routes/${sharedRouteId}`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch shared route");
+        }
+
+        const data = await res.json();
+        const route: SavedRouteRecord = data.route;
+
+        if (cancelled) return;
+
+        setSelectedSavedRoute(route);
+        setFromLocation(route.from);
+        setDestination(route.to);
+        setPlannerTo(route.to.name ?? "");
+        setSelectedVariant(route.difficulty);
+        setHasRoute(true);
+
+        setActiveRouteToSave({
+          name: route.name,
+          from: route.from,
+          to: route.to,
+          difficulty: route.difficulty,
+          coords: route.coords,
+          distanceMeters: route.distanceMeters,
+          durationSeconds: route.durationSeconds,
+        });
+
+        toast.success("Shared route opened");
+        router.replace("/dashboard");
+      } catch (err) {
+        console.error("[Dashboard][SharedRoute]", err);
+        handledSharedRouteRef.current = null;
+        toast.error("Could not open shared route");
+      } finally {
+        if (!cancelled) {
+          setRouteBusy(false);
+        }
+      }
+    }
+
+    loadSharedRouteIntoDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedRouteId, router]);
 
   return (
     <main className="fixed inset-0 bg-white">

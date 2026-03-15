@@ -47,6 +47,7 @@ const SavedRouteSchema = new Schema(
     },
     distanceMeters: { type: Number },
     durationSeconds: { type: Number },
+    shareEnabled: { type: Boolean, default: true },
   },
   {
     timestamps: true,
