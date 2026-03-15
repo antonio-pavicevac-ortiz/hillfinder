@@ -1,6 +1,6 @@
 "use client";
 
-import { Route, Star, Zap } from "lucide-react";
+import { Route, Star, TrendingDown, Zap } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -8,6 +8,7 @@ interface Props {
   onQuickRoute: () => void;
   onStartRoute: () => void;
   onViewSaved: () => void;
+  onFindDownhill: () => void;
   quickRouteEnabled?: boolean;
 }
 
@@ -17,6 +18,7 @@ export default function QuickActionsSheet({
   onQuickRoute,
   onStartRoute,
   onViewSaved,
+  onFindDownhill,
   quickRouteEnabled,
 }: Props) {
   const canQuickRoute = quickRouteEnabled ?? true;
@@ -58,6 +60,18 @@ export default function QuickActionsSheet({
           {!canQuickRoute && (
             <p className="px-1 -mt-2 text-xs text-slate-500">Set a destination on the map first.</p>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              onFindDownhill();
+              onClose();
+            }}
+            className="w-full flex items-center gap-3 bg-emerald-200 hover:bg-emerald-300 border border-emerald-300 px-4 py-3 rounded-xl"
+          >
+            <TrendingDown className="text-emerald-800" />
+            Find a Downhill
+          </button>
 
           <button
             onClick={() => {
