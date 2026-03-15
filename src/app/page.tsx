@@ -1,11 +1,12 @@
 import { getServerSession } from "next-auth";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { authOptions } from "./api/auth/[...nextauth]/route";
 
 export const metadata = {
-  title: "Welcome to Hillfinder!",
+  title: "Hillfinder — Find your next downhill ride",
   description:
-    "Discover scenic downhill routes near you. Whether you’re biking, skateboarding, or just exploring — Hillfinder helps you find your perfect ride.",
+    "Hillfinder helps cyclists, skateboarders, and explorers find smooth, scenic rides — and save or share them with friends.",
 };
 
 export default async function HomePage() {
@@ -16,25 +17,78 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-hillfinder-gradient text-center">
-      <h1 className="text-4xl font-bold mb-4 text-gray-800">Welcome to Hillfinder</h1>
-      <p className="text-lg text-gray-600 mb-8 max-w-md">
-        Discover scenic downhill routes near you. Whether you’re biking, skateboarding, or just
-        exploring — Hillfinder helps you find your perfect ride.
-      </p>
-      <div className="flex justify-center gap-4 mt-6">
-        <a
-          href="/auth/signin"
-          className="px-5 py-2 rounded-md border border-green-600 text-green-700 hover:bg-green-50 font-medium transition"
-        >
-          Sign In
-        </a>
-        <a
-          href="/auth/signup"
-          className="px-5 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white font-medium transition"
-        >
-          Sign Up
-        </a>
+    <main className="min-h-screen overflow-hidden bg-hillfinder-gradient px-6 text-center">
+      <style>{`
+        @keyframes hillfinder-float {
+          0% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+          100% { transform: translateY(0px); }
+        }
+      `}</style>
+
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center">
+        <div className="relative mb-10 flex h-[320px] w-full items-center justify-center sm:h-[360px]">
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-[180px] w-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/25 blur-3xl sm:h-[220px] sm:w-[220px]" />
+
+          <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-[260px] -translate-y-1/2 sm:block">
+            <Image
+              src="/favicon.svg"
+              alt=""
+              width={190}
+              height={190}
+              className="rotate-[-8deg] opacity-20 blur-[3px]"
+              priority
+            />
+          </div>
+
+          <div className="relative z-10">
+            <Image
+              src="/favicon.svg"
+              alt="Hillfinder logo"
+              width={220}
+              height={220}
+              priority
+              className="drop-shadow-[0_16px_32px_rgba(15,53,88,0.22)]"
+              style={{ animation: "hillfinder-float 6s ease-in-out infinite" }}
+            />
+          </div>
+
+          <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-y-1/2 translate-x-[100px] sm:block">
+            <Image
+              src="/favicon.svg"
+              alt=""
+              width={190}
+              height={190}
+              className="rotate-[8deg] opacity-20 blur-[3px]"
+              priority
+            />
+          </div>
+        </div>
+
+        <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-slate-800 sm:text-6xl">
+          Discover the best downhill routes around you.
+        </h1>
+
+        <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+          Hillfinder helps cyclists, skateboarders, and explorers find smooth, scenic rides — and
+          save or share them with friends.
+        </p>
+
+        <div className="mt-5 mb-10 flex gap-3 sm:flex-row sm:justify-center">
+          <a
+            href="/auth/signin"
+            className="rounded-xl border border-brandGreen px-6 py-3 font-medium text-brandGreen transition hover:bg-white/40"
+          >
+            Sign In
+          </a>
+
+          <a
+            href="/auth/signup"
+            className="rounded-xl bg-brandGreen px-6 py-3 font-medium text-white shadow-sm transition hover:bg-brandGreen-dark"
+          >
+            Sign Up
+          </a>
+        </div>
       </div>
     </main>
   );

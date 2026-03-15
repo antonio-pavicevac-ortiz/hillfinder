@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -16,9 +17,14 @@ export default function AuthNavbar() {
       <div className="max-w-7xl mx-auto flex justify-between items-center px-6 sm:px-10">
         {/* Logo or brand */}
         <Link href="/" className="flex items-center gap-2">
-          <div className="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold">
-            N
-          </div>
+          <Image
+            src="/hillfinder-logo.png"
+            alt="Hillfinder logo"
+            width={36}
+            height={36}
+            className="block"
+            priority
+          />
           <span className="text-lg font-semibold text-gray-800">Hillfinder</span>
         </Link>
 
