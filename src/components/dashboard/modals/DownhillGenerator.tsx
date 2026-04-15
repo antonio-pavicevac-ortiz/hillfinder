@@ -9,6 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
+
 function InlineDots({ className = "" }: { className?: string }) {
   return (
     <span className={["inline-flex items-center", className].join(" ")} aria-hidden="true">
@@ -325,7 +327,7 @@ export default function DownhillGenerator({
     }
 
     setUiVariant(selectedVariant ?? null);
-  }, [open, initialTo, selectedVariant]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, initialTo, selectedVariant]);
 
   useEffect(() => {
     if (!open) return;
@@ -470,7 +472,7 @@ export default function DownhillGenerator({
   return (
     <div className="fixed inset-0 z-[100] pointer-events-none">
       <div
-        className="absolute inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto"
+        className="absolute inset-0 bg-black/25 pointer-events-auto"
         onClick={() => {
           if (controlsLocked) return;
           onClose();
@@ -485,7 +487,7 @@ export default function DownhillGenerator({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="absolute inset-0 z-[16] flex items-center justify-center px-6 pointer-events-auto"
+            className="absolute inset-0 z-[16] pointer-events-auto"
             onClick={(e) => {
               e.stopPropagation();
             }}
@@ -493,28 +495,11 @@ export default function DownhillGenerator({
               e.stopPropagation();
             }}
           >
-            <div className="absolute inset-0 bg-black/28 backdrop-blur-[1px]" aria-hidden="true" />
-
-            <motion.div
-              initial={{ scale: 0.98, y: 6, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.98, y: 6, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.9 }}
-              className="relative z-[1] inline-flex min-w-[16rem] max-w-[20rem] items-center gap-3 rounded-2xl border border-emerald-500/20 bg-black px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.45)]"
-              role="status"
-              aria-live="polite"
-              aria-label="Loading"
-            >
-              <motion.span
-                className="h-4 w-4 rounded-full border-2 border-emerald-400/40 border-t-emerald-400"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
-                aria-hidden="true"
-              />
-              <span className="text-sm font-semibold text-white/90">
-                {message || "Finding downhill routes…"}
-              </span>
-            </motion.div>
+            <LoadingOverlay
+              text={message || "Finding downhill routes…"}
+              tone="dark"
+              fixed={false}
+            />
           </motion.div>
         )}
       </AnimatePresence>

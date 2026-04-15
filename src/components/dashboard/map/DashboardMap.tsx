@@ -1,5 +1,6 @@
 "use client";
 
+import { haversineMeters } from "@/lib/geo/distance";
 import { classifySegments } from "@/lib/map/classifySegments";
 import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
 import { findDownhillNearby } from "@/lib/map/findDownhillNearby";
@@ -7,10 +8,11 @@ import { resampleCoords } from "@/lib/map/resampleCoords";
 import { computeRouteStats, scoreEasy, scoreHard } from "@/lib/map/routeDifficulty";
 import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
+import { buildNavSteps } from "@/lib/navigation/progress";
 import type { SaveRoutePayload, SavedRouteRecord, SavedRouteSegment } from "@/types/saved-route";
+
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
-
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 if (MAPBOX_TOKEN) {
@@ -30,6 +32,7 @@ type Variant = {
   distanceMeters?: number;
   durationSeconds?: number;
   segments?: SavedRouteSegment[];
+  navSteps?: ReturnType<typeof buildNavSteps>;
 };
 
 const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
@@ -55,6 +58,8 @@ export default function DashboardMap({
   savedRouteToLoad,
   canAcceptDestination,
   findDownhillNonce,
+  onNavigationLocationChange,
+  isNavigating,
 }: {
   destination?: Destination | null;
   clearRouteNonce?: number;
@@ -76,6 +81,8 @@ export default function DashboardMap({
   savedRouteToLoad?: SavedRouteRecord | null;
   canAcceptDestination?: (loc: { lat: number; lng: number }) => boolean;
   findDownhillNonce?: number;
+  onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
+  isNavigating?: boolean;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -101,27 +108,9 @@ export default function DashboardMap({
   const sweepRef = useRef(createRouteSweepController());
 
   const lastHandledDownhillNonceRef = useRef<number>(0);
-
-  useEffect(() => {
-    selectedVariantRef.current = selectedVariant ?? null;
-  }, [selectedVariant]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !fromLocation) return;
-
-    const existing = fromMarkerRef.current?.getLngLat();
-    if (
-      existing &&
-      Math.abs(existing.lng - fromLocation.lng) < 0.00005 &&
-      Math.abs(existing.lat - fromLocation.lat) < 0.00005
-    ) {
-      return;
-    }
-
-    const ll = new mapboxgl.LngLat(fromLocation.lng, fromLocation.lat);
-    ensureFromMarker(map, ll);
-  }, [fromLocation]);
+  const routeActiveRef = useRef(false);
+  const isNavigatingRef = useRef(false);
+  const followCameraPausedUntilRef = useRef(0);
 
   const TOP_LEFT_CONTROLS_OFFSET_PX = 400;
   const busyReqIdRef = useRef(0);
@@ -141,20 +130,6 @@ export default function DashboardMap({
 
   function clamp(n: number, min: number, max: number) {
     return Math.max(min, Math.min(max, n));
-  }
-
-  function haversineMeters(a: [number, number], b: [number, number]) {
-    const R = 6_371_000;
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const dLat = toRad(b[1] - a[1]);
-    const dLng = toRad(b[0] - a[0]);
-    const lat1 = toRad(a[1]);
-    const lat2 = toRad(b[1]);
-
-    const s1 = Math.sin(dLat / 2);
-    const s2 = Math.sin(dLng / 2);
-    const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
   }
 
   function routeLengthMeters(coords: [number, number][]) {
@@ -394,7 +369,7 @@ export default function DashboardMap({
       const m = mapRef.current;
       if (!to || !m) return;
 
-      if (routeActive) {
+      if (routeActiveRef.current) {
         void generateAlternativesBetweenPoints(m, from, to);
       }
     });
@@ -432,7 +407,7 @@ export default function DashboardMap({
 
     const url =
       `https://api.mapbox.com/directions/v5/mapbox/walking/${coords}` +
-      `?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+      `?alternatives=true&geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`;
 
     const res = await fetch(url, { signal });
     return res.json();
@@ -445,6 +420,7 @@ export default function DashboardMap({
       distanceMeters?: number;
       durationSeconds?: number;
       baselineDistanceMeters?: number;
+      navSteps?: ReturnType<typeof buildNavSteps>;
     }
   ) {
     const getElevation = getElevationRef.current;
@@ -482,6 +458,7 @@ export default function DashboardMap({
       distanceMeters: distMeters,
       durationSeconds: meta?.durationSeconds,
       segments,
+      navSteps: meta?.navSteps ?? [],
     } as Variant;
   }
 
@@ -502,6 +479,7 @@ export default function DashboardMap({
     });
 
     const first = data?.routes?.[0];
+    const navSteps = first ? buildNavSteps(first) : [];
     const raw = first?.geometry?.coordinates as [number, number][] | undefined;
 
     if (!raw?.length) {
@@ -516,6 +494,7 @@ export default function DashboardMap({
       distanceMeters: distMeters,
       durationSeconds: typeof first?.duration === "number" ? first.duration : undefined,
       baselineDistanceMeters: distMeters,
+      navSteps,
     });
 
     return {
@@ -524,6 +503,7 @@ export default function DashboardMap({
       distanceMeters: variant.distanceMeters,
       durationSeconds: variant.durationSeconds,
       segments: variant.segments,
+      navSteps: variant.navSteps,
       score: variant.easyScore,
       to: {
         lat: to.lat,
@@ -637,6 +617,9 @@ export default function DashboardMap({
       segments: variant.segments,
       distanceMeters: variant.distanceMeters,
       durationSeconds: variant.durationSeconds,
+      navSteps: variant.navSteps ?? [],
+      // reset step index when a new route is emitted
+      // (not part of payload, just reset here)
     });
   }
 
@@ -695,6 +678,7 @@ export default function DashboardMap({
       distanceMeters: savedRoute.distanceMeters,
       durationSeconds: savedRoute.durationSeconds,
       segments: savedRoute.segments,
+      navSteps: savedRoute.navSteps ?? [],
     };
 
     selectedVariantRef.current = savedRoute.difficulty;
@@ -727,7 +711,6 @@ export default function DashboardMap({
       maxZoom: savedRoute.difficulty === "hard" ? 17 : 16,
     });
 
-    setRouteBusy(false);
     onVariantSelected?.(savedRoute.difficulty);
     onRouteDrawn?.();
     onVariantsReady?.();
@@ -756,7 +739,10 @@ export default function DashboardMap({
     const reqId = ++routeReqIdRef.current;
     setRouteBusy(true, reqId);
 
-    const drawSegmented = async (coords: [number, number][]) => {
+    const drawSegmented = async (
+      coords: [number, number][],
+      navSteps: ReturnType<typeof buildNavSteps> = []
+    ) => {
       const getElevation = getElevationRef.current;
       const elevations = await Promise.all(
         coords.map(([lng, lat]) =>
@@ -775,6 +761,7 @@ export default function DashboardMap({
         hardScore: scoreHard(stats),
         distanceMeters: routeLengthMeters(coords),
         segments,
+        navSteps,
       };
 
       const variantKey = selectedVariantRef.current ?? "easy";
@@ -793,10 +780,14 @@ export default function DashboardMap({
       const url =
         `https://api.mapbox.com/directions/v5/mapbox/walking/` +
         `${from.lng},${from.lat};${to.lng},${to.lat}` +
-        `?alternatives=true&geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+        `?alternatives=true&geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`;
 
       const res = await fetch(url, { signal: controller.signal });
       const data = await res.json();
+
+      const firstRoute = data?.routes?.[0];
+      const navSteps = firstRoute ? buildNavSteps(firstRoute) : [];
+      console.log("🔥 drawRouteBetweenPoints navSteps", navSteps);
 
       if (reqId !== routeReqIdRef.current) return;
 
@@ -815,7 +806,7 @@ export default function DashboardMap({
 
       lastGoodDestRef.current = new mapboxgl.LngLat(to.lng, to.lat);
 
-      await drawSegmented(coords);
+      await drawSegmented(coords, navSteps);
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("drawRouteBetweenPoints error:", err);
@@ -853,6 +844,10 @@ export default function DashboardMap({
 
       const baseRoutes: any[] = Array.isArray(baseData?.routes) ? baseData.routes : [];
 
+      if (baseRoutes[0]) {
+        console.log("🔥 generateAlternatives navSteps", buildNavSteps(baseRoutes[0]));
+      }
+
       let baselineMeters = Infinity;
       for (const r of baseRoutes) {
         const d = typeof r?.distance === "number" ? r.distance : undefined;
@@ -879,8 +874,8 @@ export default function DashboardMap({
             to,
             routeMeters: distMeters,
             baselineMeters,
-            maxDetourRatio: 1.18,
-            maxLoopiness: 2.2,
+            maxDetourRatio: 1.12,
+            maxLoopiness: 1.8,
           })
         ) {
           continue;
@@ -893,6 +888,7 @@ export default function DashboardMap({
             distanceMeters: typeof r?.distance === "number" ? r.distance : undefined,
             durationSeconds: typeof r?.duration === "number" ? r.duration : undefined,
             baselineDistanceMeters: baselineMeters,
+            navSteps: buildNavSteps(r),
           })
         );
       }
@@ -942,6 +938,7 @@ export default function DashboardMap({
                 distanceMeters: distMeters,
                 durationSeconds:
                   typeof detourRoute?.duration === "number" ? detourRoute.duration : undefined,
+                navSteps: buildNavSteps(detourRoute),
               })
             );
 
@@ -964,9 +961,10 @@ export default function DashboardMap({
 
           candidates.push(
             await buildVariant(map, coords, {
-              distanceMeters: distMeters,
+              distanceMeters: typeof first?.distance === "number" ? first.distance : undefined,
               durationSeconds: typeof first?.duration === "number" ? first.duration : undefined,
               baselineDistanceMeters: baselineMeters,
+              navSteps: buildNavSteps(first),
             })
           );
         }
@@ -1118,6 +1116,28 @@ export default function DashboardMap({
   }, []);
 
   useEffect(() => {
+    selectedVariantRef.current = selectedVariant ?? null;
+  }, [selectedVariant]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fromLocation) return;
+    if (isNavigatingRef.current) return;
+
+    const existing = fromMarkerRef.current?.getLngLat();
+    if (
+      existing &&
+      Math.abs(existing.lng - fromLocation.lng) < 0.00005 &&
+      Math.abs(existing.lat - fromLocation.lat) < 0.00005
+    ) {
+      return;
+    }
+
+    const ll = new mapboxgl.LngLat(fromLocation.lng, fromLocation.lat);
+    ensureFromMarker(map, ll);
+  }, [fromLocation]);
+
+  useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
     if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && !mapboxgl.accessToken) return;
 
@@ -1159,6 +1179,14 @@ export default function DashboardMap({
     };
 
     map.on("zoomend", rerenderForZoom);
+
+    const pauseFollowCamera = () => {
+      followCameraPausedUntilRef.current = Date.now() + 10_000;
+    };
+
+    map.on("dragstart", pauseFollowCamera);
+    map.on("rotatestart", pauseFollowCamera);
+    map.on("pitchstart", pauseFollowCamera);
 
     map.dragPan.enable();
     map.touchZoomRotate.enable();
@@ -1233,8 +1261,12 @@ export default function DashboardMap({
           const { latitude, longitude } = pos.coords;
           const ll = new mapboxgl.LngLat(longitude, latitude);
           latestDeviceLocationRef.current = ll;
-          ensureFromMarker(map, ll);
-          void notifyFromPicked(ll, { immediateName: "Current location" });
+
+          if (!isNavigatingRef.current) {
+            ensureFromMarker(map, ll);
+            void notifyFromPicked(ll, { immediateName: "Current location" });
+          }
+
           map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
         },
         () => {},
@@ -1243,9 +1275,47 @@ export default function DashboardMap({
 
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          const { latitude, longitude } = pos.coords;
+          const { latitude, longitude, heading, speed } = pos.coords;
           const ll = new mapboxgl.LngLat(longitude, latitude);
           latestDeviceLocationRef.current = ll;
+
+          console.log("[DashboardMap] gps tick", {
+            lat: latitude,
+            lng: longitude,
+            routeActive: routeActiveRef.current,
+            isNavigating: isNavigatingRef.current,
+            hasFromMarker: !!fromMarkerRef.current,
+            time: Date.now(),
+          });
+
+          const shouldUpdateLiveMarker = routeActiveRef.current || isNavigatingRef.current;
+
+          if (shouldUpdateLiveMarker) {
+            ensureFromMarker(map, ll);
+
+            console.log("[DashboardMap] updated live marker", {
+              lng: ll.lng,
+              lat: ll.lat,
+            });
+          }
+
+          onNavigationLocationChange?.({ lat: latitude, lng: longitude });
+
+          if (isNavigatingRef.current && Date.now() >= followCameraPausedUntilRef.current) {
+            const nextBearing =
+              typeof heading === "number" && Number.isFinite(heading) ? heading : map.getBearing();
+
+            if (!map.isMoving()) {
+              map.easeTo({
+                center: [longitude, latitude],
+                zoom: Math.max(map.getZoom(), 15),
+                bearing: nextBearing,
+                pitch: speed && speed > 0.8 ? 45 : map.getPitch(),
+                duration: 600,
+                essential: true,
+              });
+            }
+          }
         },
         () => {},
         {
@@ -1280,7 +1350,9 @@ export default function DashboardMap({
       } catch {}
 
       try {
-        map.off("zoomend", rerenderForZoom);
+        map.off("dragstart", pauseFollowCamera);
+        map.off("rotatestart", pauseFollowCamera);
+        map.off("pitchstart", pauseFollowCamera);
       } catch {}
 
       try {
@@ -1410,16 +1482,20 @@ export default function DashboardMap({
         const ll = new mapboxgl.LngLat(longitude, latitude);
         latestDeviceLocationRef.current = ll;
 
-        const existing = fromMarkerRef.current?.getLngLat();
+        if (!isNavigatingRef.current) {
+          const existing = fromMarkerRef.current?.getLngLat();
 
-        if (
-          !existing ||
-          Math.abs(existing.lng - ll.lng) > 0.00005 ||
-          Math.abs(existing.lat - ll.lat) > 0.00005
-        ) {
-          ensureFromMarker(map, ll);
+          if (
+            !existing ||
+            Math.abs(existing.lng - ll.lng) > 0.00005 ||
+            Math.abs(existing.lat - ll.lat) > 0.00005
+          ) {
+            ensureFromMarker(map, ll);
+          }
+          void notifyFromPicked(ll, { immediateName: "Current location" });
         }
-        void notifyFromPicked(ll, { immediateName: "Current location" });
+
+        followCameraPausedUntilRef.current = 0;
 
         map.easeTo({
           center: [longitude, latitude],
@@ -1504,11 +1580,6 @@ export default function DashboardMap({
 
         ensureDestMarker(map, to);
         lastGoodDestRef.current = to;
-        onDestinationPicked?.({
-          name: result.route.to.name ?? "Nearby Downhill",
-          lat: result.route.to.lat,
-          lng: result.route.to.lng,
-        });
 
         const variant: Variant = {
           coords: result.route.coords,
@@ -1518,6 +1589,7 @@ export default function DashboardMap({
           distanceMeters: result.route.distanceMeters,
           durationSeconds: result.route.durationSeconds,
           segments: result.route.segments,
+          navSteps: result.route.navSteps ?? [],
         };
 
         selectedVariantRef.current = "easy";
@@ -1621,6 +1693,19 @@ export default function DashboardMap({
       hasVariants: !!variantsRef.current,
     });
   }, [selectedVariant]);
+
+  useEffect(() => {
+    routeActiveRef.current = !!routeActive;
+  }, [routeActive]);
+
+  useEffect(() => {
+    isNavigatingRef.current = !!isNavigating;
+
+    console.log("[DashboardMap] isNavigating prop -> ref", {
+      isNavigating,
+      refValue: isNavigatingRef.current,
+    });
+  }, [isNavigating]);
 
   return (
     <div

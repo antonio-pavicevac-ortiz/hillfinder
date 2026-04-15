@@ -1,4 +1,6 @@
 import { generateRadialPoints } from "@/lib/map/generateRadialPoints";
+import type { NavStep } from "@/lib/navigation/types";
+import { SavedRouteSegment } from "@/types/saved-route";
 
 type LatLng = {
   lat: number;
@@ -7,11 +9,12 @@ type LatLng = {
 
 type NearbyRouteResult = {
   coords: [number, number][];
-  elevations?: number[];
+  elevations: number[];
   distanceMeters?: number;
   durationSeconds?: number;
-  segments?: any[];
-  score?: number;
+  segments?: SavedRouteSegment[];
+  navSteps?: NavStep[];
+  score: number;
   to: {
     lat: number;
     lng: number;

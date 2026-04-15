@@ -1,12 +1,14 @@
 import { Difficulty, scoreElevation } from "@/lib/hillfinder/difficulty";
 import { getDrivingRoutes } from "@/lib/mapbox/directions";
 import { getElevation } from "@/lib/mapbox/elevation";
+import type { NavStep } from "@/lib/navigation/types";
 import { useState } from "react";
 
 type DirectionsRoute = {
   geometry: { coordinates: [number, number][] };
   distance?: number;
   duration?: number;
+  navSteps?: NavStep[];
 };
 
 export interface UseRouteElevationResult {
@@ -27,6 +29,8 @@ export default function useRouteElevation(): UseRouteElevationResult {
   const [loading, setLoading] = useState(false);
 
   async function computeRoute(origin: [number, number], destination: [number, number]) {
+    console.log("🔥 computeRoute fired", { origin, destination });
+
     setLoading(true);
 
     // ✅ fetch full driving routes
