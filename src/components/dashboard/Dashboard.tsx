@@ -1,39 +1,33 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import DashboardMap from "@/components/dashboard/map/DashboardMap";
 import MapControls from "@/components/dashboard/map/MapControls";
+import NavigationCard from "@/components/dashboard/map/NavigationCard";
 
 import DashboardHeader from "@/components/dashboard/ui/DashboardHeader";
 import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/modals/QuickActionSheet";
+import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
-import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
-import { toast } from "sonner";
+import { haversineMeters } from "@/lib/geo/distance";
+import { formatStepDistance } from "@/lib/navigation/format";
+import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
+import { shouldAdvanceStep } from "@/lib/navigation/progress";
 
 type Destination = { lat: number; lng: number; name?: string };
 type FromLocation = { lat: number; lng: number; name?: string };
 
 type Variant = "easy" | "hard";
 type ActiveRouteSource = "generated" | "saved" | null;
-
-function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const R = 6371;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const lat1 = (a.lat * Math.PI) / 180;
-  const lat2 = (b.lat * Math.PI) / 180;
-
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
 
 const HEADER_H = 64;
 const FOOTER_H = 56;
@@ -82,13 +76,39 @@ export default function Dashboard() {
   const searchParams = useSearchParams();
   const sharedRouteId = searchParams.get("sharedRoute");
   const handledSharedRouteRef = useRef<string | null>(null);
+  const hasShownVoiceHintRef = useRef(false);
+  const navStartLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const hasMovedSinceRouteLoadRef = useRef(false);
+
+  const [navigation, dispatchNavigation] = useReducer(navigationReducer, initialNavigationState);
+  const [isNavMuted, setIsNavMuted] = useState(true);
+
+  const activeNavSteps = navigation.steps;
+  const currentStepIndex = navigation.currentStepIndex;
+  const isNavigating = navigation.status === "navigating";
+  const liveNavLocation = navigation.liveLocation;
+
+  const currentNavStep = activeNavSteps[currentStepIndex];
+  const nextNavStep = activeNavSteps[currentStepIndex + 1];
+  const maneuverTargetStep = nextNavStep?.location ? nextNavStep : currentNavStep;
+  const distanceTargetStep = maneuverTargetStep;
+
+  let distanceToNextStepMeters: number | null = null;
+
+  if (liveNavLocation && distanceTargetStep?.location) {
+    distanceToNextStepMeters = haversineMeters(
+      [liveNavLocation.lng, liveNavLocation.lat],
+      distanceTargetStep.location
+    );
+  }
 
   const TOO_FAR_KM = 30;
+  const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
+  const STEP_ADVANCE_THRESHOLD_METERS = 18;
 
   function commitDestination(next: Destination) {
     if (fromLocation) {
-      const km = haversineKm(fromLocation, next);
-
+      const km = haversineMeters([fromLocation.lng, fromLocation.lat], [next.lng, next.lat]) / 1000;
       if (km > TOO_FAR_KM) {
         setBlocked(true);
         setDestination(null);
@@ -127,7 +147,15 @@ export default function Dashboard() {
     setRouteBusy(false);
     setActiveRouteToSave(null);
     setSelectedSavedRoute(null);
+
     setActiveRouteSource(null);
+    setIsNavMuted(true);
+    hasShownVoiceHintRef.current = false;
+    navStartLocationRef.current = null;
+    hasMovedSinceRouteLoadRef.current = false;
+    dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
+
+    dispatchNavigation({ type: "STOP" });
     setClearRouteNonce((n) => n + 1);
   }
 
@@ -200,8 +228,19 @@ export default function Dashboard() {
   }, [generatorOpen, variantsReady]);
 
   useEffect(() => {
-    console.log("[Dashboard] activeRouteSource =", activeRouteSource);
-  }, [activeRouteSource]);
+    if (!hasRoute) return;
+    if (!activeNavSteps.length) return;
+    if (!isNavMuted) return;
+    if (hasShownVoiceHintRef.current) return;
+
+    toast("Tap the speaker button to enable voice guidance", {
+      id: "voice-guidance-hint",
+      duration: 4000,
+      icon: "🔊",
+    });
+
+    hasShownVoiceHintRef.current = true;
+  }, [hasRoute, activeNavSteps.length, isNavMuted]);
 
   useEffect(() => {
     if (!sharedRouteId) return;
@@ -236,14 +275,26 @@ export default function Dashboard() {
         setSelectedVariant(route.difficulty);
         setHasRoute(true);
 
+        dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
+        dispatchNavigation({ type: "START" });
+
+        navStartLocationRef.current = {
+          lat: route.from.lat,
+          lng: route.from.lng,
+        };
+        hasMovedSinceRouteLoadRef.current = false;
+
         setActiveRouteToSave({
           name: route.name,
           from: route.from,
           to: route.to,
           difficulty: route.difficulty,
           coords: route.coords,
+          elevations: route.elevations,
+          segments: route.segments,
           distanceMeters: route.distanceMeters,
           durationSeconds: route.durationSeconds,
+          navSteps: route.navSteps ?? [],
         });
 
         toast.success("Shared route opened");
@@ -265,6 +316,123 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, [sharedRouteId, router]);
+
+  useEffect(() => {
+    if (navigation.status !== "navigating") return;
+    if (isNavMuted) return;
+
+    const step = navigation.steps[navigation.currentStepIndex];
+    if (!step?.instruction) return;
+    if (navigation.hasSpokenCurrentStep) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    synth.resume();
+
+    const utterance = new SpeechSynthesisUtterance(step.instruction);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+
+    utterance.onstart = () => {
+      dispatchNavigation({ type: "MARK_STEP_SPOKEN" });
+    };
+
+    const speakTimer = window.setTimeout(() => {
+      synth.speak(utterance);
+    }, 120);
+
+    return () => {
+      window.clearTimeout(speakTimer);
+    };
+  }, [
+    navigation.status,
+    navigation.currentStepIndex,
+    navigation.hasSpokenCurrentStep,
+    navigation.steps,
+    isNavMuted,
+  ]);
+
+  useEffect(() => {
+    if (isNavMuted && typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, [isNavMuted]);
+
+  useEffect(() => {
+    if (!isNavigating) return;
+    if (!liveNavLocation) return;
+    if (!activeNavSteps.length) return;
+
+    const currentStep = activeNavSteps[currentStepIndex];
+    const nextStep = activeNavSteps[currentStepIndex + 1];
+    const advanceTargetStep = nextStep?.location ? nextStep : currentStep;
+
+    if (!currentStep || !advanceTargetStep) return;
+
+    if (
+      currentStepIndex === 0 &&
+      navStartLocationRef.current &&
+      !hasMovedSinceRouteLoadRef.current
+    ) {
+      const movedSinceLoad = haversineMeters(
+        [navStartLocationRef.current.lng, navStartLocationRef.current.lat],
+        [liveNavLocation.lng, liveNavLocation.lat]
+      );
+
+      if (movedSinceLoad < MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS) {
+        return;
+      }
+
+      hasMovedSinceRouteLoadRef.current = true;
+    }
+
+    const isLastStep = currentStepIndex >= activeNavSteps.length - 1;
+
+    if (
+      shouldAdvanceStep(liveNavLocation, advanceTargetStep, STEP_ADVANCE_THRESHOLD_METERS) &&
+      !isLastStep
+    ) {
+      dispatchNavigation({ type: "ADVANCE_STEP" });
+    }
+  }, [
+    isNavigating,
+    liveNavLocation,
+    activeNavSteps,
+    currentStepIndex,
+    MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS,
+    STEP_ADVANCE_THRESHOLD_METERS,
+  ]);
+
+  useEffect(() => {
+    if (!isNavigating) return;
+    if (!liveNavLocation) return;
+    if (!destination) return;
+    if (navigation.status === "completed") return;
+
+    const distanceToDestination = haversineMeters(
+      [liveNavLocation.lng, liveNavLocation.lat],
+      [destination.lng, destination.lat]
+    );
+
+    const ARRIVAL_THRESHOLD_METERS = 18;
+
+    if (distanceToDestination <= ARRIVAL_THRESHOLD_METERS) {
+      if (!isNavMuted && typeof window !== "undefined" && "speechSynthesis" in window) {
+        const synth = window.speechSynthesis;
+        synth.cancel();
+        synth.resume();
+
+        const utterance = new SpeechSynthesisUtterance("You have arrived at your destination");
+        utterance.rate = 1;
+        utterance.pitch = 1;
+
+        synth.speak(utterance);
+      }
+
+      dispatchNavigation({ type: "COMPLETE" });
+    }
+  }, [isNavigating, liveNavLocation, destination, navigation.status, isNavMuted]);
 
   return (
     <main className="fixed inset-0 bg-white">
@@ -299,6 +467,9 @@ export default function Dashboard() {
         routeAlternativesNonce={routeAlternativesNonce}
         selectedVariant={selectedVariant}
         onRouteBusyChange={setRouteBusy}
+        onNavigationLocationChange={(loc) => {
+          dispatchNavigation({ type: "SET_LOCATION", location: loc });
+        }}
         onVariantsReady={() => {
           console.log("[Dashboard] variantsReady true");
           handleRouteReady();
@@ -312,6 +483,22 @@ export default function Dashboard() {
           commitDestination(next);
         }}
         onRouteReady={(route) => {
+          setFromLocation(route.from);
+          setDestination(route.to);
+          setPlannerTo(route.to.name ?? "");
+          console.log("route.from", route.from);
+          console.log("route.to", route.to);
+          console.log("route payload navSteps", route.navSteps);
+
+          dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
+          dispatchNavigation({ type: "START" });
+
+          navStartLocationRef.current = {
+            lat: route.from.lat,
+            lng: route.from.lng,
+          };
+          hasMovedSinceRouteLoadRef.current = false;
+
           setActiveRouteToSave(route);
 
           setActiveRouteSource((currentSource) => {
@@ -324,22 +511,15 @@ export default function Dashboard() {
           });
         }}
         savedRouteToLoad={selectedSavedRoute}
+        isNavigating={isNavigating}
       />
 
-      {routeBusy && activeRouteSource === "saved" && (
-        <div className="fixed inset-0 z-[18] pointer-events-none flex items-center justify-center px-6">
-          <div
-            className={[
-              "inline-flex items-center gap-3 rounded-2xl px-4 py-3",
-              "border border-white/30 bg-white/20",
-              "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
-              "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
-            ].join(" ")}
-          >
-            <div className="h-4 w-4 rounded-full border-2 border-slate-400/40 border-t-slate-800 animate-spin" />
-            <span className="text-sm font-medium text-slate-900/90">Rendering route...</span>
-          </div>
-        </div>
+      {routeBusy && !generatorOpen && (
+        <LoadingOverlay
+          text={activeRouteSource === "saved" ? "Rendering route..." : "Generating route..."}
+          tone="dark"
+          showBackdrop
+        />
       )}
 
       <header
@@ -369,6 +549,15 @@ export default function Dashboard() {
                 setPlannerTo(route.to.name ?? "");
                 setSelectedVariant(route.difficulty);
                 setHasRoute(true);
+                dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
+                dispatchNavigation({ type: "START" });
+
+                navStartLocationRef.current = {
+                  lat: route.from.lat,
+                  lng: route.from.lng,
+                };
+                hasMovedSinceRouteLoadRef.current = false;
+
                 setVariantsReady(true);
                 setRoutesOpen(false);
                 setActiveRouteSource("saved");
@@ -379,8 +568,11 @@ export default function Dashboard() {
                   to: route.to,
                   difficulty: route.difficulty,
                   coords: route.coords,
+                  elevations: route.elevations,
+                  segments: route.segments,
                   distanceMeters: route.distanceMeters,
                   durationSeconds: route.durationSeconds,
+                  navSteps: route.navSteps ?? [],
                 });
 
                 toast.success(
@@ -392,6 +584,34 @@ export default function Dashboard() {
             />
           </div>
         </div>
+      )}
+
+      {hasRoute && activeNavSteps.length > 0 && currentNavStep?.instruction && (
+        <NavigationCard
+          currentInstruction={currentNavStep.instruction}
+          distanceText={formatStepDistance(distanceToNextStepMeters)}
+          nextInstruction={nextNavStep?.instruction}
+          stepIndex={currentStepIndex}
+          totalSteps={activeNavSteps.length}
+          isMuted={isNavMuted}
+          onToggleMute={() => {
+            setIsNavMuted((current) => {
+              const nextMuted = !current;
+
+              if (!nextMuted) {
+                dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
+              }
+
+              return nextMuted;
+            });
+          }}
+          onPreviousStep={() => {
+            dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex - 1 });
+          }}
+          onNextStep={() => {
+            dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex + 1 });
+          }}
+        />
       )}
 
       <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
