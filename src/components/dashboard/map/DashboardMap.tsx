@@ -1,5 +1,6 @@
 "use client";
 
+import { createNavigationPuck } from "@/components/dashboard/map/NavigationPuck";
 import { haversineMeters } from "@/lib/geo/distance";
 import { classifySegments } from "@/lib/map/classifySegments";
 import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
@@ -8,9 +9,10 @@ import { resampleCoords } from "@/lib/map/resampleCoords";
 import { computeRouteStats, scoreEasy, scoreHard } from "@/lib/map/routeDifficulty";
 import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
+import { resolveHeading } from "@/lib/navigation/heading";
 import { buildNavSteps } from "@/lib/navigation/progress";
+import { snapPointToRoute } from "@/lib/navigation/routeSnap";
 import type { SaveRoutePayload, SavedRouteRecord, SavedRouteSegment } from "@/types/saved-route";
-import { createNavigationPuck } from "./NavigationPuck";
 
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
@@ -118,6 +120,7 @@ export default function DashboardMap({
   const busyReqIdRef = useRef(0);
   const navigationPuckRef = useRef<mapboxgl.Marker | null>(null);
   const lastResolvedHeadingRef = useRef<number | null>(null);
+  const smoothedHeadingRef = useRef<number | null>(null);
 
   function setRouteBusy(busy: boolean, reqId?: number) {
     if (busy) {
@@ -439,6 +442,18 @@ export default function DashboardMap({
 
     // Sync UI label
     void notifyFromPicked(latest, { immediateName: "Current location" });
+  }
+
+  function getActiveVariantCoords() {
+    const variants = variantsRef.current;
+
+    if (!variants) return null;
+
+    const activeKey = selectedVariantRef.current ?? "easy";
+
+    const activeVariant = activeKey === "hard" ? variants.hard : variants.easy;
+
+    return activeVariant?.coords ?? null;
   }
 
   async function fetchDirectionsRoute(params: {
@@ -1131,71 +1146,6 @@ export default function DashboardMap({
     }
   }
 
-  function normalizeHeading(deg: number) {
-    return ((deg % 360) + 360) % 360;
-  }
-
-  function bearingBetween(a: mapboxgl.LngLat, b: mapboxgl.LngLat) {
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const toDeg = (rad: number) => (rad * 180) / Math.PI;
-
-    const lat1 = toRad(a.lat);
-    const lat2 = toRad(b.lat);
-    const dLng = toRad(b.lng - a.lng);
-
-    const y = Math.sin(dLng) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-
-    const brng = toDeg(Math.atan2(y, x));
-    return normalizeHeading(brng);
-  }
-
-  function resolveHeading(params: {
-    reportedHeading: number | null;
-
-    previous: mapboxgl.LngLat | null;
-
-    current: mapboxgl.LngLat;
-
-    lastResolvedHeading: number | null;
-
-    speedMps?: number | null;
-  }) {
-    const { reportedHeading, previous, current, lastResolvedHeading, speedMps } = params;
-
-    let movementHeading: number | null = null;
-
-    if (previous) {
-      const movedMeters = previous.distanceTo(current);
-
-      if (movedMeters >= 4) {
-        movementHeading = bearingBetween(previous, current);
-      }
-    }
-
-    if (
-      (speedMps ?? 0) > 0.8 &&
-      typeof movementHeading === "number" &&
-      Number.isFinite(movementHeading)
-    ) {
-      return normalizeHeading(movementHeading);
-    }
-
-    if (typeof movementHeading === "number" && Number.isFinite(movementHeading)) {
-      return normalizeHeading(movementHeading);
-    }
-
-    if (typeof reportedHeading === "number" && Number.isFinite(reportedHeading)) {
-      return normalizeHeading(reportedHeading);
-    }
-
-    if (typeof lastResolvedHeading === "number" && Number.isFinite(lastResolvedHeading)) {
-      return normalizeHeading(lastResolvedHeading);
-    }
-
-    return null;
-  }
-
   const controlsCssText = useMemo(() => {
     return `
       .hf-map .mapboxgl-ctrl-top-left {
@@ -1394,8 +1344,24 @@ export default function DashboardMap({
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude, longitude, heading, speed } = pos.coords;
+
           const ll = new mapboxgl.LngLat(longitude, latitude);
+
           latestDeviceLocationRef.current = ll;
+
+          let puckLngLat = ll;
+          let snappedRouteBearing: number | null = null;
+
+          const activeRouteCoords = getActiveVariantCoords();
+
+          if (isNavigatingRef.current && activeRouteCoords?.length) {
+            const snapped = snapPointToRoute(ll, activeRouteCoords);
+
+            if (snapped.distanceMeters <= 20) {
+              puckLngLat = snapped.point;
+              snappedRouteBearing = snapped.bearing;
+            }
+          }
 
           const effectiveHeading = resolveHeading({
             reportedHeading:
@@ -1420,16 +1386,30 @@ export default function DashboardMap({
           });
 
           if (isNavigatingRef.current) {
-            const puck = ensureNavigationPuck(map, ll);
-
+            const puck = ensureNavigationPuck(map, puckLngLat);
             puck.getElement().style.removeProperty("display");
 
             const puckEl = puck.getElement() as HTMLDivElement & {
               __setRotation?: (deg: number) => void;
             };
 
-            if (typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)) {
-              const relativeHeading = effectiveHeading - map.getBearing();
+            const targetHeading =
+              typeof snappedRouteBearing === "number" && Number.isFinite(snappedRouteBearing)
+                ? snappedRouteBearing
+                : typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)
+                  ? effectiveHeading
+                  : null;
+
+            if (typeof targetHeading === "number" && Number.isFinite(targetHeading)) {
+              const prev = smoothedHeadingRef.current ?? targetHeading;
+
+              // simple smoothing (lerp)
+              const alpha = 0.2;
+              const smoothed = prev + (targetHeading - prev) * alpha;
+
+              smoothedHeadingRef.current = smoothed;
+
+              const relativeHeading = smoothed - map.getBearing();
 
               puckEl.__setRotation?.(relativeHeading);
             }
@@ -1450,13 +1430,18 @@ export default function DashboardMap({
 
           if (isNavigatingRef.current && Date.now() >= followCameraPausedUntilRef.current) {
             const nextBearing =
-              typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)
-                ? effectiveHeading
-                : map.getBearing();
+              typeof smoothedHeadingRef.current === "number" &&
+              Number.isFinite(smoothedHeadingRef.current)
+                ? smoothedHeadingRef.current
+                : typeof snappedRouteBearing === "number" && Number.isFinite(snappedRouteBearing)
+                  ? snappedRouteBearing
+                  : typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)
+                    ? effectiveHeading
+                    : map.getBearing();
 
             if (!map.isMoving()) {
               map.easeTo({
-                center: [longitude, latitude],
+                center: [puckLngLat.lng, puckLngLat.lat],
                 zoom: Math.max(map.getZoom(), 15),
                 bearing: nextBearing,
                 pitch: speed && speed > 0.8 ? 45 : map.getPitch(),
@@ -1465,8 +1450,18 @@ export default function DashboardMap({
               });
             }
           }
-          if (typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)) {
-            lastResolvedHeadingRef.current = effectiveHeading;
+          const persistedHeading =
+            typeof smoothedHeadingRef.current === "number" &&
+            Number.isFinite(smoothedHeadingRef.current)
+              ? smoothedHeadingRef.current
+              : typeof snappedRouteBearing === "number" && Number.isFinite(snappedRouteBearing)
+                ? snappedRouteBearing
+                : typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)
+                  ? effectiveHeading
+                  : null;
+
+          if (typeof persistedHeading === "number" && Number.isFinite(persistedHeading)) {
+            lastResolvedHeadingRef.current = persistedHeading;
           }
 
           previousDeviceLocationRef.current = ll;
