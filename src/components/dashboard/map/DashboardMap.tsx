@@ -10,6 +10,7 @@ import { createRouteSweepController } from "@/lib/map/routeSweep";
 import { createTerrainElevationGetter, type TileKey } from "@/lib/map/terrainReady";
 import { buildNavSteps } from "@/lib/navigation/progress";
 import type { SaveRoutePayload, SavedRouteRecord, SavedRouteSegment } from "@/types/saved-route";
+import { createNavigationPuck } from "./NavigationPuck";
 
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
@@ -111,9 +112,12 @@ export default function DashboardMap({
   const routeActiveRef = useRef(false);
   const isNavigatingRef = useRef(false);
   const followCameraPausedUntilRef = useRef(0);
+  const previousDeviceLocationRef = useRef<mapboxgl.LngLat | null>(null);
 
   const TOP_LEFT_CONTROLS_OFFSET_PX = 400;
   const busyReqIdRef = useRef(0);
+  const navigationPuckRef = useRef<mapboxgl.Marker | null>(null);
+  const lastResolvedHeadingRef = useRef<number | null>(null);
 
   function setRouteBusy(busy: boolean, reqId?: number) {
     if (busy) {
@@ -357,6 +361,8 @@ export default function DashboardMap({
       .setLngLat(lngLat)
       .addTo(map);
 
+    marker.getElement().style.zIndex = "8";
+
     marker.on("dragstart", () => invalidateRouteNow());
 
     marker.on("dragend", () => {
@@ -389,8 +395,50 @@ export default function DashboardMap({
       .setLngLat(lngLat)
       .addTo(map);
 
+    marker.getElement().style.zIndex = "7";
+
     destMarkerRef.current = marker;
     return marker;
+  }
+
+  function ensureNavigationPuck(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike) {
+    if (navigationPuckRef.current) {
+      navigationPuckRef.current.setLngLat(lngLat);
+      navigationPuckRef.current.getElement().style.removeProperty("display");
+      return navigationPuckRef.current;
+    }
+
+    const el = createNavigationPuck();
+
+    const marker = new mapboxgl.Marker({
+      element: el,
+      anchor: "center",
+    })
+      .setLngLat(lngLat)
+      .addTo(map);
+
+    marker.getElement().style.zIndex = "9";
+    marker.getElement().style.removeProperty("display");
+
+    navigationPuckRef.current = marker;
+    return marker;
+  }
+
+  function restoreFromToCurrentLocation(map: mapboxgl.Map) {
+    const latest = latestDeviceLocationRef.current;
+    if (!latest) return;
+
+    // Move green marker back to device location
+    ensureFromMarker(map, latest);
+
+    // Make sure it's visible
+    fromMarkerRef.current?.getElement().style.removeProperty("display");
+
+    // Hide navigation puck if it exists
+    navigationPuckRef.current?.getElement().style.setProperty("display", "none");
+
+    // Sync UI label
+    void notifyFromPicked(latest, { immediateName: "Current location" });
   }
 
   async function fetchDirectionsRoute(params: {
@@ -1083,6 +1131,71 @@ export default function DashboardMap({
     }
   }
 
+  function normalizeHeading(deg: number) {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  function bearingBetween(a: mapboxgl.LngLat, b: mapboxgl.LngLat) {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const dLng = toRad(b.lng - a.lng);
+
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+    const brng = toDeg(Math.atan2(y, x));
+    return normalizeHeading(brng);
+  }
+
+  function resolveHeading(params: {
+    reportedHeading: number | null;
+
+    previous: mapboxgl.LngLat | null;
+
+    current: mapboxgl.LngLat;
+
+    lastResolvedHeading: number | null;
+
+    speedMps?: number | null;
+  }) {
+    const { reportedHeading, previous, current, lastResolvedHeading, speedMps } = params;
+
+    let movementHeading: number | null = null;
+
+    if (previous) {
+      const movedMeters = previous.distanceTo(current);
+
+      if (movedMeters >= 4) {
+        movementHeading = bearingBetween(previous, current);
+      }
+    }
+
+    if (
+      (speedMps ?? 0) > 0.8 &&
+      typeof movementHeading === "number" &&
+      Number.isFinite(movementHeading)
+    ) {
+      return normalizeHeading(movementHeading);
+    }
+
+    if (typeof movementHeading === "number" && Number.isFinite(movementHeading)) {
+      return normalizeHeading(movementHeading);
+    }
+
+    if (typeof reportedHeading === "number" && Number.isFinite(reportedHeading)) {
+      return normalizeHeading(reportedHeading);
+    }
+
+    if (typeof lastResolvedHeading === "number" && Number.isFinite(lastResolvedHeading)) {
+      return normalizeHeading(lastResolvedHeading);
+    }
+
+    return null;
+  }
+
   const controlsCssText = useMemo(() => {
     return `
       .hf-map .mapboxgl-ctrl-top-left {
@@ -1259,11 +1372,16 @@ export default function DashboardMap({
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords;
+
           const ll = new mapboxgl.LngLat(longitude, latitude);
+
           latestDeviceLocationRef.current = ll;
+
+          previousDeviceLocationRef.current = ll;
 
           if (!isNavigatingRef.current) {
             ensureFromMarker(map, ll);
+
             void notifyFromPicked(ll, { immediateName: "Current location" });
           }
 
@@ -1279,6 +1397,19 @@ export default function DashboardMap({
           const ll = new mapboxgl.LngLat(longitude, latitude);
           latestDeviceLocationRef.current = ll;
 
+          const effectiveHeading = resolveHeading({
+            reportedHeading:
+              typeof heading === "number" && Number.isFinite(heading) ? heading : null,
+
+            previous: previousDeviceLocationRef.current,
+
+            current: ll,
+
+            lastResolvedHeading: lastResolvedHeadingRef.current,
+
+            speedMps: typeof speed === "number" && Number.isFinite(speed) ? speed : null,
+          });
+
           console.log("[DashboardMap] gps tick", {
             lat: latitude,
             lng: longitude,
@@ -1288,22 +1419,40 @@ export default function DashboardMap({
             time: Date.now(),
           });
 
-          const shouldUpdateLiveMarker = routeActiveRef.current || isNavigatingRef.current;
+          if (isNavigatingRef.current) {
+            const puck = ensureNavigationPuck(map, ll);
 
-          if (shouldUpdateLiveMarker) {
+            puck.getElement().style.removeProperty("display");
+
+            const puckEl = puck.getElement() as HTMLDivElement & {
+              __setRotation?: (deg: number) => void;
+            };
+
+            if (typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)) {
+              const relativeHeading = effectiveHeading - map.getBearing();
+
+              puckEl.__setRotation?.(relativeHeading);
+            }
+
+            fromMarkerRef.current?.getElement().style.setProperty("display", "none");
+          } else {
+            // Normal behavior
             ensureFromMarker(map, ll);
 
-            console.log("[DashboardMap] updated live marker", {
-              lng: ll.lng,
-              lat: ll.lat,
-            });
+            // Make sure it's visible again
+            fromMarkerRef.current?.getElement().style.removeProperty("display");
+
+            // Hide puck if it exists
+            navigationPuckRef.current?.getElement().style.setProperty("display", "none");
           }
 
           onNavigationLocationChange?.({ lat: latitude, lng: longitude });
 
           if (isNavigatingRef.current && Date.now() >= followCameraPausedUntilRef.current) {
             const nextBearing =
-              typeof heading === "number" && Number.isFinite(heading) ? heading : map.getBearing();
+              typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)
+                ? effectiveHeading
+                : map.getBearing();
 
             if (!map.isMoving()) {
               map.easeTo({
@@ -1316,6 +1465,11 @@ export default function DashboardMap({
               });
             }
           }
+          if (typeof effectiveHeading === "number" && Number.isFinite(effectiveHeading)) {
+            lastResolvedHeadingRef.current = effectiveHeading;
+          }
+
+          previousDeviceLocationRef.current = ll;
         },
         () => {},
         {
@@ -1371,6 +1525,11 @@ export default function DashboardMap({
 
       abortRef.current?.abort();
       setRouteBusy(false);
+
+      try {
+        navigationPuckRef.current?.remove();
+      } catch {}
+      navigationPuckRef.current = null;
     };
   }, [controlsCssText]);
 
@@ -1442,6 +1601,7 @@ export default function DashboardMap({
     selectedVariantRef.current = null;
     renderedRouteModeRef.current = null;
     setRouteBusy(false);
+    restoreFromToCurrentLocation(map);
 
     console.log("[clearRouteNonce] clearing route");
   }, [clearRouteNonce]);
@@ -1467,6 +1627,7 @@ export default function DashboardMap({
     selectedVariantRef.current = null;
     renderedRouteModeRef.current = null;
     setRouteBusy(false);
+    restoreFromToCurrentLocation(map);
 
     console.log("[clearDestinationNonce] clearing destination");
   }, [clearDestinationNonce]);
@@ -1580,6 +1741,11 @@ export default function DashboardMap({
 
         ensureDestMarker(map, to);
         lastGoodDestRef.current = to;
+        onDestinationPicked?.({
+          name: result.route.to.name ?? "Nearby Downhill",
+          lat: result.route.to.lat,
+          lng: result.route.to.lng,
+        });
 
         const variant: Variant = {
           coords: result.route.coords,
@@ -1705,8 +1871,37 @@ export default function DashboardMap({
       isNavigating,
       refValue: isNavigatingRef.current,
     });
-  }, [isNavigating]);
 
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (isNavigatingRef.current) {
+      const latest = latestDeviceLocationRef.current ?? fromMarkerRef.current?.getLngLat();
+
+      if (latest) {
+        const puck = ensureNavigationPuck(map, latest);
+
+        puck.getElement().style.removeProperty("display");
+
+        const puckEl = puck.getElement() as HTMLDivElement & {
+          __setRotation?: (deg: number) => void;
+        };
+
+        puckEl.__setRotation?.(0);
+      }
+
+      fromMarkerRef.current?.getElement().style.setProperty("display", "none");
+      return;
+    }
+
+    const latest = latestDeviceLocationRef.current;
+    if (latest) {
+      ensureFromMarker(map, latest);
+    }
+
+    fromMarkerRef.current?.getElement().style.removeProperty("display");
+    navigationPuckRef.current?.getElement().style.setProperty("display", "none");
+  }, [isNavigating]);
   return (
     <div
       ref={mapContainerRef}

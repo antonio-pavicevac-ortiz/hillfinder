@@ -8,7 +8,11 @@
     "build": "next build --turbopack",
     "start": "next start -p 3000",
     "lint": "eslint",
-    "dev:clean": "rm -rf .next && next dev --turbopack -p 3000"
+    "clean": "rimraf .next",
+    "dev:clean": "npm run clean && npm run dev",
+    "dev:fresh": "npm run dev:clean",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "dev:cloudflare": "npm run clean && concurrently \"npm run dev\" \"npm run tunnel\""
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.10.0",
@@ -49,6 +53,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.2.2",
     "eslint": "^9.39.1",
     "eslint-config-next": "^15.5.3",
