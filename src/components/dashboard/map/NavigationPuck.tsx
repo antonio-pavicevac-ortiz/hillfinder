@@ -19,6 +19,7 @@ export function createNavigationPuck() {
 
   el.innerHTML = `
     <div class="hf-navigation-puck__glow" aria-hidden="true"></div>
+    <div class="hf-navigation-puck__pulse" aria-hidden="true"></div>
     <div class="hf-navigation-puck__core" aria-hidden="true">
       <span class="hf-navigation-puck__dot"></span>
     </div>
@@ -40,12 +41,28 @@ export function createNavigationPuck() {
 
       .hf-navigation-puck__glow {
         position: absolute;
-        inset: 2px;
+        inset: -2px;
         border-radius: 9999px;
-        background: rgba(16, 185, 129, 0.18);
-        filter: blur(4px);
-        animation: none;
+        background: radial-gradient(
+          circle,
+          rgba(16, 185, 129, 0.28) 0%,
+          rgba(16, 185, 129, 0.18) 48%,
+          rgba(16, 185, 129, 0.04) 72%,
+          rgba(16, 185, 129, 0) 100%
+        );
+        filter: blur(6px);
+        opacity: 0.95;
         transform-origin: center;
+      }
+
+      .hf-navigation-puck__pulse {
+        position: absolute;
+        inset: -1px;
+        border-radius: 9999px;
+        border: 2px solid rgba(16, 185, 129, 0.34);
+        animation: hf-navigation-puck-pulse 1.9s ease-in-out infinite;
+        transform-origin: center;
+        pointer-events: none;
       }
 
       .hf-navigation-puck__core {
@@ -59,8 +76,9 @@ export function createNavigationPuck() {
         background: rgba(255, 255, 255, 0.97);
         border: 3px solid rgba(16, 185, 129, 0.94);
         box-shadow:
-          0 4px 12px rgba(0, 0, 0, 0.18),
-          0 1px 4px rgba(0, 0, 0, 0.1);
+          0 6px 16px rgba(0, 0, 0, 0.2),
+          0 1px 4px rgba(0, 0, 0, 0.12),
+          0 0 0 1px rgba(255, 255, 255, 0.35) inset;
         box-sizing: border-box;
       }
 
@@ -88,15 +106,15 @@ export function createNavigationPuck() {
       @keyframes hf-navigation-puck-pulse {
         0% {
           transform: scale(1);
-          opacity: 0.52;
+          opacity: 0.5;
         }
-        50% {
-          transform: scale(1.16);
-          opacity: 0.18;
+        60% {
+          transform: scale(1.28);
+          opacity: 0;
         }
         100% {
-          transform: scale(1);
-          opacity: 0.52;
+          transform: scale(1.28);
+          opacity: 0;
         }
       }
     `;
