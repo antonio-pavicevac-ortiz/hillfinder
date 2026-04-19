@@ -456,6 +456,18 @@ export default function DashboardMap({
     return activeVariant?.coords ?? null;
   }
 
+  function syncDestinationMarkerToActiveRouteEndpoint(map: mapboxgl.Map, variant?: Variant | null) {
+    const coords = variant?.coords ?? getActiveVariantCoords();
+
+    if (!coords?.length) return;
+
+    const endpoint = coords[coords.length - 1];
+
+    if (!endpoint) return;
+
+    ensureDestMarker(map, endpoint);
+  }
+
   async function fetchDirectionsRoute(params: {
     from: mapboxgl.LngLat;
     to: mapboxgl.LngLat;
@@ -753,6 +765,8 @@ export default function DashboardMap({
 
     renderVariantForZoom(map, variant);
 
+    syncDestinationMarkerToActiveRouteEndpoint(map, variant);
+
     emitRouteReady(savedRoute.difficulty, variant, from, to, {
       fromName: savedRoute.from.name,
       toName: savedRoute.to.name,
@@ -835,6 +849,7 @@ export default function DashboardMap({
       };
 
       renderVariantForZoom(map, variant);
+      syncDestinationMarkerToActiveRouteEndpoint(map, variant);
       emitRouteReady(variantKey, variant, from, to);
       onRouteDrawn?.();
     };
@@ -1134,8 +1149,10 @@ export default function DashboardMap({
       const initialVariant = initial === "hard" ? hard : easy;
 
       renderVariantForZoom(map, initialVariant);
+      syncDestinationMarkerToActiveRouteEndpoint(map, initialVariant);
       emitRouteReady(initial, initialVariant, from, to);
       onRouteDrawn?.();
+
       onVariantsReady?.();
     } catch (err: any) {
       if (err?.name === "AbortError") return;
@@ -1329,9 +1346,12 @@ export default function DashboardMap({
 
           previousDeviceLocationRef.current = ll;
 
-          if (!isNavigatingRef.current) {
+          if (isNavigatingRef.current) {
+            // Use puck immediately instead of showing raw GPS marker
+            const puck = ensureNavigationPuck(map, ll);
+            puck.getElement().style.removeProperty("display");
+          } else {
             ensureFromMarker(map, ll);
-
             void notifyFromPicked(ll, { immediateName: "Current location" });
           }
 
@@ -1416,13 +1436,11 @@ export default function DashboardMap({
 
             fromMarkerRef.current?.getElement().style.setProperty("display", "none");
           } else {
-            // Normal behavior
+            // Normal browsing mode → show raw GPS dot
             ensureFromMarker(map, ll);
-
-            // Make sure it's visible again
             fromMarkerRef.current?.getElement().style.removeProperty("display");
 
-            // Hide puck if it exists
+            // Hide puck when not navigating
             navigationPuckRef.current?.getElement().style.setProperty("display", "none");
           }
 
@@ -1560,8 +1578,11 @@ export default function DashboardMap({
       Math.abs(existing.lng - destination.lng) > 0.00005 ||
       Math.abs(existing.lat - destination.lat) > 0.00005;
 
-    ensureDestMarker(map, [destination.lng, destination.lat]);
-
+    if (variantsRef.current) {
+      syncDestinationMarkerToActiveRouteEndpoint(map);
+    } else {
+      ensureDestMarker(map, [destination.lng, destination.lat]);
+    }
     if (changed) {
       map.flyTo({ center: [destination.lng, destination.lat], zoom: 15, essential: true });
     }
@@ -1760,6 +1781,7 @@ export default function DashboardMap({
         };
 
         renderVariantForZoom(map, variant);
+        syncDestinationMarkerToActiveRouteEndpoint(map, variant);
         emitRouteReady("easy", variant, origin, to, {
           fromName: fromLocation?.name ?? "Current location",
           toName: result.route.to.name ?? "Nearby Downhill",
@@ -1819,6 +1841,8 @@ export default function DashboardMap({
     const active = selectedVariant === "hard" ? v.hard : v.easy;
 
     renderVariantForZoom(map, active);
+
+    syncDestinationMarkerToActiveRouteEndpoint(map, active);
 
     const from = fromMarkerRef.current?.getLngLat();
     const to = destMarkerRef.current?.getLngLat();
@@ -1886,6 +1910,8 @@ export default function DashboardMap({
       }
 
       fromMarkerRef.current?.getElement().style.setProperty("display", "none");
+      // Ensure raw GPS marker stays hidden during navigation
+      fromMarkerRef.current?.getElement().style.setProperty("opacity", "0");
       return;
     }
 
@@ -1895,6 +1921,7 @@ export default function DashboardMap({
     }
 
     fromMarkerRef.current?.getElement().style.removeProperty("display");
+    fromMarkerRef.current?.getElement().style.removeProperty("opacity");
     navigationPuckRef.current?.getElement().style.setProperty("display", "none");
   }, [isNavigating]);
   return (
