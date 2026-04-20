@@ -47,9 +47,9 @@ export default function QuickActionsSheet({
             }}
             disabled={!canQuickRoute}
             className={[
-              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition border",
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition border font-medium",
               canQuickRoute
-                ? "bg-rose-100 hover:bg-rose-200 border border-rose-200"
+                ? "bg-rose-100 hover:bg-rose-200 border border-rose-200 text-rose-900"
                 : "bg-rose-100/40 border border-rose-200/50 text-slate-400 cursor-not-allowed",
             ].join(" ")}
           >
@@ -67,7 +67,7 @@ export default function QuickActionsSheet({
               onFindDownhill();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-emerald-200 hover:bg-emerald-300 border border-emerald-300 px-4 py-3 rounded-xl"
+            className="w-full flex items-center gap-3 bg-emerald-200 hover:bg-emerald-300 border border-emerald-300 px-4 py-3 rounded-xl text-emerald-900 font-medium"
           >
             <TrendingDown className="text-emerald-800" />
             Find a Downhill
@@ -78,7 +78,7 @@ export default function QuickActionsSheet({
               onStartRoute();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-4 py-3 rounded-xl"
+            className="w-full flex items-center gap-3 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-4 py-3 rounded-xl text-blue-900 font-medium"
           >
             <Route className="text-blue-700" />
             Plan Your Route
@@ -89,7 +89,7 @@ export default function QuickActionsSheet({
               onViewSaved();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-yellow-100 hover:bg-yellow-200 border border-yellow-200 px-4 py-3 rounded-xl"
+            className="w-full flex items-center gap-3 bg-yellow-100 hover:bg-yellow-200 border border-yellow-200 px-4 py-3 rounded-xl text-yellow-900 font-medium"
           >
             <Star className="text-yellow-700" />
             Saved Routes
