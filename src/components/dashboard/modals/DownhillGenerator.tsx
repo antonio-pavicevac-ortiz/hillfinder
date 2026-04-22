@@ -76,6 +76,7 @@ type Suggestion = {
 type Variant = "easy" | "hard";
 type BtnState = "disabled" | "ready" | "selected";
 type ToastKind = "info" | "success" | "error";
+type RecoveryAction = "try_easy" | "try_hard" | "pick_destination";
 
 export default function DownhillGenerator({
   fromLabel,
@@ -117,6 +118,7 @@ export default function DownhillGenerator({
   const [to, setTo] = useState(initialTo);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [recoveryAction, setRecoveryAction] = useState<RecoveryAction | null>(null);
 
   const [uiVariant, setUiVariant] = useState<Variant | null>(selectedVariant ?? null);
   const [generatedKey, setGeneratedKey] = useState<string>("");
@@ -177,24 +179,42 @@ export default function DownhillGenerator({
     }
   }
 
-  function startWaitTimer() {
+  function startWaitTimer(requestedVariant: Variant, requestKey: string) {
     clearWaitTimer();
 
     waitTimerRef.current = window.setTimeout(() => {
+      setRecoveryAction(null);
       setMessage("Still working on your route — this is taking longer than usual.");
       waitTimerRef.current = null;
     }, 8000);
 
     failTimerRef.current = window.setTimeout(() => {
+      const commit = lastCommittedRef.current;
+      const stillWaitingOnSameRequest = !!commit && commit.key === requestKey;
+
       setWaitingForVariants(false);
       setLoading(false);
+
+      if (stillWaitingOnSameRequest) {
+        setRecoveryAction(requestedVariant === "easy" ? "try_hard" : "try_easy");
+        setMessage(
+          requestedVariant === "easy"
+            ? "We’re still waiting on Easy route confirmation. Try Hard for more options if Easy doesn’t appear."
+            : "We’re still waiting on Hard route confirmation. Try Easy if Hard doesn’t look clearly different."
+        );
+        failTimerRef.current = null;
+        return;
+      }
+
       setGeneratedKey("");
       lastCommittedRef.current = null;
-      setMessage("Please try another destination.");
-      onToast?.({
-        kind: "error",
-        message: "We couldn’t generate a route. Please try again.",
-      });
+      setRecoveryAction(requestedVariant === "easy" ? "try_hard" : "try_easy");
+      setMessage(
+        requestedVariant === "easy"
+          ? "No Easy route found. Try Hard or choose a different destination."
+          : "No worthwhile Hard route found. Try Easy or choose a different destination."
+      );
+      onVariantSelected?.(null);
       failTimerRef.current = null;
     }, 25000);
   }
@@ -203,10 +223,12 @@ export default function DownhillGenerator({
     const dest = (destOverride ?? to).trim();
 
     if (!dest) {
+      setRecoveryAction(null);
       setMessage("Please enter a destination to generate your downhill route.");
       return;
     }
     if (!uiVariant) {
+      setRecoveryAction(null);
       setMessage("Please choose Easy or Hard before generating.");
       return;
     }
@@ -217,8 +239,6 @@ export default function DownhillGenerator({
     }
 
     const nextKey = `${dest}::${uiVariant}`;
-    if (nextKey === generatedKey) return;
-
     if (blocked) {
       return;
     }
@@ -233,6 +253,7 @@ export default function DownhillGenerator({
     if (hasGeneratedExactRoute) {
       onVariantSelected?.(uiVariant);
       setGeneratedKey(nextKey);
+      setRecoveryAction(null);
       setMessage("");
       requestAnimationFrame(() => onClose());
       return;
@@ -247,9 +268,13 @@ export default function DownhillGenerator({
     toInputRef.current?.blur();
 
     setLoading(true);
+
     setWaitingForVariants(true);
+
+    setRecoveryAction(null);
+
     setMessage("Finding downhill routes…");
-    startWaitTimer();
+    startWaitTimer(uiVariant, nextKey);
 
     try {
       lastCommittedRef.current = { key: nextKey, variant: uiVariant, ts: Date.now() };
@@ -266,9 +291,12 @@ export default function DownhillGenerator({
       clearWaitTimer();
       setLoading(false);
       if (err && (err as any).hfSilent) {
+        setRecoveryAction(null);
         setMessage("");
         return;
       }
+
+      setRecoveryAction("pick_destination");
       setMessage(err?.message ?? "Something went wrong generating the route.");
     } finally {
       setLoading(false);
@@ -288,6 +316,7 @@ export default function DownhillGenerator({
     clearWaitTimer();
 
     setGeneratedKey(commit.key);
+    setRecoveryAction(null);
     setMessage("");
 
     onVariantSelected?.(commit.variant);
@@ -300,6 +329,7 @@ export default function DownhillGenerator({
       clearWaitTimer();
       setWaitingForVariants(false);
       setLoading(false);
+      setRecoveryAction(null);
 
       setSuggestOpen(false);
       setSuggestions([]);
@@ -334,6 +364,7 @@ export default function DownhillGenerator({
 
     setGeneratedKey("");
     setWaitingForVariants(false);
+    setRecoveryAction(null);
     clearWaitTimer();
     setMessage("");
   }, [open]);
@@ -418,6 +449,7 @@ export default function DownhillGenerator({
     if (!canPickDifficulty) return;
 
     setUiVariant(v);
+    setRecoveryAction(null);
     setMessage("");
 
     suppressOpenRef.current = true;
@@ -436,7 +468,7 @@ export default function DownhillGenerator({
   }
 
   const baseBtn =
-    "relative w-full rounded-xl py-3 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
+    "relative w-full rounded-xl py-2.5 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
 
   const disabledClass =
     "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]";
@@ -535,7 +567,7 @@ export default function DownhillGenerator({
               className={[
                 "pointer-events-auto w-full",
                 "bg-white/70 backdrop-blur-xl",
-                "rounded-2xl border border-white/30 shadow-xl p-5",
+                "rounded-2xl border border-white/30 shadow-xl p-4",
                 "relative isolate",
               ].join(" ")}
               style={{ touchAction: "manipulation" }}
@@ -561,25 +593,25 @@ export default function DownhillGenerator({
                 </button>
               </div>
 
-              <div className="flex items-center justify-center mb-3">
+              <div className="flex items-center justify-center mb-2">
                 <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
               </div>
 
               <ShimmerBar visible={loading || waitingForVariants} />
 
-              <div className="relative mb-4">
+              <div className="relative mb-3">
                 <div
                   aria-hidden="true"
-                  className="absolute left-[10px] top-[28px] bottom-[28px] w-px bg-slate-300/80"
+                  className="absolute left-[10px] top-[24px] bottom-[24px] w-px bg-slate-300/80"
                 />
 
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   <div className="flex items-center gap-2">
                     <div
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
                     />
-                    <label className="w-8 shrink-0 text-sm font-medium text-gray-700">From</label>
+                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700">From</label>
                     <input
                       type="text"
                       placeholder="Current location"
@@ -594,7 +626,7 @@ export default function DownhillGenerator({
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-sky-600 bg-white shadow-sm"
                     />
-                    <label className="w-8 shrink-0 text-sm font-medium text-gray-700">To</label>
+                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700">To</label>
                     <div className="relative flex-1">
                       <input
                         type="text"
@@ -622,6 +654,7 @@ export default function DownhillGenerator({
 
                           suppressOpenRef.current = false;
                           setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
+                          setRecoveryAction(null);
                           setMessage("");
                         }}
                         onFocus={() => {
@@ -755,12 +788,13 @@ export default function DownhillGenerator({
                     <>
                       <div
                         className={[
-                          "grid grid-cols-2 gap-2 rounded-2xl p-2",
+                          "grid grid-cols-2 gap-2 rounded-2xl p-1.5",
                           "bg-slate-200/45 border border-slate-300/60 ring-1 ring-black/5",
                           "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
                           "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
                         ].join(" ")}
                       >
+                        {/* Easy / Hard buttons */}
                         <button
                           type="button"
                           disabled={!canPickDifficulty}
@@ -780,12 +814,10 @@ export default function DownhillGenerator({
                                     ? "rgba(255,255,255,0.95)"
                                     : "rgba(100,116,139,0.85)",
                             }}
-                            aria-hidden="true"
                           />
                           <span className="text-center">Easy</span>
 
                           <span
-                            aria-hidden="true"
                             className={[
                               checkBase,
                               uiVariant === "easy" ? "opacity-100 scale-100" : "opacity-0 scale-95",
@@ -816,12 +848,10 @@ export default function DownhillGenerator({
                                     ? "rgba(255,255,255,0.95)"
                                     : "rgba(100,116,139,0.85)",
                             }}
-                            aria-hidden="true"
                           />
                           <span className="text-center">Hard</span>
 
                           <span
-                            aria-hidden="true"
                             className={[
                               checkBase,
                               uiVariant === "hard" ? "opacity-100 scale-100" : "opacity-0 scale-95",
@@ -847,10 +877,9 @@ export default function DownhillGenerator({
                         </motion.p>
                       )}
 
-                      {!showWaitingHint && hasDestination && (
+                      {!showWaitingHint && hasDestination && uiVariant === "easy" && (
                         <p className="mt-2 text-center text-xs text-slate-600">
-                          Pick <span className="font-semibold">Easy</span> or{" "}
-                          <span className="font-semibold">Hard</span>.
+                          If no route appears, try Hard for more options.
                         </p>
                       )}
                     </>
@@ -858,7 +887,7 @@ export default function DownhillGenerator({
                 })()}
               </div>
 
-              <div className="mt-4">
+              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -905,11 +934,62 @@ export default function DownhillGenerator({
                   </p>
                 )}
               </div>
-
               {!controlsLocked && message && message !== "Finding downhill routes…" && (
-                <p className="text-center text-sm text-gray-700 mt-4 whitespace-pre-line">
-                  {message}
-                </p>
+                <div className="mt-4 space-y-3">
+                  <p className="text-center text-sm text-gray-700 whitespace-pre-line">{message}</p>
+
+                  {recoveryAction && (
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (recoveryAction === "try_easy") {
+                            setUiVariant("easy");
+
+                            setRecoveryAction(null);
+
+                            setMessage("");
+
+                            onVariantSelected?.("easy");
+
+                            requestAnimationFrame(() => {
+                              void handleGenerate(trimmedTo);
+                            });
+
+                            return;
+                          }
+
+                          if (recoveryAction === "try_hard") {
+                            setUiVariant("hard");
+
+                            setRecoveryAction(null);
+
+                            setMessage("");
+
+                            onVariantSelected?.("hard");
+
+                            requestAnimationFrame(() => {
+                              void handleGenerate(trimmedTo);
+                            });
+
+                            return;
+                          }
+
+                          setRecoveryAction(null);
+
+                          toInputRef.current?.focus();
+                        }}
+                        className="rounded-xl border border-emerald-400/70 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] transition hover:bg-emerald-600 active:scale-[0.99]"
+                      >
+                        {recoveryAction === "try_easy"
+                          ? "Try Easy"
+                          : recoveryAction === "try_hard"
+                            ? "Try Hard"
+                            : "Choose Another Destination"}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {!MAPBOX_TOKEN && (
