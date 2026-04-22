@@ -66,6 +66,7 @@ export default function Dashboard() {
   const [blocked, setBlocked] = useState(false);
   const hasShownUndoHintRef = useRef(false);
   const [routeBusy, setRouteBusy] = useState(false);
+  const [routePreparing, setRoutePreparing] = useState(false);
 
   const [activeRouteToSave, setActiveRouteToSave] = useState<SaveRoutePayload | null>(null);
   const [selectedSavedRoute, setSelectedSavedRoute] = useState<SavedRouteRecord | null>(null);
@@ -145,6 +146,7 @@ export default function Dashboard() {
     setVariantsReady(false);
     setSelectedVariant(null);
     setRouteBusy(false);
+    setRoutePreparing(false);
     setActiveRouteToSave(null);
     setSelectedSavedRoute(null);
 
@@ -182,15 +184,49 @@ export default function Dashboard() {
   }
 
   function handleRouteReady() {
-    setRouteBusy(false);
-    setVariantsReady(true);
     setHasRoute(true);
+
+    setRoutePreparing(true);
+  }
+
+  function handleRoutePrepared() {
+    setRouteBusy(false);
+
+    setRoutePreparing(false);
+
+    setVariantsReady(true);
+
+    setHasRoute(true);
+
     setGeneratorOpen(false);
   }
 
   function handleRouteFailed(message?: string) {
     setRouteBusy(false);
+    setRoutePreparing(false);
+
     setVariantsReady(false);
+
+    setHasRoute(false);
+
+    setActiveRouteToSave(null);
+
+    setSelectedSavedRoute(null);
+
+    setActiveRouteSource(null);
+
+    setIsNavMuted(true);
+
+    hasShownVoiceHintRef.current = false;
+
+    navStartLocationRef.current = null;
+
+    hasMovedSinceRouteLoadRef.current = false;
+
+    dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
+
+    dispatchNavigation({ type: "STOP" });
+
     if (message) {
       toast.error(message);
     }
@@ -209,6 +245,8 @@ export default function Dashboard() {
     setRoutesOpen(false);
     clearRoute();
     setVariantsReady(false);
+    setRouteBusy(true);
+    setRoutePreparing(true);
     setSelectedVariant("easy");
     setRouteAlternativesNonce((n) => n + 1);
   }
@@ -472,7 +510,7 @@ export default function Dashboard() {
         }}
         onVariantsReady={() => {
           console.log("[Dashboard] variantsReady true");
-          handleRouteReady();
+          handleRoutePrepared();
         }}
         onVariantSelected={(v) => setSelectedVariant(v)}
         onFromPicked={(loc) => {
@@ -483,6 +521,8 @@ export default function Dashboard() {
           commitDestination(next);
         }}
         onRouteReady={(route) => {
+          if (!route) return;
+
           setFromLocation(route.from);
           setDestination(route.to);
           setPlannerTo(route.to.name ?? "");
@@ -491,7 +531,7 @@ export default function Dashboard() {
           console.log("route payload navSteps", route.navSteps);
 
           dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
-          dispatchNavigation({ type: "START" });
+          dispatchNavigation({ type: "STOP" });
 
           navStartLocationRef.current = {
             lat: route.from.lat,
@@ -510,13 +550,29 @@ export default function Dashboard() {
             return "generated";
           });
         }}
+        onRoutePrepared={handleRoutePrepared}
+        onVariantsCollapsed={({ message }) => {
+          toast(message, {
+            id: "variants-collapsed",
+
+            duration: 5000,
+
+            icon: "⚠️",
+          });
+        }}
         savedRouteToLoad={selectedSavedRoute}
         isNavigating={isNavigating}
       />
 
-      {routeBusy && !generatorOpen && (
+      {(routeBusy || routePreparing) && !generatorOpen && (
         <LoadingOverlay
-          text={activeRouteSource === "saved" ? "Rendering route..." : "Generating route..."}
+          text={
+            activeRouteSource === "saved"
+              ? "Rendering route..."
+              : routePreparing
+                ? "Preparing your route..."
+                : "Generating route..."
+          }
           tone="dark"
           showBackdrop
         />
@@ -542,7 +598,7 @@ export default function Dashboard() {
               onClose={() => setRoutesOpen(false)}
               refreshKey={refreshRoutesKey}
               onLoadRoute={(route) => {
-                setRouteBusy(true);
+                setRouteBusy(false);
                 setSelectedSavedRoute(route);
                 setFromLocation(route.from);
                 setDestination(route.to);
@@ -558,7 +614,8 @@ export default function Dashboard() {
                 };
                 hasMovedSinceRouteLoadRef.current = false;
 
-                setVariantsReady(true);
+                setVariantsReady(false);
+                setRoutePreparing(true);
                 setRoutesOpen(false);
                 setActiveRouteSource("saved");
 
@@ -651,6 +708,7 @@ export default function Dashboard() {
           setSelectedVariant("easy");
           setActiveRouteSource("generated");
           setRouteBusy(true);
+          setRoutePreparing(true);
 
           setFindDownhillNonce((n) => n + 1);
         }}
@@ -685,9 +743,13 @@ export default function Dashboard() {
 
           setQaOpen(false);
           setRoutesOpen(false);
+
           clearRoute();
           setVariantsReady(false);
+          setRouteBusy(true);
+          setRoutePreparing(true);
           setSelectedVariant(variant);
+
           const q = plannerTo.trim();
 
           if (q && (!destination || (destination.name ?? "").trim() !== q)) {

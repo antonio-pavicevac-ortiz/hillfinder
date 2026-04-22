@@ -38,6 +38,17 @@ type Variant = {
   navSteps?: ReturnType<typeof buildNavSteps>;
 };
 
+type DirectionsApiRoute = {
+  distance?: number;
+  duration?: number;
+  geometry?: {
+    coordinates?: [number, number][];
+  };
+  legs?: Array<{
+    steps?: any[];
+  }>;
+};
+
 const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
 
 export default function DashboardMap({
@@ -63,6 +74,8 @@ export default function DashboardMap({
   findDownhillNonce,
   onNavigationLocationChange,
   isNavigating,
+  onRoutePrepared,
+  onVariantsCollapsed,
 }: {
   destination?: Destination | null;
   clearRouteNonce?: number;
@@ -86,6 +99,8 @@ export default function DashboardMap({
   findDownhillNonce?: number;
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
   isNavigating?: boolean;
+  onRoutePrepared?: () => void;
+  onVariantsCollapsed?: (payload: { selected: VariantKey; message: string }) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -763,12 +778,15 @@ export default function DashboardMap({
     };
     lastGoodDestRef.current = to;
 
-    renderVariantForZoom(map, variant);
+    drawOverviewRoute(map, variant.coords);
+
+    renderedRouteModeRef.current = "overview";
 
     syncDestinationMarkerToActiveRouteEndpoint(map, variant);
 
     emitRouteReady(savedRoute.difficulty, variant, from, to, {
       fromName: savedRoute.from.name,
+
       toName: savedRoute.to.name,
     });
 
@@ -789,14 +807,23 @@ export default function DashboardMap({
     });
 
     onVariantSelected?.(savedRoute.difficulty);
-    onRouteDrawn?.();
-    onVariantsReady?.();
 
-    console.log("[loadSavedRoute] loading", {
-      id: savedRoute._id ?? savedRoute.name,
-      difficulty: savedRoute.difficulty,
-      coords: savedRoute.coords?.length,
-      segments: savedRoute.segments?.length,
+    onRouteDrawn?.();
+
+    requestAnimationFrame(() => {
+      const latestMap = mapRef.current;
+
+      if (!latestMap) return;
+
+      renderVariantForZoom(latestMap, variant);
+
+      syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
+
+      requestAnimationFrame(() => {
+        onVariantsReady?.();
+
+        onRoutePrepared?.();
+      });
     });
   }
 
@@ -818,8 +845,25 @@ export default function DashboardMap({
 
     const drawSegmented = async (
       coords: [number, number][],
+
       navSteps: ReturnType<typeof buildNavSteps> = []
     ) => {
+      drawOverviewRoute(map, coords);
+
+      renderedRouteModeRef.current = "overview";
+
+      syncDestinationMarkerToActiveRouteEndpoint(map, {
+        coords,
+
+        elevations: [],
+
+        easyScore: 0,
+
+        hardScore: 0,
+
+        navSteps,
+      });
+
       const getElevation = getElevationRef.current;
       const elevations = await Promise.all(
         coords.map(([lng, lat]) =>
@@ -848,10 +892,29 @@ export default function DashboardMap({
         hard: variant,
       };
 
-      renderVariantForZoom(map, variant);
-      syncDestinationMarkerToActiveRouteEndpoint(map, variant);
       emitRouteReady(variantKey, variant, from, to);
+
       onRouteDrawn?.();
+
+      requestAnimationFrame(() => {
+        if (reqId !== routeReqIdRef.current) return;
+
+        const latestMap = mapRef.current;
+
+        if (!latestMap) return;
+
+        renderVariantForZoom(latestMap, variant);
+
+        syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
+
+        requestAnimationFrame(() => {
+          if (reqId !== routeReqIdRef.current) return;
+
+          onVariantsReady?.();
+
+          onRoutePrepared?.();
+        });
+      });
     };
 
     try {
@@ -900,6 +963,293 @@ export default function DashboardMap({
     }
   }
 
+  function getRoutesArray(data: unknown): DirectionsApiRoute[] {
+    if (
+      data &&
+      typeof data === "object" &&
+      "routes" in data &&
+      Array.isArray((data as { routes?: unknown }).routes)
+    ) {
+      return (data as { routes: DirectionsApiRoute[] }).routes;
+    }
+
+    return [];
+  }
+
+  function getRouteCoords(route: DirectionsApiRoute): [number, number][] | null {
+    const raw = route.geometry?.coordinates;
+    if (!raw?.length) return null;
+    return resampleCoords(raw);
+  }
+
+  function getRouteDistanceMeters(route: DirectionsApiRoute, coords: [number, number][]) {
+    const geomMeters = routeLengthMeters(coords);
+    return typeof route.distance === "number" ? route.distance : geomMeters;
+  }
+
+  function getRouteDurationSeconds(route: DirectionsApiRoute) {
+    return typeof route.duration === "number" ? route.duration : undefined;
+  }
+
+  function findBaselineMeters(routes: DirectionsApiRoute[]) {
+    let baselineMeters = Infinity;
+
+    for (const route of routes) {
+      if (typeof route.distance === "number" && Number.isFinite(route.distance)) {
+        baselineMeters = Math.min(baselineMeters, route.distance);
+      }
+    }
+
+    return baselineMeters;
+  }
+
+  function hasDuplicateCandidate(candidates: Variant[], coords: [number, number][]) {
+    return candidates.some((candidate) => isNearDuplicateRoute(candidate.coords, coords));
+  }
+
+  async function buildCandidateFromRoute(params: {
+    map: mapboxgl.Map;
+
+    route: DirectionsApiRoute;
+
+    baselineDistanceMeters?: number;
+  }) {
+    const { map, route, baselineDistanceMeters } = params;
+
+    const coords = getRouteCoords(route);
+
+    if (!coords) return null;
+
+    return buildVariant(map, coords, {
+      distanceMeters: typeof route.distance === "number" ? route.distance : undefined,
+
+      durationSeconds: getRouteDurationSeconds(route),
+
+      baselineDistanceMeters,
+
+      navSteps: buildNavSteps(route as any),
+    });
+  }
+
+  async function collectBaseCandidates(params: {
+    map: mapboxgl.Map;
+    from: mapboxgl.LngLat;
+    to: mapboxgl.LngLat;
+    routes: DirectionsApiRoute[];
+    baselineMeters: number;
+    candidates: Variant[];
+  }) {
+    const { map, from, to, routes, candidates } = params;
+    let { baselineMeters } = params;
+
+    for (const route of routes.slice(0, 4)) {
+      const coords = getRouteCoords(route);
+      if (!coords) continue;
+
+      const distMeters = getRouteDistanceMeters(route, coords);
+
+      if (!Number.isFinite(baselineMeters) || baselineMeters === Infinity) {
+        baselineMeters = distMeters;
+      }
+
+      if (
+        isSillyRoute({
+          from,
+          to,
+          routeMeters: distMeters,
+          baselineMeters,
+          maxDetourRatio: 1.12,
+          maxLoopiness: 1.8,
+        })
+      ) {
+        continue;
+      }
+
+      if (hasDuplicateCandidate(candidates, coords)) continue;
+
+      const candidate = await buildCandidateFromRoute({
+        map,
+        route,
+        baselineDistanceMeters: baselineMeters,
+      });
+
+      if (candidate) {
+        candidates.push(candidate);
+      }
+    }
+
+    return baselineMeters;
+  }
+
+  async function collectDetourCandidates(params: {
+    map: mapboxgl.Map;
+    from: mapboxgl.LngLat;
+    to: mapboxgl.LngLat;
+    waypoints: mapboxgl.LngLat[];
+    controller: AbortController;
+    reqId: number;
+    candidates: Variant[];
+    baselineMeters: number;
+  }) {
+    const { map, from, to, waypoints, controller, reqId, candidates, baselineMeters } = params;
+
+    for (const waypoint of waypoints) {
+      if (reqId !== routeReqIdRef.current) return;
+
+      const detourData = await fetchDirectionsRoute({
+        from,
+        to,
+        via: waypoint,
+        signal: controller.signal,
+      });
+
+      const detourRoutes = getRoutesArray(detourData);
+      if (!detourRoutes.length) continue;
+
+      for (const detourRoute of detourRoutes.slice(0, 2)) {
+        const coords = getRouteCoords(detourRoute);
+        if (!coords) continue;
+
+        const distMeters = getRouteDistanceMeters(detourRoute, coords);
+
+        if (
+          isSillyRoute({
+            from,
+            to,
+            routeMeters: distMeters,
+            baselineMeters,
+            maxDetourRatio: 1.28,
+            maxLoopiness: 2.35,
+          })
+        ) {
+          continue;
+        }
+
+        if (hasDuplicateCandidate(candidates, coords)) continue;
+
+        const candidate = await buildVariant(map, coords, {
+          distanceMeters: distMeters,
+          durationSeconds: getRouteDurationSeconds(detourRoute),
+          navSteps: buildNavSteps(detourRoute as any),
+        });
+
+        candidates.push(candidate);
+
+        if (candidates.length >= 6) return;
+      }
+    }
+  }
+
+  async function addFallbackCandidate(params: {
+    map: mapboxgl.Map;
+    routes: DirectionsApiRoute[];
+    candidates: Variant[];
+    baselineMeters: number;
+  }) {
+    const { map, routes, candidates, baselineMeters } = params;
+
+    if (candidates.length > 0) return;
+
+    const firstRoute = routes[0];
+    if (!firstRoute) return;
+
+    const fallbackCandidate = await buildCandidateFromRoute({
+      map,
+      route: firstRoute,
+      baselineDistanceMeters: baselineMeters,
+    });
+
+    if (fallbackCandidate) {
+      candidates.push(fallbackCandidate);
+    }
+  }
+
+  function pickEasyAndHardVariants(candidates: Variant[]) {
+    const easySorted = [...candidates].sort((a, b) => a.easyScore - b.easyScore);
+    const hardSorted = [...candidates].sort((a, b) => b.hardScore - a.hardScore);
+
+    let easy = easySorted[0];
+    let hard = hardSorted[0];
+
+    const distinctFromEasy = pickMostDistinctVariant(easy, hardSorted, "hard");
+    if (distinctFromEasy) {
+      hard = distinctFromEasy;
+    }
+
+    if (isNearDuplicateRoute(easy.coords, hard.coords)) {
+      const distinctFromHard = pickMostDistinctVariant(hard, easySorted, "easy");
+      if (distinctFromHard) {
+        easy = distinctFromHard;
+      }
+    }
+
+    if (isNearDuplicateRoute(easy.coords, hard.coords) && candidates.length > 1) {
+      const longest = [...candidates].sort((a, b) => {
+        const aLen = a.distanceMeters ?? routeLengthMeters(a.coords);
+        const bLen = b.distanceMeters ?? routeLengthMeters(b.coords);
+        return bLen - aLen;
+      })[0];
+
+      if (longest && !isNearDuplicateRoute(easy.coords, longest.coords)) {
+        hard = longest;
+      }
+    }
+
+    const MIN_DISTANCE_GAP_METERS = 600;
+    const MIN_HARD_SCORE_GAP = 20;
+
+    const easyDistance = easy.distanceMeters ?? routeLengthMeters(easy.coords);
+    let hardDistance = hard.distanceMeters ?? routeLengthMeters(hard.coords);
+
+    if (Math.abs(hardDistance - easyDistance) < MIN_DISTANCE_GAP_METERS && hardSorted.length > 1) {
+      const longer = [...hardSorted]
+        .filter((candidate) => candidate !== easy)
+        .sort((a, b) => {
+          const aLen = a.distanceMeters ?? routeLengthMeters(a.coords);
+          const bLen = b.distanceMeters ?? routeLengthMeters(b.coords);
+          return bLen - aLen;
+        })[0];
+
+      if (longer && !isNearDuplicateRoute(easy.coords, longer.coords)) {
+        hard = longer;
+        hardDistance = hard.distanceMeters ?? routeLengthMeters(hard.coords);
+      }
+    }
+
+    const hardScoreGap = Math.abs(hard.hardScore - easy.easyScore);
+
+    if (
+      (Math.abs(hardDistance - easyDistance) < MIN_DISTANCE_GAP_METERS ||
+        hardScoreGap < MIN_HARD_SCORE_GAP) &&
+      hardSorted.length > 1
+    ) {
+      const strongestHard = [...hardSorted]
+        .filter((candidate) => candidate !== easy)
+        .filter((candidate) => !isNearDuplicateRoute(easy.coords, candidate.coords))
+        .sort((a, b) => {
+          const aDistance = a.distanceMeters ?? routeLengthMeters(a.coords);
+          const bDistance = b.distanceMeters ?? routeLengthMeters(b.coords);
+
+          const aStrength = a.hardScore - easy.easyScore + (aDistance - easyDistance) * 0.015;
+          const bStrength = b.hardScore - easy.easyScore + (bDistance - easyDistance) * 0.015;
+
+          return bStrength - aStrength;
+        })[0];
+
+      if (strongestHard) {
+        hard = strongestHard;
+        hardDistance = hard.distanceMeters ?? routeLengthMeters(hard.coords);
+      }
+    }
+
+    return {
+      easy,
+      hard,
+      easyDistance,
+      hardDistance,
+    };
+  }
+
   async function generateAlternativesBetweenPoints(
     map: mapboxgl.Map,
     from: mapboxgl.LngLat,
@@ -916,244 +1266,143 @@ export default function DashboardMap({
     const reqId = ++routeReqIdRef.current;
     setRouteBusy(true, reqId);
 
+    variantsRef.current = null;
+    selectedVariantRef.current = null;
+    clearOverviewRoute(map);
+    clearRouteLayers(map);
+    sweepRef.current.clear(map);
+    renderedRouteModeRef.current = null;
+
     try {
       const baseData = await fetchDirectionsRoute({ from, to, signal: controller.signal });
       if (reqId !== routeReqIdRef.current) return;
 
-      const baseRoutes: any[] = Array.isArray(baseData?.routes) ? baseData.routes : [];
+      const baseRoutes = getRoutesArray(baseData);
 
       if (baseRoutes[0]) {
-        console.log("🔥 generateAlternatives navSteps", buildNavSteps(baseRoutes[0]));
+        console.log("🔥 generateAlternatives navSteps", buildNavSteps(baseRoutes[0] as any));
       }
 
-      let baselineMeters = Infinity;
-      for (const r of baseRoutes) {
-        const d = typeof r?.distance === "number" ? r.distance : undefined;
-        if (d && Number.isFinite(d)) baselineMeters = Math.min(baselineMeters, d);
-      }
-
+      let baselineMeters = findBaselineMeters(baseRoutes);
       const candidates: Variant[] = [];
 
-      for (const r of baseRoutes.slice(0, 4)) {
-        const raw = r?.geometry?.coordinates as [number, number][] | undefined;
-        if (!raw?.length) continue;
-
-        const coords = resampleCoords(raw);
-        const geomMeters = routeLengthMeters(coords);
-        const distMeters = typeof r?.distance === "number" ? r.distance : geomMeters;
-
-        if (!Number.isFinite(baselineMeters) || baselineMeters === Infinity) {
-          baselineMeters = distMeters;
-        }
-
-        if (
-          isSillyRoute({
-            from,
-            to,
-            routeMeters: distMeters,
-            baselineMeters,
-            maxDetourRatio: 1.12,
-            maxLoopiness: 1.8,
-          })
-        ) {
-          continue;
-        }
-
-        if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
-
-        candidates.push(
-          await buildVariant(map, coords, {
-            distanceMeters: typeof r?.distance === "number" ? r.distance : undefined,
-            durationSeconds: typeof r?.duration === "number" ? r.duration : undefined,
-            baselineDistanceMeters: baselineMeters,
-            navSteps: buildNavSteps(r),
-          })
-        );
-      }
+      baselineMeters = await collectBaseCandidates({
+        map,
+        from,
+        to,
+        routes: baseRoutes,
+        baselineMeters,
+        candidates,
+      });
 
       if (candidates.length < 2) {
-        const waypoints = detourWaypointRings(from, to);
-
-        for (const wp of waypoints) {
-          if (reqId !== routeReqIdRef.current) return;
-
-          const detourData = await fetchDirectionsRoute({
-            from,
-            to,
-            via: wp,
-            signal: controller.signal,
-          });
-
-          const detourRoutes: any[] = Array.isArray(detourData?.routes) ? detourData.routes : [];
-          if (!detourRoutes.length) continue;
-
-          for (const detourRoute of detourRoutes.slice(0, 2)) {
-            const raw = detourRoute?.geometry?.coordinates as [number, number][] | undefined;
-            if (!raw?.length) continue;
-
-            const coords = resampleCoords(raw);
-            const geomMeters = routeLengthMeters(coords);
-            const distMeters =
-              typeof detourRoute?.distance === "number" ? detourRoute.distance : geomMeters;
-
-            if (
-              isSillyRoute({
-                from,
-                to,
-                routeMeters: distMeters,
-                baselineMeters,
-                maxDetourRatio: 1.28,
-                maxLoopiness: 2.35,
-              })
-            ) {
-              continue;
-            }
-
-            if (candidates.some((c) => isNearDuplicateRoute(c.coords, coords))) continue;
-
-            candidates.push(
-              await buildVariant(map, coords, {
-                distanceMeters: distMeters,
-                durationSeconds:
-                  typeof detourRoute?.duration === "number" ? detourRoute.duration : undefined,
-                navSteps: buildNavSteps(detourRoute),
-              })
-            );
-
-            if (candidates.length >= 6) break;
-          }
-
-          if (candidates.length >= 6) break;
-        }
+        await collectDetourCandidates({
+          map,
+          from,
+          to,
+          waypoints: detourWaypointRings(from, to),
+          controller,
+          reqId,
+          candidates,
+          baselineMeters,
+        });
       }
 
       if (reqId !== routeReqIdRef.current) return;
 
-      if (candidates.length === 0) {
-        const first = baseRoutes[0];
-        const raw = first?.geometry?.coordinates as [number, number][] | undefined;
-        if (raw?.length) {
-          const coords = resampleCoords(raw);
-          const geomMeters = routeLengthMeters(coords);
-          const distMeters = typeof first?.distance === "number" ? first.distance : geomMeters;
-
-          candidates.push(
-            await buildVariant(map, coords, {
-              distanceMeters: typeof first?.distance === "number" ? first.distance : undefined,
-              durationSeconds: typeof first?.duration === "number" ? first.duration : undefined,
-              baselineDistanceMeters: baselineMeters,
-              navSteps: buildNavSteps(first),
-            })
-          );
-        }
-      }
+      await addFallbackCandidate({
+        map,
+        routes: baseRoutes,
+        candidates,
+        baselineMeters,
+      });
 
       if (candidates.length === 0) {
         onRouteFailed?.("We couldn’t generate a route for that selection.");
         return;
       }
 
-      const easySorted = [...candidates].sort((a, b) => a.easyScore - b.easyScore);
-      const hardSorted = [...candidates].sort((a, b) => b.hardScore - a.hardScore);
-
-      let easy = easySorted[0];
-      let hard = hardSorted[0];
-
-      const distinctFromEasy = pickMostDistinctVariant(easy, hardSorted, "hard");
-      if (distinctFromEasy) {
-        hard = distinctFromEasy;
-      }
-
-      if (isNearDuplicateRoute(easy.coords, hard.coords)) {
-        const distinctFromHard = pickMostDistinctVariant(hard, easySorted, "easy");
-        if (distinctFromHard) {
-          easy = distinctFromHard;
-        }
-      }
-
-      if (isNearDuplicateRoute(easy.coords, hard.coords) && candidates.length > 1) {
-        const longest = [...candidates].sort((a, b) => {
-          const aLen = a.distanceMeters ?? routeLengthMeters(a.coords);
-          const bLen = b.distanceMeters ?? routeLengthMeters(b.coords);
-          return bLen - aLen;
-        })[0];
-
-        if (longest && !isNearDuplicateRoute(easy.coords, longest.coords)) {
-          hard = longest;
-        }
-      }
-
-      const MIN_DISTANCE_GAP_METERS = 600;
-
-      const easyDistance = easy.distanceMeters ?? routeLengthMeters(easy.coords);
-      const hardDistance = hard.distanceMeters ?? routeLengthMeters(hard.coords);
-
-      if (
-        Math.abs(hardDistance - easyDistance) < MIN_DISTANCE_GAP_METERS &&
-        hardSorted.length > 1
-      ) {
-        const longer = [...hardSorted]
-          .filter((candidate) => candidate !== easy)
-          .sort((a, b) => {
-            const aLen = a.distanceMeters ?? routeLengthMeters(a.coords);
-            const bLen = b.distanceMeters ?? routeLengthMeters(b.coords);
-            return bLen - aLen;
-          })[0];
-
-        if (longer && !isNearDuplicateRoute(easy.coords, longer.coords)) {
-          hard = longer;
-        }
-      }
-
-      const MIN_HARD_SCORE_GAP = 20;
-
-      const hardScoreGap = Math.abs(hard.hardScore - easy.easyScore);
-
-      if (
-        (Math.abs(hardDistance - easyDistance) < MIN_DISTANCE_GAP_METERS ||
-          hardScoreGap < MIN_HARD_SCORE_GAP) &&
-        hardSorted.length > 1
-      ) {
-        const strongestHard = [...hardSorted]
-          .filter((candidate) => candidate !== easy)
-          .filter((candidate) => !isNearDuplicateRoute(easy.coords, candidate.coords))
-          .sort((a, b) => {
-            const aDistance = a.distanceMeters ?? routeLengthMeters(a.coords);
-            const bDistance = b.distanceMeters ?? routeLengthMeters(b.coords);
-
-            const aStrength = a.hardScore - easy.easyScore + (aDistance - easyDistance) * 0.015;
-            const bStrength = b.hardScore - easy.easyScore + (bDistance - easyDistance) * 0.015;
-
-            return bStrength - aStrength;
-          })[0];
-
-        if (strongestHard) {
-          hard = strongestHard;
-        }
-      }
+      const { easy, hard, easyDistance, hardDistance } = pickEasyAndHardVariants(candidates);
 
       variantsRef.current = { easy, hard };
+      const sameRoute = isNearDuplicateRoute(easy.coords, hard.coords);
 
       console.log("[generateAlternativesBetweenPoints][variants]", {
         candidates: candidates.length,
+
         easyScore: easy.easyScore,
+
         hardScore: hard.hardScore,
-        easyDistance: easy.distanceMeters ?? routeLengthMeters(easy.coords),
-        hardDistance: hard.distanceMeters ?? routeLengthMeters(hard.coords),
-        sameRoute: isNearDuplicateRoute(easy.coords, hard.coords),
+
+        easyDistance,
+
+        hardDistance,
+
+        sameRoute,
       });
 
-      const initial = selectedVariant ?? selectedVariantRef.current ?? "easy";
+      if (sameRoute) {
+        window.dispatchEvent(
+          new CustomEvent("hf-toast", {
+            detail: {
+              message:
+                "Only one meaningful route was found here. Try a different destination for more variety.",
+            },
+          })
+        );
+      }
+
+      const initial = selectedVariant ?? "easy";
       selectedVariantRef.current = initial;
 
       const initialVariant = initial === "hard" ? hard : easy;
 
-      renderVariantForZoom(map, initialVariant);
+      if (sameRoute) {
+        onVariantsCollapsed?.({
+          selected: initial,
+
+          message:
+            initial === "hard"
+              ? "Hard ended up matching Easy here. Try another destination for a more distinct hard route."
+              : "Easy and Hard are effectively the same for this destination. Try another destination for more variety.",
+        });
+      }
+
+      // Fast first paint
+
+      drawOverviewRoute(map, initialVariant.coords);
+
+      renderedRouteModeRef.current = "overview";
+
       syncDestinationMarkerToActiveRouteEndpoint(map, initialVariant);
+
       emitRouteReady(initial, initialVariant, from, to);
+
       onRouteDrawn?.();
 
-      onVariantsReady?.();
+      // Upgrade to detailed render on the next frame
+
+      requestAnimationFrame(() => {
+        if (reqId !== routeReqIdRef.current) return;
+
+        const latestMap = mapRef.current;
+
+        if (!latestMap) return;
+
+        renderVariantForZoom(latestMap, initialVariant);
+
+        syncDestinationMarkerToActiveRouteEndpoint(latestMap, initialVariant);
+
+        requestAnimationFrame(() => {
+          if (reqId !== routeReqIdRef.current) return;
+
+          onVariantsReady?.();
+
+          onRoutePrepared?.();
+        });
+      });
+
+      // Upgrade to detailed render on the next frame
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("generateAlternativesBetweenPoints error:", err);
@@ -1573,17 +1822,27 @@ export default function DashboardMap({
     }
 
     const existing = destMarkerRef.current?.getLngLat();
+
     const changed =
       !existing ||
       Math.abs(existing.lng - destination.lng) > 0.00005 ||
       Math.abs(existing.lat - destination.lat) > 0.00005;
 
-    if (variantsRef.current) {
+    if (changed) {
+      console.log("🧨 New destination detected → invalidating old routes");
+
+      invalidateRouteNow();
+    }
+
+    if (changed) {
+      ensureDestMarker(map, [destination.lng, destination.lat]);
+    } else if (variantsRef.current) {
       syncDestinationMarkerToActiveRouteEndpoint(map);
     } else {
       ensureDestMarker(map, [destination.lng, destination.lat]);
     }
-    if (changed) {
+
+    if (changed && !routeActiveRef.current && !busyReqIdRef.current) {
       map.flyTo({ center: [destination.lng, destination.lat], zoom: 15, essential: true });
     }
   }, [destination]);
@@ -1775,21 +2034,49 @@ export default function DashboardMap({
         };
 
         selectedVariantRef.current = "easy";
+
         variantsRef.current = {
           easy: variant,
+
           hard: variant,
         };
 
-        renderVariantForZoom(map, variant);
+        drawOverviewRoute(map, variant.coords);
+
+        renderedRouteModeRef.current = "overview";
+
         syncDestinationMarkerToActiveRouteEndpoint(map, variant);
+
         emitRouteReady("easy", variant, origin, to, {
           fromName: fromLocation?.name ?? "Current location",
+
           toName: result.route.to.name ?? "Nearby Downhill",
         });
 
         onVariantSelected?.("easy");
-        // onVariantsReady?.();
+
         onRouteDrawn?.();
+
+        requestAnimationFrame(() => {
+          if (reqId !== routeReqIdRef.current) return;
+
+          const latestMap = mapRef.current;
+
+          if (!latestMap) return;
+
+          renderVariantForZoom(latestMap, variant);
+
+          syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
+
+          requestAnimationFrame(() => {
+            if (reqId !== routeReqIdRef.current) return;
+
+            onVariantsReady?.();
+
+            onRoutePrepared?.();
+          });
+        });
+
         window.dispatchEvent(
           new CustomEvent("hf-toast", {
             detail: {
@@ -1809,12 +2096,20 @@ export default function DashboardMap({
     void run();
   }, [
     findDownhillNonce,
+
     fromLocation,
+
     onRouteDrawn,
+
     onRouteFailed,
+
     onRouteReady,
+
     onVariantSelected,
+
     onVariantsReady,
+
+    onRoutePrepared,
   ]);
 
   useEffect(() => {
@@ -1832,24 +2127,19 @@ export default function DashboardMap({
 
   useEffect(() => {
     const map = mapRef.current;
+
     if (!map) return;
+    if (!routeActive) return;
     if (!selectedVariant) return;
 
     const v = variantsRef.current;
+
     if (!v) return;
 
     const active = selectedVariant === "hard" ? v.hard : v.easy;
 
     renderVariantForZoom(map, active);
-
     syncDestinationMarkerToActiveRouteEndpoint(map, active);
-
-    const from = fromMarkerRef.current?.getLngLat();
-    const to = destMarkerRef.current?.getLngLat();
-
-    if (from && to) {
-      emitRouteReady(selectedVariant, active, from, to);
-    }
 
     if (active.coords.length >= 2) {
       const bounds = new mapboxgl.LngLatBounds();
@@ -1873,11 +2163,13 @@ export default function DashboardMap({
         maxZoom: isHard ? 17 : 16,
       });
     }
+
     console.log("[selectedVariant effect]", {
       selectedVariant,
       hasVariants: !!variantsRef.current,
+      routeActive,
     });
-  }, [selectedVariant]);
+  }, [selectedVariant, routeActive]);
 
   useEffect(() => {
     routeActiveRef.current = !!routeActive;
