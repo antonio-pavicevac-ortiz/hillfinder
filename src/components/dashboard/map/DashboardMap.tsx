@@ -3,8 +3,11 @@
 import { createNavigationPuck } from "@/components/dashboard/map/NavigationPuck";
 import { haversineMeters } from "@/lib/geo/distance";
 import { classifySegments } from "@/lib/map/classifySegments";
+
 import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
+
 import { findDownhillNearby } from "@/lib/map/findDownhillNearby";
+
 import { resampleCoords } from "@/lib/map/resampleCoords";
 import { computeRouteStats, scoreEasy, scoreHard } from "@/lib/map/routeDifficulty";
 import { createRouteSweepController } from "@/lib/map/routeSweep";
@@ -271,12 +274,7 @@ export default function DashboardMap({
     const mid = midpoint(from, to);
     const trip = from.distanceTo(to) ?? 1500;
 
-    const radii = [
-      clamp(trip * 0.05, 90, 180),
-      clamp(trip * 0.09, 160, 320),
-      clamp(trip * 0.14, 260, 520),
-      clamp(trip * 0.2, 360, 760),
-    ];
+    const radii = [clamp(trip * 0.08, 120, 300), clamp(trip * 0.14, 260, 520)];
 
     const seen = new Set<string>();
     const waypoints: mapboxgl.LngLat[] = [];
@@ -497,7 +495,7 @@ export default function DashboardMap({
 
     const url =
       `https://api.mapbox.com/directions/v5/mapbox/walking/${coords}` +
-      `?alternatives=true&geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`;
+      `?alternatives=true&geometries=geojson&overview=full&steps=true&exclude=ferry&access_token=${mapboxgl.accessToken}`;
 
     const res = await fetch(url, { signal });
     return res.json();
@@ -921,7 +919,7 @@ export default function DashboardMap({
       const url =
         `https://api.mapbox.com/directions/v5/mapbox/walking/` +
         `${from.lng},${from.lat};${to.lng},${to.lat}` +
-        `?alternatives=true&geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`;
+        `?alternatives=true&geometries=geojson&overview=full&steps=true&exclude=ferry&access_token=${mapboxgl.accessToken}`;
 
       const res = await fetch(url, { signal: controller.signal });
       const data = await res.json();
@@ -1971,32 +1969,51 @@ export default function DashboardMap({
   }, [routeAlternativesNonce]);
 
   useEffect(() => {
-    const mapInstance = mapRef.current;
-    if (!mapInstance) return;
-    if (!findDownhillNonce) return;
-    if (lastHandledDownhillNonceRef.current === findDownhillNonce) return;
+    if (typeof findDownhillNonce !== "number" || findDownhillNonce <= 0) return;
 
-    lastHandledDownhillNonceRef.current = findDownhillNonce;
+    const nonce = findDownhillNonce;
+    async function waitForFindDownhillReady() {
+      for (let attempt = 0; attempt < 16; attempt += 1) {
+        const map = mapRef.current;
+        const markerFrom = fromMarkerRef.current?.getLngLat();
+        const latestDeviceLocation = latestDeviceLocationRef.current;
+        const getElevation = getElevationRef.current;
 
-    const map: mapboxgl.Map = mapInstance;
+        if (map && markerFrom && latestDeviceLocation && getElevation) {
+          return { map, origin: markerFrom };
+        }
 
-    const markerFrom = fromMarkerRef.current?.getLngLat();
-    if (!markerFrom) {
-      onRouteFailed?.("Need your location first.");
-      setRouteBusy(false);
-      return;
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      }
+
+      return null;
     }
 
-    const origin: mapboxgl.LngLat = markerFrom;
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const reqId = ++routeReqIdRef.current;
-    setRouteBusy(true, reqId);
-
     async function run() {
+      const ready = await waitForFindDownhillReady();
+
+      if (!ready) {
+        onRouteFailed?.("Still finding your location and terrain. Try again in a second.");
+        setRouteBusy(false);
+        return;
+      }
+
+      if (lastHandledDownhillNonceRef.current === nonce) return;
+      lastHandledDownhillNonceRef.current = nonce;
+
+      const { map, origin } = ready;
+
+      if (!map.isStyleLoaded()) {
+        await new Promise<void>((resolve) => map.once("load", () => resolve()));
+      }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const reqId = ++routeReqIdRef.current;
+      setRouteBusy(true, reqId);
+
       try {
         const result = await findDownhillNearby(
           { lat: origin.lat, lng: origin.lng },
@@ -2016,11 +2033,6 @@ export default function DashboardMap({
 
         ensureDestMarker(map, to);
         lastGoodDestRef.current = to;
-        onDestinationPicked?.({
-          name: result.route.to.name ?? "Nearby Downhill",
-          lat: result.route.to.lat,
-          lng: result.route.to.lng,
-        });
 
         const variant: Variant = {
           coords: result.route.coords,
@@ -2037,42 +2049,34 @@ export default function DashboardMap({
 
         variantsRef.current = {
           easy: variant,
-
           hard: variant,
         };
 
         drawOverviewRoute(map, variant.coords);
-
         renderedRouteModeRef.current = "overview";
-
         syncDestinationMarkerToActiveRouteEndpoint(map, variant);
 
         emitRouteReady("easy", variant, origin, to, {
           fromName: fromLocation?.name ?? "Current location",
-
           toName: result.route.to.name ?? "Nearby Downhill",
         });
 
         onVariantSelected?.("easy");
-
         onRouteDrawn?.();
 
         requestAnimationFrame(() => {
           if (reqId !== routeReqIdRef.current) return;
 
           const latestMap = mapRef.current;
-
           if (!latestMap) return;
 
           renderVariantForZoom(latestMap, variant);
-
           syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
 
           requestAnimationFrame(() => {
             if (reqId !== routeReqIdRef.current) return;
 
             onVariantsReady?.();
-
             onRoutePrepared?.();
           });
         });
@@ -2086,6 +2090,7 @@ export default function DashboardMap({
         );
       } catch (err: any) {
         if (err?.name === "AbortError") return;
+
         console.error("[findDownhillNearby effect]", err);
         onRouteFailed?.("Couldn't find a downhill nearby.");
       } finally {
@@ -2096,19 +2101,12 @@ export default function DashboardMap({
     void run();
   }, [
     findDownhillNonce,
-
     fromLocation,
-
+    onDestinationPicked,
     onRouteDrawn,
-
     onRouteFailed,
-
-    onRouteReady,
-
     onVariantSelected,
-
     onVariantsReady,
-
     onRoutePrepared,
   ]);
 

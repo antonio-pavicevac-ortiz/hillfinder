@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -33,6 +34,8 @@ const HEADER_H = 64;
 const FOOTER_H = 56;
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+const VOICE_HINT_STORAGE_KEY = "hf_voice_hint_shown";
+const QUICK_ACTIONS_HINT_STORAGE_KEY = "hf_quick_actions_hint_shown";
 
 const glassBar =
   "relative bg-white/12 saturate-150 " +
@@ -78,12 +81,13 @@ export default function Dashboard() {
   const sharedRouteId = searchParams.get("sharedRoute");
   const handledSharedRouteRef = useRef<string | null>(null);
   const hasShownVoiceHintRef = useRef(false);
+  const navCardTimerRef = useRef<number | null>(null);
   const navStartLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasMovedSinceRouteLoadRef = useRef(false);
 
   const [navigation, dispatchNavigation] = useReducer(navigationReducer, initialNavigationState);
   const [isNavMuted, setIsNavMuted] = useState(true);
-
+  const [showNavigationCard, setShowNavigationCard] = useState(false);
   const activeNavSteps = navigation.steps;
   const currentStepIndex = navigation.currentStepIndex;
   const isNavigating = navigation.status === "navigating";
@@ -107,7 +111,7 @@ export default function Dashboard() {
   const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
   const STEP_ADVANCE_THRESHOLD_METERS = 18;
 
-  function commitDestination(next: Destination) {
+  function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
     if (fromLocation) {
       const km = haversineMeters([fromLocation.lng, fromLocation.lat], [next.lng, next.lat]) / 1000;
       if (km > TOO_FAR_KM) {
@@ -128,14 +132,31 @@ export default function Dashboard() {
     setPlannerTo(next.name ?? "");
     clearRoute();
 
-    if (!hasShownUndoHintRef.current) {
-      toast("Tap the middle button to change destination", {
-        id: "undo-destination-hint",
-        duration: 4000,
-        icon: "🌿",
-      });
+    const shouldShowQuickActionsHint = opts?.showQuickActionsHint !== false;
+    const hasPersistedQuickActionsHint =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(QUICK_ACTIONS_HINT_STORAGE_KEY) === "true";
+
+    if (
+      shouldShowQuickActionsHint &&
+      !hasShownUndoHintRef.current &&
+      !hasPersistedQuickActionsHint
+    ) {
+      toast(
+        <div className="flex items-center justify-center text-center leading-snug">
+          <span className="text-lg leading-none pr-1">🌿</span>
+
+          <span className="mt-1">Tap Quick Actions to explore routes</span>
+        </div>,
+        {
+          id: "undo-destination-hint",
+          duration: 4000,
+          className: "hf-toast",
+        }
+      );
 
       hasShownUndoHintRef.current = true;
+      window.localStorage.setItem(QUICK_ACTIONS_HINT_STORAGE_KEY, "true");
     }
 
     return true;
@@ -151,8 +172,17 @@ export default function Dashboard() {
     setSelectedSavedRoute(null);
 
     setActiveRouteSource(null);
+
     setIsNavMuted(true);
-    hasShownVoiceHintRef.current = false;
+
+    if (navCardTimerRef.current) {
+      window.clearTimeout(navCardTimerRef.current);
+
+      navCardTimerRef.current = null;
+    }
+
+    setShowNavigationCard(false);
+
     navStartLocationRef.current = null;
     hasMovedSinceRouteLoadRef.current = false;
     dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
@@ -185,8 +215,7 @@ export default function Dashboard() {
 
   function handleRouteReady() {
     setHasRoute(true);
-
-    setRoutePreparing(true);
+    setGeneratorOpen(false);
   }
 
   function handleRoutePrepared() {
@@ -206,25 +235,25 @@ export default function Dashboard() {
     setRoutePreparing(false);
 
     setVariantsReady(false);
-
     setHasRoute(false);
 
     setActiveRouteToSave(null);
-
     setSelectedSavedRoute(null);
-
     setActiveRouteSource(null);
 
     setIsNavMuted(true);
 
-    hasShownVoiceHintRef.current = false;
+    if (navCardTimerRef.current) {
+      window.clearTimeout(navCardTimerRef.current);
+      navCardTimerRef.current = null;
+    }
+
+    setShowNavigationCard(false);
 
     navStartLocationRef.current = null;
-
     hasMovedSinceRouteLoadRef.current = false;
 
     dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
-
     dispatchNavigation({ type: "STOP" });
 
     if (message) {
@@ -260,25 +289,61 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (!generatorOpen) return;
-    if (!variantsReady) return;
-    setGeneratorOpen(false);
-  }, [generatorOpen, variantsReady]);
+    const VOICE_HINT_STORAGE_KEY = "hf_voice_hint_shown";
 
-  useEffect(() => {
-    if (!hasRoute) return;
-    if (!activeNavSteps.length) return;
-    if (!isNavMuted) return;
-    if (hasShownVoiceHintRef.current) return;
+    const NAV_CARD_DELAY_AFTER_VOICE_HINT_MS = 3800;
 
-    toast("Tap the speaker button to enable voice guidance", {
-      id: "voice-guidance-hint",
-      duration: 4000,
-      icon: "🔊",
-    });
+    const NAV_CARD_FAST_DELAY_MS = 700;
+    if (!hasRoute || !activeNavSteps.length) return;
 
-    hasShownVoiceHintRef.current = true;
-  }, [hasRoute, activeNavSteps.length, isNavMuted]);
+    if (!isNavMuted) {
+      if (navCardTimerRef.current) {
+        window.clearTimeout(navCardTimerRef.current);
+
+        navCardTimerRef.current = null;
+      }
+
+      setShowNavigationCard(true);
+
+      return;
+    }
+
+    const hasPersistedVoiceHint =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(VOICE_HINT_STORAGE_KEY) === "true";
+
+    const shouldShowVoiceHint = !hasShownVoiceHintRef.current && !hasPersistedVoiceHint;
+
+    if (shouldShowVoiceHint) {
+      toast("Tap the speaker button to enable voice guidance", {
+        id: "voice-guidance-hint",
+
+        duration: 3500,
+
+        icon: "🔊",
+
+        className: "hf-toast hf-toast-centered",
+      });
+
+      hasShownVoiceHintRef.current = true;
+
+      window.localStorage.setItem(VOICE_HINT_STORAGE_KEY, "true");
+    }
+
+    if (showNavigationCard) return;
+
+    if (navCardTimerRef.current) return;
+
+    navCardTimerRef.current = window.setTimeout(
+      () => {
+        setShowNavigationCard(true);
+
+        navCardTimerRef.current = null;
+      },
+
+      shouldShowVoiceHint ? NAV_CARD_DELAY_AFTER_VOICE_HINT_MS : NAV_CARD_FAST_DELAY_MS
+    );
+  }, [hasRoute, activeNavSteps.length, isNavMuted, showNavigationCard]);
 
   useEffect(() => {
     if (!sharedRouteId) return;
@@ -564,7 +629,7 @@ export default function Dashboard() {
         isNavigating={isNavigating}
       />
 
-      {(routeBusy || routePreparing) && !generatorOpen && (
+      {(routeBusy || routePreparing) && !hasRoute && !generatorOpen && (
         <LoadingOverlay
           text={
             activeRouteSource === "saved"
@@ -574,7 +639,7 @@ export default function Dashboard() {
                 : "Generating route..."
           }
           tone="dark"
-          showBackdrop
+          showBackdrop={false}
         />
       )}
 
@@ -643,33 +708,41 @@ export default function Dashboard() {
         </div>
       )}
 
-      {hasRoute && activeNavSteps.length > 0 && currentNavStep?.instruction && (
-        <NavigationCard
-          currentInstruction={currentNavStep.instruction}
-          distanceText={formatStepDistance(distanceToNextStepMeters)}
-          nextInstruction={nextNavStep?.instruction}
-          stepIndex={currentStepIndex}
-          totalSteps={activeNavSteps.length}
-          isMuted={isNavMuted}
-          onToggleMute={() => {
-            setIsNavMuted((current) => {
-              const nextMuted = !current;
+      <AnimatePresence>
+        {showNavigationCard &&
+          hasRoute &&
+          activeNavSteps.length > 0 &&
+          currentNavStep?.instruction && (
+            <NavigationCard
+              currentInstruction={currentNavStep.instruction}
+              distanceText={formatStepDistance(distanceToNextStepMeters)}
+              nextInstruction={nextNavStep?.instruction}
+              stepIndex={currentStepIndex}
+              totalSteps={activeNavSteps.length}
+              isMuted={isNavMuted}
+              onToggleMute={() => {
+                setIsNavMuted((current) => {
+                  const nextMuted = !current;
 
-              if (!nextMuted) {
-                dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
-              }
+                  if (!nextMuted) {
+                    dispatchNavigation({ type: "START" });
+                    dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
+                  } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                    window.speechSynthesis.cancel();
+                  }
 
-              return nextMuted;
-            });
-          }}
-          onPreviousStep={() => {
-            dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex - 1 });
-          }}
-          onNextStep={() => {
-            dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex + 1 });
-          }}
-        />
-      )}
+                  return nextMuted;
+                });
+              }}
+              onPreviousStep={() => {
+                dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex - 1 });
+              }}
+              onNextStep={() => {
+                dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex + 1 });
+              }}
+            />
+          )}
+      </AnimatePresence>
 
       <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
         <div className={`${glassBar} border-t border-white/25 pointer-events-none`}>
@@ -702,12 +775,35 @@ export default function Dashboard() {
           }
 
           setQaOpen(false);
+
           setRoutesOpen(false);
-          clearRoute();
+
+          setHasRoute(false);
+
           setVariantsReady(false);
+
           setSelectedVariant("easy");
+
+          setActiveRouteToSave(null);
+
+          setSelectedSavedRoute(null);
+
           setActiveRouteSource("generated");
+
+          setIsNavMuted(true);
+
+          if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
+          }
+
+          setShowNavigationCard(false);
+
+          dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
+
+          dispatchNavigation({ type: "STOP" });
+
           setRouteBusy(true);
+
           setRoutePreparing(true);
 
           setFindDownhillNonce((n) => n + 1);
@@ -730,10 +826,13 @@ export default function Dashboard() {
         onDestinationSelected={(loc) => {
           const next = {
             name: String(loc.name),
+
             lat: Number(loc.lat),
+
             lng: Number(loc.lng),
           };
-          commitDestination(next);
+
+          commitDestination(next, { showQuickActionsHint: false });
         }}
         variantsReady={variantsReady}
         selectedVariant={selectedVariant}
@@ -772,7 +871,7 @@ export default function Dashboard() {
                   lat: Number(center[1]),
                 };
 
-                const accepted = commitDestination(next);
+                const accepted = commitDestination(next, { showQuickActionsHint: false });
                 if (!accepted) {
                   setRouteBusy(false);
                   throw Object.assign(new Error("blocked destination"), { hfSilent: true });

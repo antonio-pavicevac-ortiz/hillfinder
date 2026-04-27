@@ -14,6 +14,8 @@ import { toast } from "sonner";
 export function SignInPage({ providers }: { providers?: Record<string, any> | null }) {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [authLocked, setAuthLocked] = useState(false);
   const router = useRouter();
 
   const { status } = useSession();
@@ -33,18 +35,29 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
   });
 
   async function onSubmit(data: SigninData) {
+    if (authLocked) return;
+
+    setAuthLocked(true);
+
     setError("");
 
     const result = await signIn("credentials", {
       ...data,
+
       redirect: false,
     });
 
     if (result?.error) {
+      setAuthLocked(false); // 🔓 unlock on failure
+
       setError(result.error);
+
       toast.error("Invalid email or password. Please try again.");
     } else if (result?.ok) {
       toast.success("Welcome back to Hillfinder 🌄");
+
+      // 🔒 stay locked until redirect
+
       setTimeout(() => router.push("/dashboard"), 1200);
     }
   }
@@ -129,10 +142,10 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
         >
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || authLocked}
             className="btn-green text-white w-full rounded-md py-2 transition disabled:opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
-            {isSubmitting ? "Signing in..." : "Sign In"}
+            {isSubmitting || authLocked ? "Signing in..." : "Sign In"}{" "}
           </button>
         </motion.div>
 
@@ -168,14 +181,25 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
           transition={{ delay: 0.8, duration: 0.25 }}
         >
           <button
-            disabled={isSubmitting}
-            onClick={() => {
-              if (isSubmitting) return;
-              signIn("google", { callbackUrl: "/dashboard" });
+            disabled={isSubmitting || authLocked || googleLoading}
+            onClick={async () => {
+              if (isSubmitting || authLocked || googleLoading) return;
+
+              setAuthLocked(true);
+
+              setGoogleLoading(true);
+
+              try {
+                await signIn("google", { callbackUrl: "/dashboard" });
+              } catch {
+                setAuthLocked(false);
+
+                setGoogleLoading(false);
+              }
             }}
             className="w-full bg-green-600 text-white py-2 rounded-md transition hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
-            Continue with Google
+            {googleLoading ? "Redirecting..." : "Continue with Google"}
           </button>
         </motion.div>
       )}

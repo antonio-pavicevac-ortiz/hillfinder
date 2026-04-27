@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Volume2, VolumeX } from "lucide-react";
 
 type NavigationCardProps = {
@@ -26,7 +27,11 @@ export default function NavigationCard({
   onNextStep,
 }: NavigationCardProps) {
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: -14, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.98 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
       className="fixed left-4 right-[5.75rem] z-20 pointer-events-none"
       style={{ top: "calc(env(safe-area-inset-top) + 80px)" }}
     >
@@ -104,6 +109,6 @@ export default function NavigationCard({
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
