@@ -192,20 +192,15 @@ export default function DownhillGenerator({
       const commit = lastCommittedRef.current;
       const stillWaitingOnSameRequest = !!commit && commit.key === requestKey;
 
-      setWaitingForVariants(false);
-      setLoading(false);
-
       if (stillWaitingOnSameRequest) {
-        setRecoveryAction(requestedVariant === "easy" ? "try_hard" : "try_easy");
-        setMessage(
-          requestedVariant === "easy"
-            ? "We’re still waiting on Easy route confirmation. Try Hard for more options if Easy doesn’t appear."
-            : "We’re still waiting on Hard route confirmation. Try Easy if Hard doesn’t look clearly different."
-        );
+        setRecoveryAction(null);
+        setMessage("Still working… hang tight while we finish checking the terrain.");
         failTimerRef.current = null;
         return;
       }
 
+      setWaitingForVariants(false);
+      setLoading(false);
       setGeneratedKey("");
       lastCommittedRef.current = null;
       setRecoveryAction(requestedVariant === "easy" ? "try_hard" : "try_easy");
@@ -310,7 +305,7 @@ export default function DownhillGenerator({
     const commit = lastCommittedRef.current;
     if (!commit) return;
 
-    if (Date.now() - commit.ts > 30_000) return;
+    if (Date.now() - commit.ts > 90_000) return;
 
     setWaitingForVariants(false);
     clearWaitTimer();

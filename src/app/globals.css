@@ -33,7 +33,7 @@ body {
 
   /* Hillfinder toast card styling (applied globally via <Toaster /> in layout.tsx) */
   [data-sonner-toast].hf-toast {
-    @apply max-w-sm w-fit rounded-2xl px-5 py-3 text-center text-sm font-medium leading-snug
+    @apply max-w-sm w-fit rounded-2xl px-4 py-3 text-center text-sm font-medium leading-snug
   shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
 
     margin-top: calc(env(safe-area-inset-top) + 5rem);
@@ -140,20 +140,38 @@ body {
 /* -----------------------------
    Sonner toaster container centering (top-center only)
    ----------------------------- */
+/* Sonner top-center container */
 [data-sonner-toaster][data-position="top-center"] {
-  left: 50% !important;
-  right: auto !important;
-  transform: translateX(-50%) !important;
-
+  left: 0 !important;
+  right: 0 !important;
+  transform: none !important;
   width: 100vw !important;
+
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
 
-  /* Let the map be draggable behind the toaster, but keep toasts clickable */
   pointer-events: none;
 }
 
+/* Each toast card */
 [data-sonner-toaster][data-position="top-center"] [data-sonner-toast] {
   pointer-events: auto;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Inner Sonner content */
+[data-sonner-toast] [data-content],
+[data-sonner-toast] [data-title],
+[data-sonner-toast] [data-description] {
+  width: 100% !important;
+  text-align: center !important;
+}
+
+/* Icon slot */
+[data-sonner-toast] [data-icon] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
