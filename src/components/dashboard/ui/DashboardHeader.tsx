@@ -87,13 +87,20 @@ export default function DashboardHeader({ user, onOpenSettings }: DashboardHeade
               <button
                 type="button"
                 onPointerDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
                   e.preventDefault();
 
                   e.stopPropagation();
 
+                  console.log("SETTINGS BUTTON CLICKED");
+
                   setMenuOpen(false);
 
                   onOpenSettings?.();
+
+                  window.dispatchEvent(new CustomEvent("hf-open-settings"));
                 }}
                 className="touch-manipulation w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700"
               >
