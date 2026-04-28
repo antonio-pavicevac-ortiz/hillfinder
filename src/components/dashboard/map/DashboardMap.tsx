@@ -53,6 +53,22 @@ type DirectionsApiRoute = {
 };
 
 const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
+const MOBILE_ROUTE_PADDING = {
+  top: 280,
+
+  right: 72,
+
+  bottom: 170,
+
+  left: 44,
+};
+
+const DESKTOP_ROUTE_PADDING = {
+  top: 210,
+  right: 72,
+  bottom: 170,
+  left: 72,
+};
 
 export default function DashboardMap({
   destination,
@@ -678,6 +694,36 @@ export default function DashboardMap({
     }
   }
 
+  function fitMapToRoute(
+    map: mapboxgl.Map,
+    coords: [number, number][],
+    opts?: { variant?: VariantKey }
+  ) {
+    if (!coords?.length) return;
+
+    map.resize();
+
+    const bounds = new mapboxgl.LngLatBounds();
+
+    coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
+
+    const from = fromMarkerRef.current?.getLngLat();
+    const to = destMarkerRef.current?.getLngLat();
+
+    if (from) bounds.extend(from);
+    if (to) bounds.extend(to);
+
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+    map.fitBounds(bounds, {
+      padding: isMobile ? MOBILE_ROUTE_PADDING : DESKTOP_ROUTE_PADDING,
+      duration: 700,
+      curve: 1.4,
+      essential: true,
+      maxZoom: opts?.variant === "hard" ? 16 : 15,
+    });
+  }
+
   function emitRouteReady(
     variantKey: VariantKey,
     variant: Variant,
@@ -729,11 +775,12 @@ export default function DashboardMap({
 
     renderedRouteModeRef.current = nextMode;
 
-    console.log("[renderVariantForZoom]", {
-      zoom: map.getZoom(),
-      nextMode,
-      coords: variant.coords.length,
-      segments: variant.segments?.length ?? 0,
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fitMapToRoute(map, variant.coords, {
+          variant: selectedVariantRef.current ?? "easy",
+        });
+      });
     });
   }
 
@@ -788,20 +835,12 @@ export default function DashboardMap({
       toName: savedRoute.to.name,
     });
 
-    const bounds = new mapboxgl.LngLatBounds();
-    coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
-
-    map.fitBounds(bounds, {
-      padding: {
-        top: savedRoute.difficulty === "hard" ? 110 : 140,
-        right: 40,
-        bottom: 140,
-        left: 40,
-      },
-      duration: 700,
-      curve: 1.4,
-      essential: true,
-      maxZoom: savedRoute.difficulty === "hard" ? 17 : 16,
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fitMapToRoute(map, variant.coords, {
+          variant: selectedVariantRef.current ?? "easy",
+        });
+      });
     });
 
     onVariantSelected?.(savedRoute.difficulty);
@@ -1841,7 +1880,17 @@ export default function DashboardMap({
     }
 
     if (changed && !routeActiveRef.current && !busyReqIdRef.current) {
-      map.flyTo({ center: [destination.lng, destination.lat], zoom: 15, essential: true });
+      const from = fromMarkerRef.current?.getLngLat();
+
+      if (from) {
+        fitMapToRoute(map, [
+          [from.lng, from.lat],
+
+          [destination.lng, destination.lat],
+        ]);
+      } else {
+        map.flyTo({ center: [destination.lng, destination.lat], zoom: 15, essential: true });
+      }
     }
   }, [destination]);
 
@@ -1975,12 +2024,12 @@ export default function DashboardMap({
     async function waitForFindDownhillReady() {
       for (let attempt = 0; attempt < 16; attempt += 1) {
         const map = mapRef.current;
-        const markerFrom = fromMarkerRef.current?.getLngLat();
         const latestDeviceLocation = latestDeviceLocationRef.current;
+
         const getElevation = getElevationRef.current;
 
-        if (map && markerFrom && latestDeviceLocation && getElevation) {
-          return { map, origin: markerFrom };
+        if (map && latestDeviceLocation && getElevation) {
+          return { map, origin: latestDeviceLocation };
         }
 
         await new Promise((resolve) => window.setTimeout(resolve, 150));
@@ -2002,6 +2051,12 @@ export default function DashboardMap({
       lastHandledDownhillNonceRef.current = nonce;
 
       const { map, origin } = ready;
+
+      ensureFromMarker(map, origin);
+
+      latestDeviceLocationRef.current = origin;
+
+      void notifyFromPicked(origin, { immediateName: "Current location" });
 
       if (!map.isStyleLoaded()) {
         await new Promise<void>((resolve) => map.once("load", () => resolve()));
@@ -2139,29 +2194,6 @@ export default function DashboardMap({
     renderVariantForZoom(map, active);
     syncDestinationMarkerToActiveRouteEndpoint(map, active);
 
-    if (active.coords.length >= 2) {
-      const bounds = new mapboxgl.LngLatBounds();
-
-      active.coords.forEach(([lng, lat]) => {
-        bounds.extend([lng, lat]);
-      });
-
-      const isHard = selectedVariant === "hard";
-
-      map.fitBounds(bounds, {
-        padding: {
-          top: isHard ? 110 : 140,
-          right: 40,
-          bottom: 140,
-          left: 40,
-        },
-        duration: 700,
-        curve: 1.4,
-        essential: true,
-        maxZoom: isHard ? 17 : 16,
-      });
-    }
-
     console.log("[selectedVariant effect]", {
       selectedVariant,
       hasVariants: !!variantsRef.current,
@@ -2214,6 +2246,21 @@ export default function DashboardMap({
     fromMarkerRef.current?.getElement().style.removeProperty("opacity");
     navigationPuckRef.current?.getElement().style.setProperty("display", "none");
   }, [isNavigating]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!map) return;
+
+    const coords = getActiveVariantCoords();
+
+    if (!coords) return;
+
+    fitMapToRoute(map, coords, {
+      variant: selectedVariantRef.current ?? "easy",
+    });
+  }, [selectedVariant]);
+
   return (
     <div
       ref={mapContainerRef}
