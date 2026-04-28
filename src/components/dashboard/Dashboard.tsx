@@ -34,7 +34,6 @@ const HEADER_H = 64;
 const FOOTER_H = 56;
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-const VOICE_HINT_STORAGE_KEY = "hf_voice_hint_shown";
 const QUICK_ACTIONS_HINT_STORAGE_KEY = "hf_quick_actions_hint_shown";
 
 const glassBar =
@@ -97,6 +96,7 @@ export default function Dashboard() {
   const nextNavStep = activeNavSteps[currentStepIndex + 1];
   const maneuverTargetStep = nextNavStep?.location ? nextNavStep : currentNavStep;
   const distanceTargetStep = maneuverTargetStep;
+  const [isLandscape, setIsLandscape] = useState(false);
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -267,16 +267,37 @@ export default function Dashboard() {
     return parts[1] || parts[0] || "";
   }
 
-  function handleQuickRoute() {
-    if (!destination || routeBusy) return;
+  async function handleQuickRoute() {
+    if (routeBusy) return;
 
+    if (!fromLocation) {
+      toast.error("Need your location first");
+
+      return;
+    }
+
+    if (!destination) {
+      toast.error("Pick a destination first");
+
+      return;
+    }
     setQaOpen(false);
+
     setRoutesOpen(false);
+
     clearRoute();
+
     setVariantsReady(false);
-    setRouteBusy(true);
-    setRoutePreparing(true);
+
     setSelectedVariant("easy");
+    setActiveRouteSource("generated");
+
+    setRouteBusy(true);
+
+    setRoutePreparing(true);
+
+    await waitForMapStateToSettle();
+
     setRouteAlternativesNonce((n) => n + 1);
   }
 
@@ -537,8 +558,28 @@ export default function Dashboard() {
     }
   }, [isNavigating, liveNavLocation, destination, navigation.status, isNavMuted]);
 
+  useEffect(() => {
+    const update = () => {
+      setIsLandscape(window.innerWidth > window.innerHeight);
+    };
+
+    update();
+
+    window.addEventListener("resize", update);
+
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   return (
     <main className="fixed inset-0 bg-white">
+      {isLandscape && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center text-center p-6">
+          <p className="text-white text-lg font-semibold">
+            Rotate your device for the best experience 📱
+          </p>
+        </div>
+      )}
+
       <MapControls
         hasRoute={hasRoute}
         onClearRoute={clearRoute}
@@ -771,6 +812,7 @@ export default function Dashboard() {
         onFindDownhill={async () => {
           if (!fromLocation) {
             toast.error("Need your location first");
+
             return;
           }
 
@@ -778,7 +820,15 @@ export default function Dashboard() {
 
           setRoutesOpen(false);
 
-          setHasRoute(false);
+          clearRoute();
+
+          setDestination(null);
+
+          setPlannerTo("");
+
+          setBlocked(false);
+
+          setClearDestinationNonce((n) => n + 1);
 
           setVariantsReady(false);
 
@@ -805,6 +855,8 @@ export default function Dashboard() {
           setRouteBusy(true);
 
           setRoutePreparing(true);
+
+          await waitForMapStateToSettle();
 
           setFindDownhillNonce((n) => n + 1);
         }}
