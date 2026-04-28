@@ -7,9 +7,10 @@ import { useEffect, useRef, useState } from "react";
 
 type DashboardHeaderProps = {
   user?: DashboardUser;
+  onOpenSettings?: () => void;
 };
 
-export default function DashboardHeader({ user }: DashboardHeaderProps) {
+export default function DashboardHeader({ user, onOpenSettings }: DashboardHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,6 +64,7 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
               className="absolute right-0 mt-2 w-48 bg-white shadow-lg rounded-lg border border-gray-100 py-2 z-50"
               // ✅ don't let taps inside bubble to the map
               onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-100">
                 {user?.email}
@@ -84,6 +86,15 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
 
               <button
                 type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+
+                  e.stopPropagation();
+
+                  setMenuOpen(false);
+
+                  onOpenSettings?.();
+                }}
                 className="touch-manipulation w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700"
               >
                 Settings

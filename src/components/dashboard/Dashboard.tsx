@@ -15,6 +15,7 @@ import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/modals/QuickActionSheet";
 import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
+import SettingsSheet from "@/components/dashboard/settings/SettingsSheet";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
@@ -97,6 +98,12 @@ export default function Dashboard() {
   const maneuverTargetStep = nextNavStep?.location ? nextNavStep : currentNavStep;
   const distanceTargetStep = maneuverTargetStep;
   const [isLandscape, setIsLandscape] = useState(false);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [lockPortrait, setLockPortrait] = useState(true);
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -572,7 +579,7 @@ export default function Dashboard() {
 
   return (
     <main className="fixed inset-0 bg-white">
-      {isLandscape && (
+      {lockPortrait && isLandscape && (
         <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center text-center p-6">
           <p className="text-white text-lg font-semibold">
             Rotate your device for the best experience 📱
@@ -689,7 +696,7 @@ export default function Dashboard() {
         style={{ height: HEADER_H }}
       >
         <div className={`h-full ${glassBar} pointer-events-auto`}>
-          <DashboardHeader />
+          <DashboardHeader onOpenSettings={() => setSettingsOpen(true)} />{" "}
         </div>
       </header>
 
@@ -945,6 +952,16 @@ export default function Dashboard() {
           else if (kind === "success") toast.success(message);
           else toast(message);
         }}
+      />
+      <SettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+        voiceEnabled={voiceEnabled}
+        onToggleVoice={() => setVoiceEnabled((v) => !v)}
+        lockPortrait={lockPortrait}
+        onToggleOrientation={() => setLockPortrait((v) => !v)}
       />
     </main>
   );
