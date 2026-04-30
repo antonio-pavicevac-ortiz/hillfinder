@@ -55,11 +55,8 @@ type DirectionsApiRoute = {
 const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
 const MOBILE_ROUTE_PADDING = {
   top: 320,
-
   right: 72,
-
   bottom: 170,
-
   left: 44,
 };
 
