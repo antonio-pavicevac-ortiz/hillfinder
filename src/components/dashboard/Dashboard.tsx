@@ -15,7 +15,6 @@ import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/modals/QuickActionSheet";
 import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
-import SettingsSheet from "@/components/dashboard/settings/SettingsSheet";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
@@ -99,11 +98,10 @@ export default function Dashboard() {
   const distanceTargetStep = maneuverTargetStep;
   const [isLandscape, setIsLandscape] = useState(false);
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lockPortrait, setLockPortrait] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -117,6 +115,15 @@ export default function Dashboard() {
   const TOO_FAR_KM = 30;
   const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
   const STEP_ADVANCE_THRESHOLD_METERS = 18;
+
+  function syncSettings() {
+    const savedTheme = window.localStorage.getItem("hf_theme");
+    const savedVoice = window.localStorage.getItem("hf_voice_enabled");
+    const savedPortrait = window.localStorage.getItem("hf_lock_portrait");
+    if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+    if (savedVoice) setVoiceEnabled(savedVoice === "true");
+    if (savedPortrait) setLockPortrait(savedPortrait === "true");
+  }
 
   function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
     if (fromLocation) {
@@ -180,8 +187,7 @@ export default function Dashboard() {
 
     setActiveRouteSource(null);
 
-    setIsNavMuted(true);
-
+    setIsNavMuted(!voiceEnabled);
     if (navCardTimerRef.current) {
       window.clearTimeout(navCardTimerRef.current);
 
@@ -227,13 +233,9 @@ export default function Dashboard() {
 
   function handleRoutePrepared() {
     setRouteBusy(false);
-
     setRoutePreparing(false);
-
     setVariantsReady(true);
-
     setHasRoute(true);
-
     setGeneratorOpen(false);
   }
 
@@ -249,7 +251,6 @@ export default function Dashboard() {
     setActiveRouteSource(null);
 
     setIsNavMuted(true);
-
     if (navCardTimerRef.current) {
       window.clearTimeout(navCardTimerRef.current);
       navCardTimerRef.current = null;
@@ -289,22 +290,16 @@ export default function Dashboard() {
       return;
     }
     setQaOpen(false);
-
     setRoutesOpen(false);
-
     clearRoute();
-
     setVariantsReady(false);
 
     setSelectedVariant("easy");
     setActiveRouteSource("generated");
 
     setRouteBusy(true);
-
     setRoutePreparing(true);
-
     await waitForMapStateToSettle();
-
     setRouteAlternativesNonce((n) => n + 1);
   }
 
@@ -345,11 +340,8 @@ export default function Dashboard() {
     if (shouldShowVoiceHint) {
       toast("Tap the speaker button to enable voice guidance", {
         id: "voice-guidance-hint",
-
         duration: 3500,
-
         icon: "🔊",
-
         className: "hf-toast hf-toast-centered",
       });
 
@@ -359,7 +351,6 @@ export default function Dashboard() {
     }
 
     if (showNavigationCard) return;
-
     if (navCardTimerRef.current) return;
 
     navCardTimerRef.current = window.setTimeout(
@@ -573,37 +564,64 @@ export default function Dashboard() {
     update();
 
     window.addEventListener("resize", update);
-
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  useEffect(() => {
-    function openSettingsFromHeader() {
-      console.log("OPEN SETTINGS EVENT RECEIVED");
-
-      setSettingsOpen(true);
-    }
-
-    window.addEventListener("hf-open-settings", openSettingsFromHeader);
+    window.addEventListener("orientationchange", update);
 
     return () => {
-      window.removeEventListener("hf-open-settings", openSettingsFromHeader);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
     };
   }, []);
 
-  return (
-    <main className="fixed inset-0 bg-white">
-      <SettingsSheet
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-        voiceEnabled={voiceEnabled}
-        onToggleVoice={() => setVoiceEnabled((v) => !v)}
-        lockPortrait={lockPortrait}
-        onToggleOrientation={() => setLockPortrait((v) => !v)}
-      />
+  useEffect(() => {
+    function syncSettings() {
+      const savedTheme = localStorage.getItem("hf_theme");
+      const savedVoice = localStorage.getItem("hf_voice_enabled");
+      const savedPortrait = localStorage.getItem("hf_lock_portrait");
 
+      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      if (savedVoice) setVoiceEnabled(savedVoice === "true");
+      if (savedPortrait) setLockPortrait(savedPortrait === "true");
+    }
+
+    syncSettings();
+    setHydrated(true);
+
+    window.addEventListener("hf-settings-updated", syncSettings);
+    window.addEventListener("storage", syncSettings);
+
+    return () => {
+      window.removeEventListener("hf-settings-updated", syncSettings);
+      window.removeEventListener("storage", syncSettings);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    setIsNavMuted(!voiceEnabled);
+  }, [hydrated, voiceEnabled]);
+
+  useEffect(() => {
+    function handleFocus() {
+      const savedTheme = localStorage.getItem("hf_theme");
+      const savedVoice = localStorage.getItem("hf_voice_enabled");
+      const savedPortrait = localStorage.getItem("hf_lock_portrait");
+
+      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      if (savedVoice) setVoiceEnabled(savedVoice === "true");
+      if (savedPortrait) setLockPortrait(savedPortrait === "true");
+    }
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => window.removeEventListener("focus", handleFocus);
+  }, []);
+
+  if (!hydrated) return null;
+
+  return (
+    <main className={`fixed inset-0 ${theme === "dark" ? "bg-black" : "bg-white"}`}>
+      {" "}
       {lockPortrait && isLandscape && (
         <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center text-center p-6">
           <p className="text-white text-lg font-semibold">
@@ -611,7 +629,6 @@ export default function Dashboard() {
           </p>
         </div>
       )}
-
       <MapControls
         hasRoute={hasRoute}
         onClearRoute={clearRoute}
@@ -629,8 +646,8 @@ export default function Dashboard() {
         onRouteSaved={() => setRefreshRoutesKey((n) => n + 1)}
         isActiveSavedRoute={activeRouteSource === "saved"}
       />
-
       <DashboardMap
+        theme={theme}
         destination={destination}
         fromLocation={fromLocation}
         recenterNonce={recenterNonce}
@@ -697,7 +714,6 @@ export default function Dashboard() {
         savedRouteToLoad={selectedSavedRoute}
         isNavigating={isNavigating}
       />
-
       {(routeBusy || routePreparing) && !hasRoute && !generatorOpen && (
         <LoadingOverlay
           text={
@@ -711,22 +727,14 @@ export default function Dashboard() {
           showBackdrop={false}
         />
       )}
-
       <header
         className="fixed top-0 left-0 right-0 z-20 pointer-events-none"
         style={{ height: HEADER_H }}
       >
         <div className={`h-full ${glassBar} pointer-events-auto`}>
-          <DashboardHeader
-            onOpenSettings={() => {
-              console.log("SETTINGS CLICKED");
-
-              setSettingsOpen(true);
-            }}
-          />
+          <DashboardHeader />
         </div>
       </header>
-
       {routesOpen && (
         <div
           className="fixed left-4 right-4 z-20 pointer-events-none"
@@ -782,7 +790,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
       <AnimatePresence>
         {showNavigationCard &&
           hasRoute &&
@@ -818,7 +825,6 @@ export default function Dashboard() {
             />
           )}
       </AnimatePresence>
-
       <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
         <div className={`${glassBar} border-t border-white/25 pointer-events-none`}>
           <div
@@ -832,7 +838,6 @@ export default function Dashboard() {
           <div className="h-[env(safe-area-inset-bottom)] pointer-events-none" />
         </div>
       </footer>
-
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
@@ -849,54 +854,34 @@ export default function Dashboard() {
 
             return;
           }
-
           setQaOpen(false);
-
           setRoutesOpen(false);
-
           clearRoute();
-
           setDestination(null);
-
           setPlannerTo("");
-
           setBlocked(false);
-
           setClearDestinationNonce((n) => n + 1);
-
           setVariantsReady(false);
-
           setSelectedVariant("easy");
-
           setActiveRouteToSave(null);
-
           setSelectedSavedRoute(null);
-
           setActiveRouteSource("generated");
 
-          setIsNavMuted(true);
-
+          setIsNavMuted(!voiceEnabled);
           if (typeof window !== "undefined" && "speechSynthesis" in window) {
             window.speechSynthesis.cancel();
           }
 
           setShowNavigationCard(false);
-
           dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
-
           dispatchNavigation({ type: "STOP" });
-
           setRouteBusy(true);
-
           setRoutePreparing(true);
-
           await waitForMapStateToSettle();
-
           setFindDownhillNonce((n) => n + 1);
         }}
         quickRouteEnabled={quickRouteEnabled}
       />
-
       <DownhillGenerator
         open={generatorOpen}
         fromLabel={

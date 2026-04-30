@@ -95,6 +95,7 @@ export default function DashboardMap({
   isNavigating,
   onRoutePrepared,
   onVariantsCollapsed,
+  theme = "light",
 }: {
   destination?: Destination | null;
   clearRouteNonce?: number;
@@ -120,6 +121,7 @@ export default function DashboardMap({
   isNavigating?: boolean;
   onRoutePrepared?: () => void;
   onVariantsCollapsed?: (payload: { selected: VariantKey; message: string }) => void;
+  theme?: "light" | "dark";
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -1525,7 +1527,10 @@ export default function DashboardMap({
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/outdoors-v12",
+      style:
+        theme === "dark"
+          ? "mapbox://styles/mapbox/dark-v11"
+          : "mapbox://styles/mapbox/outdoors-v12",
       center: [-73.761, 40.715],
       zoom: 13,
       clickTolerance: 8,
@@ -2221,9 +2226,7 @@ export default function DashboardMap({
 
       if (latest) {
         const puck = ensureNavigationPuck(map, latest);
-
         puck.getElement().style.removeProperty("display");
-
         const puckEl = puck.getElement() as HTMLDivElement & {
           __setRotation?: (deg: number) => void;
         };
@@ -2249,17 +2252,22 @@ export default function DashboardMap({
 
   useEffect(() => {
     const map = mapRef.current;
-
     if (!map) return;
-
     const coords = getActiveVariantCoords();
-
     if (!coords) return;
-
     fitMapToRoute(map, coords, {
       variant: selectedVariantRef.current ?? "easy",
     });
   }, [selectedVariant]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.setStyle(
+      theme === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/outdoors-v12"
+    );
+  }, [theme]);
 
   return (
     <div

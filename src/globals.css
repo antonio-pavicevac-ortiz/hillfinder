@@ -11,9 +11,29 @@ body {
   overscroll-behavior: none;
 }
 
+/* -----------------------------
+   Theme variables (single source of truth)
+   ----------------------------- */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  --hf-text: #111827;
+  --hf-muted: #4b5563;
+  --hf-card: #ffffff;
+  --hf-border: rgba(17, 24, 39, 0.12);
+  --hf-hover: rgba(17, 24, 39, 0.06);
+}
+
+.dark {
+  --background: #020617;
+  --foreground: #f8fafc;
+
+  --hf-text: #f8fafc;
+  --hf-muted: #cbd5e1;
+  --hf-card: rgba(15, 23, 42, 0.92);
+  --hf-border: rgba(255, 255, 255, 0.12);
+  --hf-hover: rgba(255, 255, 255, 0.08);
 }
 
 @theme inline {
@@ -31,15 +51,15 @@ body {
     @apply bg-brandGreen text-white font-medium px-4 py-2 rounded hover:bg-brandGreen-dark transition;
   }
 
-  /* Hillfinder toast card styling (applied globally via <Toaster /> in layout.tsx) */
+  /* Hillfinder toast card styling */
   [data-sonner-toast].hf-toast {
     @apply max-w-sm w-fit rounded-2xl px-4 py-3 text-center text-sm font-medium leading-snug
-  shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
+      shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
 
     margin-top: calc(env(safe-area-inset-top) + 5rem);
   }
 
-  /* ✅ Neutral (default) — Sonner toast that is NOT an error */
+  /* ✅ Neutral */
   [data-sonner-toast].hf-toast:not([data-type="error"]) {
     @apply !border !border-emerald-300/70 !bg-emerald-100/90 !text-emerald-900;
   }
@@ -54,19 +74,18 @@ body {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* -----------------------------
+   Base body styling
+   ----------------------------- */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* -----------------------------
+   Form styles
+   ----------------------------- */
 .input-field {
   @apply w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900
     placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-600 transition;
@@ -75,13 +94,18 @@ body {
 .error-text {
   @apply text-sm text-red-600;
 }
+
 .link-text {
   @apply text-sm text-gray-500 hover:text-green-700 transition;
 }
+
 .eye-btn {
   @apply absolute right-3 top-2.5 text-gray-500 hover:text-gray-700 transition;
 }
 
+/* -----------------------------
+   Animations
+   ----------------------------- */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -97,8 +121,19 @@ body {
   animation: fadeIn 0.12s ease-out;
 }
 
+@keyframes hf-toast-drop {
+  from {
+    transform: translateY(-22px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0px) scale(1);
+    opacity: 1;
+  }
+}
+
 /* -----------------------------
-   UploadThing — force all button variations green
+   UploadThing styling
    ----------------------------- */
 .ut-button,
 .ut-upload-button,
@@ -115,22 +150,6 @@ body {
 }
 
 /* -----------------------------
-   Sonner — consistent top-center + drop-down motion
-   ----------------------------- */
-
-@keyframes hf-toast-drop {
-  from {
-    transform: translateY(-22px) scale(0.97);
-    opacity: 0;
-  }
-
-  to {
-    transform: translateY(0px) scale(1);
-    opacity: 1;
-  }
-}
-
-/* -----------------------------
    Map controls
    ----------------------------- */
 .hf-map .mapboxgl-ctrl-icon {
@@ -138,9 +157,8 @@ body {
 }
 
 /* -----------------------------
-   Sonner toaster container centering (top-center only)
+   Sonner toaster layout
    ----------------------------- */
-/* Sonner top-center container */
 [data-sonner-toaster][data-position="top-center"] {
   left: 0 !important;
   right: 0 !important;
@@ -154,14 +172,12 @@ body {
   pointer-events: none;
 }
 
-/* Each toast card */
 [data-sonner-toaster][data-position="top-center"] [data-sonner-toast] {
   pointer-events: auto;
   margin-left: auto !important;
   margin-right: auto !important;
 }
 
-/* Inner Sonner content */
 [data-sonner-toast] [data-content],
 [data-sonner-toast] [data-title],
 [data-sonner-toast] [data-description] {
@@ -169,7 +185,6 @@ body {
   text-align: center !important;
 }
 
-/* Icon slot */
 [data-sonner-toast] [data-icon] {
   display: flex !important;
   align-items: center !important;
