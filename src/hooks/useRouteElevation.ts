@@ -29,8 +29,6 @@ export default function useRouteElevation(): UseRouteElevationResult {
   const [loading, setLoading] = useState(false);
 
   async function computeRoute(origin: [number, number], destination: [number, number]) {
-    console.log("🔥 computeRoute fired", { origin, destination });
-
     setLoading(true);
 
     // ✅ fetch full driving routes

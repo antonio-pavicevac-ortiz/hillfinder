@@ -216,6 +216,11 @@ export default function DownhillGenerator({
 
   async function handleGenerate(destOverride?: string) {
     const dest = (destOverride ?? to).trim();
+    console.log("[DownhillGenerator] handleGenerate", {
+      to: dest,
+
+      uiVariant,
+    });
 
     if (!dest) {
       setRecoveryAction(null);
@@ -442,7 +447,7 @@ export default function DownhillGenerator({
 
   function pickDifficulty(v: Variant) {
     if (!canPickDifficulty) return;
-
+    console.log("[DownhillGenerator] pickDifficulty", v);
     setUiVariant(v);
     setRecoveryAction(null);
     setMessage("");

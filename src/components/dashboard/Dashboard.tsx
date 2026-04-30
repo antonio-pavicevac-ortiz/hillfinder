@@ -300,7 +300,11 @@ export default function Dashboard() {
     setRouteBusy(true);
     setRoutePreparing(true);
     await waitForMapStateToSettle();
-    setRouteAlternativesNonce((n) => n + 1);
+    // setRouteAlternativesNonce((n) => n + 1);
+    setRouteAlternativesNonce((n) => {
+      const next = n + 1;
+      return next;
+    });
   }
 
   function handlePlanRoute() {
@@ -703,11 +707,14 @@ export default function Dashboard() {
         }}
         onRoutePrepared={handleRoutePrepared}
         onVariantsCollapsed={({ message }) => {
+          // This warning is useful when the user explicitly opens Plan Your Route
+          // and expects distinct Easy/Hard options. Quick Route should quietly render
+          // the best available route instead of showing a variant-comparison warning.
+          if (!generatorOpen) return;
+
           toast(message, {
             id: "variants-collapsed",
-
             duration: 5000,
-
             icon: "⚠️",
           });
         }}
