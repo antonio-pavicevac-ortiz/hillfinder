@@ -9,7 +9,27 @@ type DashboardHeaderProps = {
   user?: DashboardUser;
 };
 
+type UserMenuProps = {
+  user?: DashboardUser;
+};
+
 export default function DashboardHeader({ user }: DashboardHeaderProps) {
+  return (
+    // ✅ Entire header is "tap-through" to the map by default
+    <div className="relative h-[64px] w-full">
+      {/* ✅ Content row is also non-interactive by default */}
+      <div className="relative z-10 h-full px-6 flex items-center justify-between pointer-events-none">
+        <h1 className="text-lg font-semibold text-[var(--hf-text,#111827)] select-none">
+          Welcome back, {user?.name ?? "Explorer"} 👋
+        </h1>
+
+        <UserMenu user={user} />
+      </div>
+    </div>
+  );
+}
+
+function UserMenu({ user }: UserMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,75 +54,71 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
       .toUpperCase() ?? "U";
 
   return (
-    // ✅ Entire header is "tap-through" to the map by default
-    <div className="relative h-[64px] w-full">
-      {/* ✅ Content row is also non-interactive by default */}
-      <div className="relative z-10 h-full px-6 flex items-center justify-between pointer-events-none">
-        <h1 className="text-lg font-semibold text-gray-900 select-none">
-          Welcome back, {user?.name ?? "Explorer"} 👋
-        </h1>
+    // ✅ Only this area can receive taps
+    <div className="relative pointer-events-auto" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setMenuOpen((v) => !v)}
+        // ✅ tap-only behavior; avoids weird gesture feeling
+        className="touch-manipulation w-9 h-9 rounded-full overflow-hidden bg-[var(--hf-card,#e5e7eb)] flex items-center justify-center text-[var(--hf-text,#374151)] font-semibold shadow-sm hover:shadow-md transition shadow-black/10 border border-[var(--hf-border,rgba(17,24,39,0.12))]"
+      >
+        {user?.image ? (
+          // (Optional) next/image later, but fine for now
+          <img src={user.image} alt="Avatar" className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-sm">{initials}</span>
+        )}
+      </button>
 
-        {/* ✅ Only this area can receive taps */}
-        <div className="relative pointer-events-auto" ref={menuRef}>
+      {menuOpen && (
+        <div
+          className="absolute right-0 mt-2 w-48 rounded-lg border border-[var(--hf-border,rgba(17,24,39,0.12))] bg-[var(--hf-card,#ffffff)] py-2 shadow-lg z-50"
+          // ✅ don't let taps inside bubble to the map
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <div className="px-4 py-2 text-sm text-[var(--hf-muted,#4b5563)] border-b border-[var(--hf-border,rgba(17,24,39,0.12))]">
+            {user?.email}
+          </div>
+
+          <Link
+            href="/dashboard"
+            onClick={() => setMenuOpen(false)}
+            className="touch-manipulation block px-4 py-2 text-[var(--hf-text,#374151)] hover:bg-[var(--hf-hover,rgba(17,24,39,0.06))]"
+          >
+            Dashboard
+          </Link>
+
+          <Link
+            href="/dashboard/profile"
+            onClick={() => setMenuOpen(false)}
+            className="touch-manipulation block px-4 py-2 text-[var(--hf-text,#374151)] hover:bg-[var(--hf-hover,rgba(17,24,39,0.06))]"
+          >
+            Profile
+          </Link>
+
+          <Link
+            href="/dashboard/settings"
+            onClick={() => setMenuOpen(false)}
+            className="touch-manipulation block px-4 py-2 text-[var(--hf-text,#374151)] hover:bg-[var(--hf-hover,rgba(17,24,39,0.06))]"
+          >
+            Settings
+          </Link>
+
           <button
             type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            // ✅ tap-only behavior; avoids weird gesture feeling
-            className="touch-manipulation w-9 h-9 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center text-gray-700 font-semibold shadow-sm hover:shadow-md transition shadow-black/10"
+            onClick={() => {
+              setMenuOpen(false);
+              signOut({ callbackUrl: "/" });
+            }}
+            className="touch-manipulation w-full text-left px-4 py-2 text-red-600 hover:bg-[var(--hf-hover,rgba(17,24,39,0.06))] dark:text-red-400"
           >
-            {user?.image ? (
-              // (Optional) next/image later, but fine for now
-              <img src={user.image} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-sm">{initials}</span>
-            )}
+            Sign Out
           </button>
-
-          {menuOpen && (
-            <div
-              className="absolute right-0 mt-2 w-48 bg-white shadow-lg rounded-lg border border-gray-100 py-2 z-50"
-              // ✅ don't let taps inside bubble to the map
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-100">
-                {user?.email}
-              </div>
-
-              <Link
-                href="/dashboard"
-                className="touch-manipulation block px-4 py-2 hover:bg-gray-100 text-gray-700"
-              >
-                Dashboard
-              </Link>
-
-              <Link
-                href="/dashboard/profile"
-                className="touch-manipulation block px-4 py-2 hover:bg-gray-100 text-gray-700"
-              >
-                Profile
-              </Link>
-
-              <button
-                type="button"
-                className="touch-manipulation w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700"
-              >
-                Settings
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  signOut({ callbackUrl: "/auth/signout" });
-                }}
-                className="touch-manipulation w-full text-left px-4 py-2 hover:bg-gray-100 text-red-600"
-              >
-                Sign Out
-              </button>
-            </div>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

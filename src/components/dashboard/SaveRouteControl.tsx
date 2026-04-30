@@ -51,14 +51,6 @@ export default function SaveRouteControl({
 
   const disabled = !route || isSaving || isActiveSavedRoute;
 
-  console.log("[SaveRouteControl]", {
-    isActiveSavedRoute,
-    hasRoutePayload: !!route,
-    isSaving,
-    saved,
-    disabled,
-  });
-
   const sharedRound = "rounded-2xl";
 
   const controlBackground = disabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.22)";

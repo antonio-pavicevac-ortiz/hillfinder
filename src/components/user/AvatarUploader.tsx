@@ -68,15 +68,11 @@ export default function AvatarUploader({ initialAvatar }: { initialAvatar: strin
           ].join(" "),
         }}
         onClientUploadComplete={(res) => {
-          console.log("UPLOAD RESULT:", res); // ← ADD THIS
-
           const url = res?.[0]?.url;
           if (!url) {
             console.warn("No URL returned from UploadThing");
             return;
           }
-
-          console.log("Extracted URL:", url); // ← ADD THIS
 
           setAvatarUrl(url);
           saveAvatarToDB(url);

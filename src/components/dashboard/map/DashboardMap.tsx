@@ -54,17 +54,14 @@ type DirectionsApiRoute = {
 
 const DETAIL_ROUTE_ZOOM_THRESHOLD = 13;
 const MOBILE_ROUTE_PADDING = {
-  top: 280,
-
+  top: 320,
   right: 72,
-
   bottom: 170,
-
   left: 44,
 };
 
 const DESKTOP_ROUTE_PADDING = {
-  top: 210,
+  top: 320,
   right: 72,
   bottom: 170,
   left: 72,
@@ -95,6 +92,7 @@ export default function DashboardMap({
   isNavigating,
   onRoutePrepared,
   onVariantsCollapsed,
+  theme = "light",
 }: {
   destination?: Destination | null;
   clearRouteNonce?: number;
@@ -120,6 +118,7 @@ export default function DashboardMap({
   isNavigating?: boolean;
   onRoutePrepared?: () => void;
   onVariantsCollapsed?: (payload: { selected: VariantKey; message: string }) => void;
+  theme?: "light" | "dark";
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -479,9 +478,7 @@ export default function DashboardMap({
     if (!variants) return null;
 
     const activeKey = selectedVariantRef.current ?? "easy";
-
     const activeVariant = activeKey === "hard" ? variants.hard : variants.easy;
-
     return activeVariant?.coords ?? null;
   }
 
@@ -489,9 +486,7 @@ export default function DashboardMap({
     const coords = variant?.coords ?? getActiveVariantCoords();
 
     if (!coords?.length) return;
-
     const endpoint = coords[coords.length - 1];
-
     if (!endpoint) return;
 
     ensureDestMarker(map, endpoint);
@@ -831,7 +826,6 @@ export default function DashboardMap({
 
     emitRouteReady(savedRoute.difficulty, variant, from, to, {
       fromName: savedRoute.from.name,
-
       toName: savedRoute.to.name,
     });
 
@@ -853,9 +847,7 @@ export default function DashboardMap({
       if (!latestMap) return;
 
       renderVariantForZoom(latestMap, variant);
-
       syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
-
       requestAnimationFrame(() => {
         onVariantsReady?.();
 
@@ -891,13 +883,9 @@ export default function DashboardMap({
 
       syncDestinationMarkerToActiveRouteEndpoint(map, {
         coords,
-
         elevations: [],
-
         easyScore: 0,
-
         hardScore: 0,
-
         navSteps,
       });
 
@@ -923,32 +911,33 @@ export default function DashboardMap({
       };
 
       const variantKey = selectedVariantRef.current ?? "easy";
+
       selectedVariantRef.current = variantKey;
+
       variantsRef.current = {
         easy: variant,
         hard: variant,
       };
 
-      emitRouteReady(variantKey, variant, from, to);
+      const activeVariant =
+        variantKey === "hard" ? variantsRef.current.hard : variantsRef.current.easy;
 
+      renderVariantForZoom(map, activeVariant);
+      syncDestinationMarkerToActiveRouteEndpoint(map, activeVariant);
+      emitRouteReady(variantKey, variant, from, to);
       onRouteDrawn?.();
 
       requestAnimationFrame(() => {
         if (reqId !== routeReqIdRef.current) return;
 
         const latestMap = mapRef.current;
-
         if (!latestMap) return;
-
         renderVariantForZoom(latestMap, variant);
-
         syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
-
         requestAnimationFrame(() => {
           if (reqId !== routeReqIdRef.current) return;
 
           onVariantsReady?.();
-
           onRoutePrepared?.();
         });
       });
@@ -965,7 +954,6 @@ export default function DashboardMap({
 
       const firstRoute = data?.routes?.[0];
       const navSteps = firstRoute ? buildNavSteps(firstRoute) : [];
-      console.log("🔥 drawRouteBetweenPoints navSteps", navSteps);
 
       if (reqId !== routeReqIdRef.current) return;
 
@@ -987,7 +975,6 @@ export default function DashboardMap({
       await drawSegmented(coords, navSteps);
     } catch (err: any) {
       if (err?.name === "AbortError") return;
-      console.error("drawRouteBetweenPoints error:", err);
 
       const fallback = lastGoodDestRef.current;
       if (fallback && destMarkerRef.current) {
@@ -1059,11 +1046,8 @@ export default function DashboardMap({
 
     return buildVariant(map, coords, {
       distanceMeters: typeof route.distance === "number" ? route.distance : undefined,
-
       durationSeconds: getRouteDurationSeconds(route),
-
       baselineDistanceMeters,
-
       navSteps: buildNavSteps(route as any),
     });
   }
@@ -1292,6 +1276,11 @@ export default function DashboardMap({
     from: mapboxgl.LngLat,
     to: mapboxgl.LngLat
   ) {
+    console.log("[DashboardMap] generateAlternativesBetweenPoints START", {
+      selectedVariantProp: selectedVariant,
+
+      selectedVariantRef: selectedVariantRef.current,
+    });
     if (!map.isStyleLoaded()) {
       await new Promise<void>((resolve) => map.once("load", () => resolve()));
     }
@@ -1315,10 +1304,6 @@ export default function DashboardMap({
       if (reqId !== routeReqIdRef.current) return;
 
       const baseRoutes = getRoutesArray(baseData);
-
-      if (baseRoutes[0]) {
-        console.log("🔥 generateAlternatives navSteps", buildNavSteps(baseRoutes[0] as any));
-      }
 
       let baselineMeters = findBaselineMeters(baseRoutes);
       const candidates: Variant[] = [];
@@ -1361,22 +1346,21 @@ export default function DashboardMap({
 
       const { easy, hard, easyDistance, hardDistance } = pickEasyAndHardVariants(candidates);
 
-      variantsRef.current = { easy, hard };
+      variantsRef.current = {
+        easy,
+        hard,
+      };
+
+      const forcedVariantKey = selectedVariantRef.current ?? selectedVariant ?? "easy";
+
+      selectedVariantRef.current = forcedVariantKey;
+
+      const forcedVariant = forcedVariantKey === "hard" ? hard : easy;
+
+      renderVariantForZoom(map, forcedVariant);
+
+      syncDestinationMarkerToActiveRouteEndpoint(map, forcedVariant);
       const sameRoute = isNearDuplicateRoute(easy.coords, hard.coords);
-
-      console.log("[generateAlternativesBetweenPoints][variants]", {
-        candidates: candidates.length,
-
-        easyScore: easy.easyScore,
-
-        hardScore: hard.hardScore,
-
-        easyDistance,
-
-        hardDistance,
-
-        sameRoute,
-      });
 
       if (sameRoute) {
         window.dispatchEvent(
@@ -1408,13 +1392,9 @@ export default function DashboardMap({
       // Fast first paint
 
       drawOverviewRoute(map, initialVariant.coords);
-
       renderedRouteModeRef.current = "overview";
-
       syncDestinationMarkerToActiveRouteEndpoint(map, initialVariant);
-
       emitRouteReady(initial, initialVariant, from, to);
-
       onRouteDrawn?.();
 
       // Upgrade to detailed render on the next frame
@@ -1427,14 +1407,11 @@ export default function DashboardMap({
         if (!latestMap) return;
 
         renderVariantForZoom(latestMap, initialVariant);
-
         syncDestinationMarkerToActiveRouteEndpoint(latestMap, initialVariant);
 
         requestAnimationFrame(() => {
           if (reqId !== routeReqIdRef.current) return;
-
           onVariantsReady?.();
-
           onRoutePrepared?.();
         });
       });
@@ -1525,7 +1502,10 @@ export default function DashboardMap({
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/outdoors-v12",
+      style:
+        theme === "dark"
+          ? "mapbox://styles/mapbox/dark-v11"
+          : "mapbox://styles/mapbox/outdoors-v12",
       center: [-73.761, 40.715],
       zoom: 13,
       clickTolerance: 8,
@@ -1682,15 +1662,6 @@ export default function DashboardMap({
             speedMps: typeof speed === "number" && Number.isFinite(speed) ? speed : null,
           });
 
-          console.log("[DashboardMap] gps tick", {
-            lat: latitude,
-            lng: longitude,
-            routeActive: routeActiveRef.current,
-            isNavigating: isNavigatingRef.current,
-            hasFromMarker: !!fromMarkerRef.current,
-            time: Date.now(),
-          });
-
           if (isNavigatingRef.current) {
             const puck = ensureNavigationPuck(map, puckLngLat);
             puck.getElement().style.removeProperty("display");
@@ -1833,13 +1804,14 @@ export default function DashboardMap({
   }, [controlsCssText]);
 
   useEffect(() => {
+    console.log("[DashboardMap][effect destination]", {
+      destination,
+      selectedVariantProp: selectedVariant,
+      routeActive: routeActiveRef.current,
+    });
+
     const map = mapRef.current;
     if (!map) return;
-
-    console.log("[destination effect]", {
-      hasDestination: !!destination,
-      hasVariants: !!variantsRef.current,
-    });
 
     if (!destination) {
       if (variantsRef.current) return;
@@ -1866,9 +1838,35 @@ export default function DashboardMap({
       Math.abs(existing.lat - destination.lat) > 0.00005;
 
     if (changed) {
-      console.log("🧨 New destination detected → invalidating old routes");
+      const routeIsAlreadyPrepared = !!variantsRef.current;
 
-      invalidateRouteNow();
+      const generatedRouteRecentlyRan = !!routeAlternativesNonce && routeAlternativesNonce > 0;
+
+      const isGeneratedRouteInFlight = generatedRouteRecentlyRan && !!busyReqIdRef.current;
+
+      if (routeIsAlreadyPrepared || isGeneratedRouteInFlight) {
+        console.log(
+          "[DashboardMap][effect destination] preserve generated route while syncing destination marker",
+
+          {
+            routeAlternativesNonce,
+
+            destination,
+
+            selectedVariantProp: selectedVariant,
+
+            routeActive: routeActiveRef.current,
+
+            busyReqId: busyReqIdRef.current,
+
+            routeIsAlreadyPrepared,
+
+            isGeneratedRouteInFlight,
+          }
+        );
+      } else {
+        invalidateRouteNow();
+      }
     }
 
     if (changed) {
@@ -1885,7 +1883,6 @@ export default function DashboardMap({
       if (from) {
         fitMapToRoute(map, [
           [from.lng, from.lat],
-
           [destination.lng, destination.lat],
         ]);
       } else {
@@ -1895,6 +1892,15 @@ export default function DashboardMap({
   }, [destination]);
 
   useEffect(() => {
+    console.log("[DashboardMap][effect routeRequestNonce]", {
+      routeRequestNonce,
+
+      selectedVariantProp: selectedVariant,
+
+      fromLocation,
+
+      destination,
+    });
     const map = mapRef.current;
     if (!map) return;
     if (!routeRequestNonce) return;
@@ -1924,8 +1930,6 @@ export default function DashboardMap({
     renderedRouteModeRef.current = null;
     setRouteBusy(false);
     restoreFromToCurrentLocation(map);
-
-    console.log("[clearRouteNonce] clearing route");
   }, [clearRouteNonce]);
 
   useEffect(() => {
@@ -1950,8 +1954,6 @@ export default function DashboardMap({
     renderedRouteModeRef.current = null;
     setRouteBusy(false);
     restoreFromToCurrentLocation(map);
-
-    console.log("[clearDestinationNonce] clearing destination");
   }, [clearDestinationNonce]);
 
   useEffect(() => {
@@ -2006,6 +2008,15 @@ export default function DashboardMap({
   }, [recenterNonce]);
 
   useEffect(() => {
+    console.log("[DashboardMap][effect routeAlternativesNonce]", {
+      routeAlternativesNonce,
+
+      selectedVariantProp: selectedVariant,
+
+      fromLocation,
+
+      destination,
+    });
     const map = mapRef.current;
     if (!map) return;
     if (!routeAlternativesNonce) return;
@@ -2170,11 +2181,6 @@ export default function DashboardMap({
     if (!map) return;
     if (!savedRouteToLoad) return;
 
-    console.log("[savedRouteToLoad effect]", {
-      id: savedRouteToLoad._id ?? savedRouteToLoad.name,
-      difficulty: savedRouteToLoad.difficulty,
-    });
-
     loadSavedRoute(map, savedRouteToLoad);
   }, [savedRouteToLoad]);
 
@@ -2193,12 +2199,6 @@ export default function DashboardMap({
 
     renderVariantForZoom(map, active);
     syncDestinationMarkerToActiveRouteEndpoint(map, active);
-
-    console.log("[selectedVariant effect]", {
-      selectedVariant,
-      hasVariants: !!variantsRef.current,
-      routeActive,
-    });
   }, [selectedVariant, routeActive]);
 
   useEffect(() => {
@@ -2208,11 +2208,6 @@ export default function DashboardMap({
   useEffect(() => {
     isNavigatingRef.current = !!isNavigating;
 
-    console.log("[DashboardMap] isNavigating prop -> ref", {
-      isNavigating,
-      refValue: isNavigatingRef.current,
-    });
-
     const map = mapRef.current;
     if (!map) return;
 
@@ -2221,9 +2216,7 @@ export default function DashboardMap({
 
       if (latest) {
         const puck = ensureNavigationPuck(map, latest);
-
         puck.getElement().style.removeProperty("display");
-
         const puckEl = puck.getElement() as HTMLDivElement & {
           __setRotation?: (deg: number) => void;
         };
@@ -2249,17 +2242,22 @@ export default function DashboardMap({
 
   useEffect(() => {
     const map = mapRef.current;
-
     if (!map) return;
-
     const coords = getActiveVariantCoords();
-
     if (!coords) return;
-
     fitMapToRoute(map, coords, {
       variant: selectedVariantRef.current ?? "easy",
     });
   }, [selectedVariant]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.setStyle(
+      theme === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/outdoors-v12"
+    );
+  }, [theme]);
 
   return (
     <div

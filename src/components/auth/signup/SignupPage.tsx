@@ -34,7 +34,6 @@ export function SignupPage() {
 
   async function onSubmit(data: SignupData) {
     if (isSubmitting) return;
-    console.log("Submitting signup form with data:", data);
     setMessage("");
     try {
       const res = await fetch("/api/auth/signup", {

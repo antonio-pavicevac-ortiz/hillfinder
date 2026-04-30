@@ -98,6 +98,11 @@ export default function Dashboard() {
   const distanceTargetStep = maneuverTargetStep;
   const [isLandscape, setIsLandscape] = useState(false);
 
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [lockPortrait, setLockPortrait] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
   let distanceToNextStepMeters: number | null = null;
 
   if (liveNavLocation && distanceTargetStep?.location) {
@@ -110,6 +115,15 @@ export default function Dashboard() {
   const TOO_FAR_KM = 30;
   const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
   const STEP_ADVANCE_THRESHOLD_METERS = 18;
+
+  function syncSettings() {
+    const savedTheme = window.localStorage.getItem("hf_theme");
+    const savedVoice = window.localStorage.getItem("hf_voice_enabled");
+    const savedPortrait = window.localStorage.getItem("hf_lock_portrait");
+    if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+    if (savedVoice) setVoiceEnabled(savedVoice === "true");
+    if (savedPortrait) setLockPortrait(savedPortrait === "true");
+  }
 
   function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
     if (fromLocation) {
@@ -173,8 +187,7 @@ export default function Dashboard() {
 
     setActiveRouteSource(null);
 
-    setIsNavMuted(true);
-
+    setIsNavMuted(!voiceEnabled);
     if (navCardTimerRef.current) {
       window.clearTimeout(navCardTimerRef.current);
 
@@ -220,13 +233,9 @@ export default function Dashboard() {
 
   function handleRoutePrepared() {
     setRouteBusy(false);
-
     setRoutePreparing(false);
-
     setVariantsReady(true);
-
     setHasRoute(true);
-
     setGeneratorOpen(false);
   }
 
@@ -242,7 +251,6 @@ export default function Dashboard() {
     setActiveRouteSource(null);
 
     setIsNavMuted(true);
-
     if (navCardTimerRef.current) {
       window.clearTimeout(navCardTimerRef.current);
       navCardTimerRef.current = null;
@@ -282,23 +290,21 @@ export default function Dashboard() {
       return;
     }
     setQaOpen(false);
-
     setRoutesOpen(false);
-
     clearRoute();
-
     setVariantsReady(false);
 
     setSelectedVariant("easy");
     setActiveRouteSource("generated");
 
     setRouteBusy(true);
-
     setRoutePreparing(true);
-
     await waitForMapStateToSettle();
-
-    setRouteAlternativesNonce((n) => n + 1);
+    // setRouteAlternativesNonce((n) => n + 1);
+    setRouteAlternativesNonce((n) => {
+      const next = n + 1;
+      return next;
+    });
   }
 
   function handlePlanRoute() {
@@ -338,11 +344,8 @@ export default function Dashboard() {
     if (shouldShowVoiceHint) {
       toast("Tap the speaker button to enable voice guidance", {
         id: "voice-guidance-hint",
-
         duration: 3500,
-
         icon: "🔊",
-
         className: "hf-toast hf-toast-centered",
       });
 
@@ -352,7 +355,6 @@ export default function Dashboard() {
     }
 
     if (showNavigationCard) return;
-
     if (navCardTimerRef.current) return;
 
     navCardTimerRef.current = window.setTimeout(
@@ -566,20 +568,71 @@ export default function Dashboard() {
     update();
 
     window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
 
-    return () => window.removeEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
   }, []);
 
+  useEffect(() => {
+    function syncSettings() {
+      const savedTheme = localStorage.getItem("hf_theme");
+      const savedVoice = localStorage.getItem("hf_voice_enabled");
+      const savedPortrait = localStorage.getItem("hf_lock_portrait");
+
+      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      if (savedVoice) setVoiceEnabled(savedVoice === "true");
+      if (savedPortrait) setLockPortrait(savedPortrait === "true");
+    }
+
+    syncSettings();
+    setHydrated(true);
+
+    window.addEventListener("hf-settings-updated", syncSettings);
+    window.addEventListener("storage", syncSettings);
+
+    return () => {
+      window.removeEventListener("hf-settings-updated", syncSettings);
+      window.removeEventListener("storage", syncSettings);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    setIsNavMuted(!voiceEnabled);
+  }, [hydrated, voiceEnabled]);
+
+  useEffect(() => {
+    function handleFocus() {
+      const savedTheme = localStorage.getItem("hf_theme");
+      const savedVoice = localStorage.getItem("hf_voice_enabled");
+      const savedPortrait = localStorage.getItem("hf_lock_portrait");
+
+      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      if (savedVoice) setVoiceEnabled(savedVoice === "true");
+      if (savedPortrait) setLockPortrait(savedPortrait === "true");
+    }
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => window.removeEventListener("focus", handleFocus);
+  }, []);
+
+  if (!hydrated) return null;
+
   return (
-    <main className="fixed inset-0 bg-white">
-      {isLandscape && (
+    <main className={`fixed inset-0 ${theme === "dark" ? "bg-black" : "bg-white"}`}>
+      {" "}
+      {lockPortrait && isLandscape && (
         <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center text-center p-6">
           <p className="text-white text-lg font-semibold">
             Rotate your device for the best experience 📱
           </p>
         </div>
       )}
-
       <MapControls
         hasRoute={hasRoute}
         onClearRoute={clearRoute}
@@ -597,8 +650,8 @@ export default function Dashboard() {
         onRouteSaved={() => setRefreshRoutesKey((n) => n + 1)}
         isActiveSavedRoute={activeRouteSource === "saved"}
       />
-
       <DashboardMap
+        theme={theme}
         destination={destination}
         fromLocation={fromLocation}
         recenterNonce={recenterNonce}
@@ -615,7 +668,6 @@ export default function Dashboard() {
           dispatchNavigation({ type: "SET_LOCATION", location: loc });
         }}
         onVariantsReady={() => {
-          console.log("[Dashboard] variantsReady true");
           handleRoutePrepared();
         }}
         onVariantSelected={(v) => setSelectedVariant(v)}
@@ -632,9 +684,6 @@ export default function Dashboard() {
           setFromLocation(route.from);
           setDestination(route.to);
           setPlannerTo(route.to.name ?? "");
-          console.log("route.from", route.from);
-          console.log("route.to", route.to);
-          console.log("route payload navSteps", route.navSteps);
 
           dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
           dispatchNavigation({ type: "STOP" });
@@ -658,18 +707,20 @@ export default function Dashboard() {
         }}
         onRoutePrepared={handleRoutePrepared}
         onVariantsCollapsed={({ message }) => {
+          // This warning is useful when the user explicitly opens Plan Your Route
+          // and expects distinct Easy/Hard options. Quick Route should quietly render
+          // the best available route instead of showing a variant-comparison warning.
+          if (!generatorOpen) return;
+
           toast(message, {
             id: "variants-collapsed",
-
             duration: 5000,
-
             icon: "⚠️",
           });
         }}
         savedRouteToLoad={selectedSavedRoute}
         isNavigating={isNavigating}
       />
-
       {(routeBusy || routePreparing) && !hasRoute && !generatorOpen && (
         <LoadingOverlay
           text={
@@ -683,7 +734,6 @@ export default function Dashboard() {
           showBackdrop={false}
         />
       )}
-
       <header
         className="fixed top-0 left-0 right-0 z-20 pointer-events-none"
         style={{ height: HEADER_H }}
@@ -692,7 +742,6 @@ export default function Dashboard() {
           <DashboardHeader />
         </div>
       </header>
-
       {routesOpen && (
         <div
           className="fixed left-4 right-4 z-20 pointer-events-none"
@@ -748,7 +797,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
       <AnimatePresence>
         {showNavigationCard &&
           hasRoute &&
@@ -784,7 +832,6 @@ export default function Dashboard() {
             />
           )}
       </AnimatePresence>
-
       <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
         <div className={`${glassBar} border-t border-white/25 pointer-events-none`}>
           <div
@@ -798,7 +845,6 @@ export default function Dashboard() {
           <div className="h-[env(safe-area-inset-bottom)] pointer-events-none" />
         </div>
       </footer>
-
       <QuickActionsSheet
         open={qaOpen}
         onClose={() => setQaOpen(false)}
@@ -815,54 +861,34 @@ export default function Dashboard() {
 
             return;
           }
-
           setQaOpen(false);
-
           setRoutesOpen(false);
-
           clearRoute();
-
           setDestination(null);
-
           setPlannerTo("");
-
           setBlocked(false);
-
           setClearDestinationNonce((n) => n + 1);
-
           setVariantsReady(false);
-
           setSelectedVariant("easy");
-
           setActiveRouteToSave(null);
-
           setSelectedSavedRoute(null);
-
           setActiveRouteSource("generated");
 
-          setIsNavMuted(true);
-
+          setIsNavMuted(!voiceEnabled);
           if (typeof window !== "undefined" && "speechSynthesis" in window) {
             window.speechSynthesis.cancel();
           }
 
           setShowNavigationCard(false);
-
           dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
-
           dispatchNavigation({ type: "STOP" });
-
           setRouteBusy(true);
-
           setRoutePreparing(true);
-
           await waitForMapStateToSettle();
-
           setFindDownhillNonce((n) => n + 1);
         }}
         quickRouteEnabled={quickRouteEnabled}
       />
-
       <DownhillGenerator
         open={generatorOpen}
         fromLabel={

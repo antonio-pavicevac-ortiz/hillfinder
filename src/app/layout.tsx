@@ -1,18 +1,27 @@
+import RegisterServiceWorker from "@/components/RegisterServiceWorker";
+import type { ReactNode } from "react";
 import { Toaster } from "sonner";
-import "./globals.css";
+import "../globals.css";
 import Providers from "./providers";
 
 export const metadata = {
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.ico",
+    apple: "/icons/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Hillfinder",
+    statusBarStyle: "black-translucent",
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen overflow-x-hidden">
+        <RegisterServiceWorker />
         <Providers>
           <main className="min-h-screen bg-hillfinder-gradient">{children}</main>
         </Providers>
