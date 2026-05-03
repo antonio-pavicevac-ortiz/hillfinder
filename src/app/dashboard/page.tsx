@@ -1,5 +1,5 @@
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import Dashboard from "@/components/dashboard/Dashboard";
+import DashboardShell from "@/components/dashboard/DashboardShell";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 
@@ -10,5 +10,5 @@ export default async function DashboardPage() {
     redirect("/signin");
   }
 
-  return <Dashboard />;
+  return <DashboardShell />;
 }
