@@ -43,7 +43,12 @@ const glassBar =
   "before:pointer-events-none before:absolute before:inset-0 " +
   "before:bg-gradient-to-b before:from-white/20 before:to-transparent";
 
-export default function Dashboard() {
+type DashboardProps = {
+  voiceEnabled: boolean;
+  setVoiceEnabled: (next: boolean) => void;
+};
+
+export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardProps) {
   const [qaOpen, setQaOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [routesOpen, setRoutesOpen] = useState(false);
@@ -81,7 +86,10 @@ export default function Dashboard() {
   const handledSharedRouteRef = useRef<string | null>(null);
   const hasShownVoiceHintRef = useRef(false);
   const navCardTimerRef = useRef<number | null>(null);
+  const routeReadySpeechTimerRef = useRef<number | null>(null);
   const navStartLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const hasAutoStartedVoiceRef = useRef(false);
+  const lastSystemPromptSpokenAtRef = useRef<number | null>(null);
   const hasMovedSinceRouteLoadRef = useRef(false);
 
   const [navigation, dispatchNavigation] = useReducer(navigationReducer, initialNavigationState);
@@ -98,7 +106,6 @@ export default function Dashboard() {
   const distanceTargetStep = maneuverTargetStep;
   const [isLandscape, setIsLandscape] = useState(false);
 
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lockPortrait, setLockPortrait] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -115,14 +122,57 @@ export default function Dashboard() {
   const TOO_FAR_KM = 30;
   const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
   const STEP_ADVANCE_THRESHOLD_METERS = 18;
+  const VOICE_SYSTEM_PROMPT_GAP_MS = 3500;
 
-  function syncSettings() {
-    const savedTheme = window.localStorage.getItem("hf_theme");
-    const savedVoice = window.localStorage.getItem("hf_voice_enabled");
-    const savedPortrait = window.localStorage.getItem("hf_lock_portrait");
-    if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-    if (savedVoice) setVoiceEnabled(savedVoice === "true");
-    if (savedPortrait) setLockPortrait(savedPortrait === "true");
+  const VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS = 150;
+
+  function speakSystemPrompt(message: string) {
+    if (!message) return;
+
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+
+    synth.cancel();
+
+    synth.resume();
+
+    const utterance = new SpeechSynthesisUtterance(message);
+
+    utterance.rate = 1;
+
+    utterance.pitch = 1;
+
+    lastSystemPromptSpokenAtRef.current = Date.now();
+
+    console.log("[Dashboard][TTS system] speak()", message);
+
+    synth.speak(utterance);
+  }
+
+  function speakNavigationInstruction(instruction?: string) {
+    if (!instruction) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    synth.resume();
+
+    const utterance = new SpeechSynthesisUtterance(instruction);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+
+    utterance.onstart = () => {
+      console.log("[Dashboard][TTS direct] speaking started", instruction);
+      dispatchNavigation({ type: "MARK_STEP_SPOKEN" });
+    };
+
+    utterance.onerror = (event) => {
+      console.warn("[Dashboard][TTS direct] speech error", event);
+    };
+
+    console.log("[Dashboard][TTS direct] speak()", instruction);
+    synth.speak(utterance);
   }
 
   function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
@@ -194,6 +244,14 @@ export default function Dashboard() {
       navCardTimerRef.current = null;
     }
 
+    if (routeReadySpeechTimerRef.current) {
+      window.clearTimeout(routeReadySpeechTimerRef.current);
+
+      routeReadySpeechTimerRef.current = null;
+    }
+
+    hasAutoStartedVoiceRef.current = false;
+
     setShowNavigationCard(false);
 
     navStartLocationRef.current = null;
@@ -256,6 +314,12 @@ export default function Dashboard() {
       navCardTimerRef.current = null;
     }
 
+    if (routeReadySpeechTimerRef.current) {
+      window.clearTimeout(routeReadySpeechTimerRef.current);
+
+      routeReadySpeechTimerRef.current = null;
+    }
+
     setShowNavigationCard(false);
 
     navStartLocationRef.current = null;
@@ -289,11 +353,17 @@ export default function Dashboard() {
 
       return;
     }
+
     setQaOpen(false);
+
     setRoutesOpen(false);
+
+    if (voiceEnabled) {
+      speakSystemPrompt("Voice guidance on. Finding your route.");
+    }
+
     clearRoute();
     setVariantsReady(false);
-
     setSelectedVariant("easy");
     setActiveRouteSource("generated");
 
@@ -444,6 +514,19 @@ export default function Dashboard() {
   }, [sharedRouteId, router]);
 
   useEffect(() => {
+    console.log("[Dashboard][TTS effect check]", {
+      status: navigation.status,
+
+      isNavMuted,
+
+      currentStepIndex: navigation.currentStepIndex,
+
+      stepsLength: navigation.steps.length,
+
+      hasSpokenCurrentStep: navigation.hasSpokenCurrentStep,
+
+      instruction: navigation.steps[navigation.currentStepIndex]?.instruction,
+    });
     if (navigation.status !== "navigating") return;
     if (isNavMuted) return;
 
@@ -484,6 +567,64 @@ export default function Dashboard() {
       window.speechSynthesis.cancel();
     }
   }, [isNavMuted]);
+
+  useEffect(() => {
+    if (!voiceEnabled) return;
+
+    if (isNavMuted) return;
+
+    if (!showNavigationCard) return;
+
+    if (!hasRoute) return;
+
+    if (!currentNavStep?.instruction) return;
+
+    if (hasAutoStartedVoiceRef.current) return;
+
+    hasAutoStartedVoiceRef.current = true;
+
+    console.log("[Dashboard][voice auto-start effect]", {
+      instruction: currentNavStep.instruction,
+
+      currentStepIndex,
+
+      stepsLength: activeNavSteps.length,
+    });
+
+    const elapsedSinceSystemPrompt = lastSystemPromptSpokenAtRef.current
+      ? Date.now() - lastSystemPromptSpokenAtRef.current
+      : Infinity;
+
+    const firstInstructionDelay = Number.isFinite(elapsedSinceSystemPrompt)
+      ? Math.max(
+          VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS,
+
+          VOICE_SYSTEM_PROMPT_GAP_MS - elapsedSinceSystemPrompt
+        )
+      : VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS;
+
+    window.setTimeout(() => {
+      dispatchNavigation({ type: "GO_TO_STEP", index: 0 });
+
+      dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
+
+      dispatchNavigation({ type: "START" });
+    }, firstInstructionDelay);
+  }, [
+    voiceEnabled,
+
+    isNavMuted,
+
+    showNavigationCard,
+
+    hasRoute,
+
+    currentNavStep?.instruction,
+
+    currentStepIndex,
+
+    activeNavSteps.length,
+  ]);
 
   useEffect(() => {
     if (!isNavigating) return;
@@ -579,11 +720,9 @@ export default function Dashboard() {
   useEffect(() => {
     function syncSettings() {
       const savedTheme = localStorage.getItem("hf_theme");
-      const savedVoice = localStorage.getItem("hf_voice_enabled");
       const savedPortrait = localStorage.getItem("hf_lock_portrait");
 
       if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-      if (savedVoice) setVoiceEnabled(savedVoice === "true");
       if (savedPortrait) setLockPortrait(savedPortrait === "true");
     }
 
@@ -608,11 +747,11 @@ export default function Dashboard() {
   useEffect(() => {
     function handleFocus() {
       const savedTheme = localStorage.getItem("hf_theme");
-      const savedVoice = localStorage.getItem("hf_voice_enabled");
+
       const savedPortrait = localStorage.getItem("hf_lock_portrait");
 
       if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-      if (savedVoice) setVoiceEnabled(savedVoice === "true");
+
       if (savedPortrait) setLockPortrait(savedPortrait === "true");
     }
 
@@ -686,8 +825,14 @@ export default function Dashboard() {
           setPlannerTo(route.to.name ?? "");
 
           dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
-          dispatchNavigation({ type: "STOP" });
 
+          hasAutoStartedVoiceRef.current = false;
+
+          setIsNavMuted(!voiceEnabled);
+
+          setShowNavigationCard(true);
+
+          dispatchNavigation({ type: "STOP" });
           navStartLocationRef.current = {
             lat: route.from.lat,
             lng: route.from.lng,
@@ -810,18 +955,23 @@ export default function Dashboard() {
               totalSteps={activeNavSteps.length}
               isMuted={isNavMuted}
               onToggleMute={() => {
-                setIsNavMuted((current) => {
-                  const nextMuted = !current;
+                const nextMuted = !isNavMuted;
 
-                  if (!nextMuted) {
-                    dispatchNavigation({ type: "START" });
-                    dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
-                  } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                    window.speechSynthesis.cancel();
-                  }
+                const nextVoiceEnabled = !nextMuted;
 
-                  return nextMuted;
-                });
+                setIsNavMuted(nextMuted);
+
+                setVoiceEnabled(nextVoiceEnabled);
+
+                if (!nextMuted) {
+                  dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex });
+
+                  dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
+
+                  dispatchNavigation({ type: "START" });
+                } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                  window.speechSynthesis.cancel();
+                }
               }}
               onPreviousStep={() => {
                 dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex - 1 });
@@ -860,6 +1010,9 @@ export default function Dashboard() {
             toast.error("Need your location first");
 
             return;
+          }
+          if (voiceEnabled) {
+            speakSystemPrompt("Voice guidance on. Finding a downhill nearby.");
           }
           setQaOpen(false);
           setRoutesOpen(false);
@@ -917,6 +1070,10 @@ export default function Dashboard() {
         onVariantSelected={(v) => setSelectedVariant(v)}
         onGenerate={async ({ variant }) => {
           if (routeBusy) return;
+
+          if (voiceEnabled) {
+            speakSystemPrompt("Voice guidance on. Finding your route.");
+          }
 
           setQaOpen(false);
           setRoutesOpen(false);
