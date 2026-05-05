@@ -512,6 +512,42 @@ export default function DashboardMap({
     return res.json();
   }
 
+  function terrainHintFromDifficulty(difficulty?: string) {
+    if (difficulty === "easy") return "Mostly smooth terrain.";
+    if (difficulty === "medium") return "Moderate terrain ahead.";
+    if (difficulty === "uphill") return "Uphill section ahead.";
+    if (difficulty === "hard") return "Steeper terrain ahead.";
+
+    return null;
+  }
+
+  function attachTerrainHintsToNavSteps(
+    navSteps: ReturnType<typeof buildNavSteps>,
+    segments: SavedRouteSegment[]
+  ) {
+    if (!navSteps?.length || !segments?.length) return navSteps;
+
+    return navSteps.map((step) => {
+      const stepLocation = step.location;
+
+      if (!stepLocation) return step;
+
+      const matchingSegment = segments.find((segment) => {
+        return segment.coords.some(([lng, lat]) => {
+          const distance = haversineMeters([lng, lat], stepLocation);
+          return distance < 45;
+        });
+      });
+
+      const terrainHint = terrainHintFromDifficulty(matchingSegment?.difficulty);
+
+      return {
+        ...step,
+        terrainHint,
+      };
+    });
+  }
+
   async function buildVariant(
     map: mapboxgl.Map,
     coords: [number, number][],
@@ -557,7 +593,7 @@ export default function DashboardMap({
       distanceMeters: distMeters,
       durationSeconds: meta?.durationSeconds,
       segments,
-      navSteps: meta?.navSteps ?? [],
+      navSteps: attachTerrainHintsToNavSteps(meta?.navSteps ?? [], segments),
     } as Variant;
   }
 

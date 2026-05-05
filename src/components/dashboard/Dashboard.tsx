@@ -538,8 +538,11 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     const synth = window.speechSynthesis;
     synth.cancel();
     synth.resume();
+    const spokenInstruction = step.terrainHint
+      ? `${step.instruction}. ${step.terrainHint}`
+      : step.instruction;
 
-    const utterance = new SpeechSynthesisUtterance(step.instruction);
+    const utterance = new SpeechSynthesisUtterance(spokenInstruction);
     utterance.rate = 1;
     utterance.pitch = 1;
 
