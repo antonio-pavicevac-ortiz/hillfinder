@@ -13,6 +13,7 @@ export type NavStep = {
   spokenAdvance: boolean;
   spokenFinal: boolean;
   completed: boolean;
+  terrainHint?: string | null; // 👈 ADD THIS
 };
 
 export type MapboxLegStep = {
