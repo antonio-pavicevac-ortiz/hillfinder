@@ -21,7 +21,7 @@ export default function ClearRouteButton({
   ariaLabel,
   pulse = false,
 }: Props) {
-  const strokeColor = disabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
+  const strokeColor = disabled ? "rgba(251,146,60,0.65)" : "rgba(15,23,42,0.95)";
 
   useEffect(() => {
     const id = "hf-undo-pulse-style";
@@ -59,8 +59,8 @@ export default function ClearRouteButton({
       style={{
         width: size,
         height: size,
-        background: disabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.22)",
-        border: disabled ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.40)",
+        background: disabled ? "rgba(251,146,60,0.12)" : "rgba(255,255,255,0.22)",
+        border: disabled ? "1px solid rgba(251,146,60,0.28)" : "1px solid rgba(255,255,255,0.40)",
         backdropFilter: "blur(26px)",
         WebkitBackdropFilter: "blur(26px)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",

@@ -10,11 +10,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div
         className="
     fixed top-0 left-0 right-0 z-[80]
-    bg-white/20
+    bg-white/20 dark:bg-slate-900/40
     backdrop-blur-3xl
-    border-b border-white/30
+    border-b border-white/30 dark:border-slate-700/40
     shadow-[0_8px_30px_rgba(0,0,0,0.12)]
-    supports-[backdrop-filter]:bg-white/10
+    supports-[backdrop-filter]:bg-white/10 dark:supports-[backdrop-filter]:bg-slate-900/20
   "
       >
         <div className="mx-auto max-w-7xl px-6">

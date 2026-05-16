@@ -54,7 +54,7 @@ export default function MapControls({
   const legendDisabled = !legendEnabled;
   const showUndoDestination = hasDestination && !hasRoute;
   const middleDisabled = showUndoDestination ? !onUndoDestination : !hasRoute;
-  const legendStrokeColor = legendDisabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)";
+  const legendStrokeColor = legendDisabled ? "rgba(139,92,246,0.65)" : "rgba(15,23,42,0.95)";
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -152,9 +152,9 @@ export default function MapControls({
             style={{
               width: 48,
               height: 48,
-              background: legendDisabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.22)",
+              background: legendDisabled ? "rgba(139,92,246,0.12)" : "rgba(255,255,255,0.22)",
               border: legendDisabled
-                ? "1px solid rgba(255,255,255,0.22)"
+                ? "1px solid rgba(139,92,246,0.28)"
                 : "1px solid rgba(255,255,255,0.40)",
               backdropFilter: "blur(26px)",
               WebkitBackdropFilter: "blur(26px)",
@@ -197,8 +197,8 @@ export default function MapControls({
               className={[
                 "absolute top-[calc(100%+8px)] right-0",
                 "w-max max-w-[min(92vw,22rem)]",
-                "rounded-2xl border border-white/30",
-                "bg-white/20 saturate-150",
+                "rounded-2xl border border-white/30 dark:border-slate-700/50",
+                "bg-white/80 dark:bg-slate-900/85 saturate-150",
                 "shadow-[0_10px_34px_rgba(0,0,0,0.18)]",
                 "[-webkit-backdrop-filter:blur(24px)] [backdrop-filter:blur(24px)]",
                 "overflow-hidden touch-none",
@@ -213,7 +213,7 @@ export default function MapControls({
                   type="button"
                   aria-label="Close legend"
                   onClick={() => setLegendOpen(false)}
-                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20 border border-white/30 text-slate-900/80 active:scale-95"
+                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20 dark:bg-slate-700/40 border border-white/30 dark:border-slate-600/50 text-slate-900/80 dark:text-slate-200/80 active:scale-95"
                 >
                   <span className="text-base leading-none">×</span>
                 </button>
