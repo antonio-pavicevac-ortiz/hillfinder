@@ -19,6 +19,8 @@ import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
+import { useTheme } from "next-themes";
+
 import { haversineMeters } from "@/lib/geo/distance";
 import { formatStepDistance } from "@/lib/navigation/format";
 import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
@@ -108,7 +110,8 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
 
   const [lockPortrait, setLockPortrait] = useState(true);
   const [hydrated, setHydrated] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const { resolvedTheme } = useTheme();
+  const theme = (resolvedTheme === "dark" ? "dark" : "light") as "light" | "dark";
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -709,10 +712,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
 
   useEffect(() => {
     function syncSettings() {
-      const savedTheme = localStorage.getItem("hf_theme");
       const savedPortrait = localStorage.getItem("hf_lock_portrait");
-
-      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
       if (savedPortrait) setLockPortrait(savedPortrait === "true");
     }
 
@@ -736,12 +736,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
 
   useEffect(() => {
     function handleFocus() {
-      const savedTheme = localStorage.getItem("hf_theme");
-
       const savedPortrait = localStorage.getItem("hf_lock_portrait");
-
-      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-
       if (savedPortrait) setLockPortrait(savedPortrait === "true");
     }
 
@@ -753,7 +748,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   if (!hydrated) return null;
 
   return (
-    <main className={`fixed inset-0 ${theme === "dark" ? "bg-black" : "bg-white"}`}>
+    <main className="fixed inset-0 bg-background">
       {" "}
       {lockPortrait && isLandscape && (
         <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center text-center p-6">

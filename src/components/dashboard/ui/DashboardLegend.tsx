@@ -13,13 +13,13 @@ export function DashboardLegendPanel({ className }: Props) {
         style={{ backgroundColor: color }}
         aria-hidden="true"
       />
-      <span className="text-sm font-medium leading-none text-slate-900/90">{label}</span>
+      <span className="text-sm font-medium leading-none text-slate-900/90 dark:text-slate-100/90">{label}</span>
     </div>
   );
 
   return (
     <div className={className ?? ""}>
-      <div className="mb-2 text-base font-semibold text-slate-900">Legend</div>
+      <div className="mb-2 text-base font-semibold text-slate-900 dark:text-slate-100">Legend</div>
       <div className="flex flex-col gap-2.5">
         <Row color="#22c55e" label="Easy downhill" />
         <Row color="#eab308" label="Medium downhill" />

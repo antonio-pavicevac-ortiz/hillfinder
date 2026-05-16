@@ -4,6 +4,9 @@ import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+const inputClass =
+  "w-full rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors";
+
 export default function ProfileForm({ dbUser }: { dbUser: any }) {
   const [name, setName] = useState(dbUser?.name || "");
   const [email, setEmail] = useState(dbUser?.email || "");
@@ -44,11 +47,7 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
     const res = await fetch("/api/user/password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        currentPassword,
-        newPassword,
-        confirmPassword,
-      }),
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -73,9 +72,7 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
       confirmPassword?: string;
     } = {};
 
-    if (!name.trim()) {
-      newFieldErrors.name = "Name is required";
-    }
+    if (!name.trim()) newFieldErrors.name = "Name is required";
 
     if (!email.trim()) {
       newFieldErrors.email = "Email is required";
@@ -86,40 +83,35 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
     const wantsPasswordChange = currentPassword || newPassword || confirmPassword;
 
     if (wantsPasswordChange) {
-      if (!currentPassword) {
-        setPasswordError("Please enter your current password to change it.");
-      }
-      if (newPassword.length < 12) {
+      if (!currentPassword) setPasswordError("Please enter your current password to change it.");
+
+      if (newPassword.length < 12)
         newFieldErrors.newPassword = "Password must be at least 12 characters long";
-      }
+
       const strictRegex =
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{12,}$/;
-
-      if (!strictRegex.test(newPassword)) {
+      if (!strictRegex.test(newPassword))
         newFieldErrors.newPassword =
           "Password must include uppercase, lowercase, a number, and a special character";
-      }
+
       const forbidden = [
         dbUser?.email?.toLowerCase(),
         dbUser?.username?.toLowerCase(),
         dbUser?.name?.toLowerCase(),
       ];
-
       if (
         forbidden.some(
           (val) => val && newPassword.toLowerCase().includes(val.replace(/[^a-z0-9]/gi, ""))
         )
-      ) {
+      )
         newFieldErrors.newPassword = "Password cannot contain your name, username, or email";
-      }
-      const weakPatterns = ["password", "qwerty", "12345", "abc123", "letmein"];
 
-      if (weakPatterns.some((p) => newPassword.toLowerCase().includes(p.toLowerCase()))) {
+      const weakPatterns = ["password", "qwerty", "12345", "abc123", "letmein"];
+      if (weakPatterns.some((p) => newPassword.toLowerCase().includes(p.toLowerCase())))
         newFieldErrors.newPassword = "Password contains a forbidden weak pattern";
-      }
-      if (newPassword !== confirmPassword) {
+
+      if (newPassword !== confirmPassword)
         newFieldErrors.confirmPassword = "New passwords do not match";
-      }
     }
 
     if (Object.keys(newFieldErrors).length > 0) {
@@ -129,11 +121,8 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
     }
 
     const profileOK = await saveProfile();
-
     let passwordOK = true;
-    if (wantsPasswordChange) {
-      passwordOK = await updatePassword();
-    }
+    if (wantsPasswordChange) passwordOK = await updatePassword();
 
     if (profileOK && passwordOK) {
       toast.success("Settings updated successfully!");
@@ -148,78 +137,94 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {message && <p className="text-sm text-emerald-600 text-center">{message}</p>}
-      {profileError && <p className="text-sm text-red-600 text-center">{profileError}</p>}
-      {passwordError && <p className="text-sm text-red-600 text-center">{passwordError}</p>}
+      {message && (
+        <p className="text-sm text-emerald-600 dark:text-emerald-400 text-center">{message}</p>
+      )}
+      {profileError && (
+        <p className="text-sm text-red-600 dark:text-red-400 text-center">{profileError}</p>
+      )}
+      {passwordError && (
+        <p className="text-sm text-red-600 dark:text-red-400 text-center">{passwordError}</p>
+      )}
 
       {/* FULL NAME */}
       <div>
-        <label className="text-sm font-medium text-gray-700">Full Name</label>
+        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Full Name</label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          className={inputClass}
         />
-        {fieldErrors.name && <p className="mt-1 text-md text-red-600">{fieldErrors.name}</p>}
+        {fieldErrors.name && (
+          <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.name}</p>
+        )}
       </div>
 
       {/* EMAIL */}
       <div>
-        <label className="text-sm font-medium text-gray-700">Email</label>
+        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Email</label>
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          className={inputClass}
         />
-        {fieldErrors.email && <p className="mt-1 text-md text-red-600">{fieldErrors.email}</p>}
+        {fieldErrors.email && (
+          <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.email}</p>
+        )}
       </div>
 
       {/* USERNAME */}
       <div>
-        <label className="text-sm font-medium text-gray-700">Username</label>
+        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Username</label>
         <input
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          className={inputClass}
         />
       </div>
 
       {/* CHANGE PASSWORD */}
-      <div className="pt-4 border-t border-gray-200">
-        <h3 className="font-semibold text-gray-800 mb-3">Change Password</h3>
+      <div className="pt-4 border-t border-gray-200 dark:border-slate-700 space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-slate-100">Change Password</h3>
 
         <input
           type="password"
           placeholder="Current password"
           value={currentPassword}
           onChange={(e) => setCurrentPassword(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          className={inputClass}
         />
 
-        <input
-          type="password"
-          placeholder="New password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm mt-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-        />
-        {fieldErrors.newPassword && (
-          <p className="mt-1 text-md text-red-600">{fieldErrors.newPassword}</p>
-        )}
+        <div>
+          <input
+            type="password"
+            placeholder="New password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            className={inputClass}
+          />
+          {fieldErrors.newPassword && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.newPassword}</p>
+          )}
+        </div>
 
-        <input
-          type="password"
-          placeholder="Confirm new password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm mt-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-        />
-        {fieldErrors.confirmPassword && (
-          <p className="mt-1 text-md text-red-600">{fieldErrors.confirmPassword}</p>
-        )}
+        <div>
+          <input
+            type="password"
+            placeholder="Confirm new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className={inputClass}
+          />
+          {fieldErrors.confirmPassword && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {fieldErrors.confirmPassword}
+            </p>
+          )}
+        </div>
       </div>
 
       <button

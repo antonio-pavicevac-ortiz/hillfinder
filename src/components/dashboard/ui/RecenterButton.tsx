@@ -18,7 +18,7 @@ export default function RecenterButton({
   ariaLabel = "Recenter map",
 }: Props) {
   const effectiveStroke =
-    strokeColor ?? (disabled ? "rgba(100,116,139,0.95)" : "rgba(15,23,42,0.95)");
+    strokeColor ?? (disabled ? "rgba(56,189,248,0.65)" : "rgba(15,23,42,0.95)");
 
   return (
     <button
@@ -38,8 +38,8 @@ export default function RecenterButton({
       style={{
         width: 48,
         height: 48,
-        background: disabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.22)",
-        border: disabled ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.40)",
+        background: disabled ? "rgba(56,189,248,0.13)" : "rgba(255,255,255,0.22)",
+        border: disabled ? "1px solid rgba(56,189,248,0.28)" : "1px solid rgba(255,255,255,0.40)",
         backdropFilter: "blur(26px)",
         WebkitBackdropFilter: "blur(26px)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",

@@ -7,9 +7,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <ThemeProvider
-        attribute="data-theme"
-        defaultTheme="light" // you can switch this to "dark" if you want
-        enableSystem
+        attribute="class"
+        defaultTheme="light"
+        disableTransitionOnChange
       >
         {children}
       </ThemeProvider>
