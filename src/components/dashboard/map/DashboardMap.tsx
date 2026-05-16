@@ -746,6 +746,8 @@ export default function DashboardMap({
 
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
+    followCameraPausedUntilRef.current = Date.now() + 1500;
+
     map.fitBounds(bounds, {
       padding: isMobile ? MOBILE_ROUTE_PADDING : DESKTOP_ROUTE_PADDING,
       duration: 700,
@@ -865,14 +867,6 @@ export default function DashboardMap({
       toName: savedRoute.to.name,
     });
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        fitMapToRoute(map, variant.coords, {
-          variant: selectedVariantRef.current ?? "easy",
-        });
-      });
-    });
-
     onVariantSelected?.(savedRoute.difficulty);
 
     onRouteDrawn?.();
@@ -955,11 +949,6 @@ export default function DashboardMap({
         hard: variant,
       };
 
-      const activeVariant =
-        variantKey === "hard" ? variantsRef.current.hard : variantsRef.current.easy;
-
-      renderVariantForZoom(map, activeVariant);
-      syncDestinationMarkerToActiveRouteEndpoint(map, activeVariant);
       emitRouteReady(variantKey, variant, from, to);
       onRouteDrawn?.();
 
@@ -1380,7 +1369,7 @@ export default function DashboardMap({
         return;
       }
 
-      const { easy, hard, easyDistance, hardDistance } = pickEasyAndHardVariants(candidates);
+      const { easy, hard } = pickEasyAndHardVariants(candidates);
 
       variantsRef.current = {
         easy,
@@ -1391,11 +1380,6 @@ export default function DashboardMap({
 
       selectedVariantRef.current = forcedVariantKey;
 
-      const forcedVariant = forcedVariantKey === "hard" ? hard : easy;
-
-      renderVariantForZoom(map, forcedVariant);
-
-      syncDestinationMarkerToActiveRouteEndpoint(map, forcedVariant);
       const sameRoute = isNearDuplicateRoute(easy.coords, hard.coords);
 
       if (sameRoute) {
@@ -1432,6 +1416,8 @@ export default function DashboardMap({
       syncDestinationMarkerToActiveRouteEndpoint(map, initialVariant);
       emitRouteReady(initial, initialVariant, from, to);
       onRouteDrawn?.();
+      onVariantsReady?.();
+      onRoutePrepared?.();
 
       // Upgrade to detailed render on the next frame
 
@@ -1444,12 +1430,6 @@ export default function DashboardMap({
 
         renderVariantForZoom(latestMap, initialVariant);
         syncDestinationMarkerToActiveRouteEndpoint(latestMap, initialVariant);
-
-        requestAnimationFrame(() => {
-          if (reqId !== routeReqIdRef.current) return;
-          onVariantsReady?.();
-          onRoutePrepared?.();
-        });
       });
 
       // Upgrade to detailed render on the next frame
@@ -1913,7 +1893,7 @@ export default function DashboardMap({
       ensureDestMarker(map, [destination.lng, destination.lat]);
     }
 
-    if (changed && !routeActiveRef.current && !busyReqIdRef.current) {
+    if (changed && !routeActive && !busyReqIdRef.current) {
       const from = fromMarkerRef.current?.getLngLat();
 
       if (from) {
@@ -2275,16 +2255,6 @@ export default function DashboardMap({
     fromMarkerRef.current?.getElement().style.removeProperty("opacity");
     navigationPuckRef.current?.getElement().style.setProperty("display", "none");
   }, [isNavigating]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const coords = getActiveVariantCoords();
-    if (!coords) return;
-    fitMapToRoute(map, coords, {
-      variant: selectedVariantRef.current ?? "easy",
-    });
-  }, [selectedVariant]);
 
   useEffect(() => {
     const map = mapRef.current;
