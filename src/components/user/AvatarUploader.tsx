@@ -42,21 +42,21 @@ export default function AvatarUploader({ initialAvatar }: { initialAvatar: strin
           //
           container: [
             "ut-upload-dropzone",
-            "w-full rounded-xl border border-dashed border-gray-300",
-            "bg-white/90 hover:bg-white transition shadow-sm",
+            "w-full rounded-xl border border-dashed border-gray-300 dark:border-slate-600",
+            "bg-white/90 dark:bg-slate-700/60 hover:bg-white dark:hover:bg-slate-700 transition shadow-sm",
             "flex flex-col items-center justify-center",
             "p-6 md:p-8",
           ].join(" "),
 
           uploadIcon: [
-            "text-gray-400",
+            "text-gray-400 dark:text-slate-500",
             "w-12 h-12",
             "transition-transform duration-300",
             "group-hover:scale-110",
           ].join(" "),
 
-          label: "text-gray-800 font-semibold text-sm md:text-base mt-3 text-center",
-          allowedContent: "text-xs text-gray-500 mt-1 text-center",
+          label: "text-gray-800 dark:text-slate-200 font-semibold text-sm md:text-base mt-3 text-center",
+          allowedContent: "text-xs text-gray-500 dark:text-slate-400 mt-1 text-center",
 
           // 🌱 Hillfinder green button
           button: [
@@ -81,7 +81,7 @@ export default function AvatarUploader({ initialAvatar }: { initialAvatar: strin
         className="group" // Enables hover animations
       />
 
-      {saving && <p className="text-sm text-gray-500 mt-2">Saving avatar…</p>}
+      {saving && <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">Saving avatar…</p>}
     </div>
   );
 }

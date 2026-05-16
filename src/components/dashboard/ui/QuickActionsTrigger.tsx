@@ -12,12 +12,13 @@ export default function QuickActionsTrigger({ onOpen }: Props) {
       className="
         touch-manipulation
         px-6 py-2
-        bg-white/90
+        bg-white/90 dark:bg-slate-900/90
         rounded-full
-        border border-white/60
+        border border-white/60 dark:border-slate-700/60
         shadow-md
-        text-gray-700
+        text-gray-700 dark:text-slate-200
         font-medium
+        transition-colors
       "
     >
       ↑ Quick Actions

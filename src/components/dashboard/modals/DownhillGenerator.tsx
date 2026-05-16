@@ -51,7 +51,7 @@ function ShimmerBar({ visible }: { visible: boolean }) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.8 }}
-          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-900/10"
+          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-900/10 dark:bg-white/10"
           aria-hidden="true"
         >
           <motion.div
@@ -471,13 +471,13 @@ export default function DownhillGenerator({
     "relative w-full rounded-xl py-2.5 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
 
   const disabledClass =
-    "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]";
+    "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-slate-700/85 dark:text-slate-500 dark:border-slate-600/80";
 
   const easyReady =
-    "bg-emerald-200/80 text-slate-600 border-emerald-300/80 shadow-[0_10px_26px_rgba(16,185,129,0.14)] hover:bg-emerald-200/95 hover:shadow-[0_14px_34px_rgba(16,185,129,0.18)] cursor-pointer font-semibold focus-visible:ring-emerald-300/70";
+    "bg-emerald-200/80 text-slate-600 border-emerald-300/80 shadow-[0_10px_26px_rgba(16,185,129,0.14)] hover:bg-emerald-200/95 hover:shadow-[0_14px_34px_rgba(16,185,129,0.18)] cursor-pointer font-semibold focus-visible:ring-emerald-300/70 dark:bg-emerald-900/50 dark:text-emerald-200 dark:border-emerald-700/60 dark:hover:bg-emerald-900/70";
 
   const hardReady =
-    "bg-rose-200/80 text-slate-600 border-rose-300/80 shadow-[0_10px_26px_rgba(244,63,94,0.12)] hover:bg-rose-200/95 hover:shadow-[0_14px_34px_rgba(244,63,94,0.16)] cursor-pointer font-semibold focus-visible:ring-rose-300/70";
+    "bg-rose-200/80 text-slate-600 border-rose-300/80 shadow-[0_10px_26px_rgba(244,63,94,0.12)] hover:bg-rose-200/95 hover:shadow-[0_14px_34px_rgba(244,63,94,0.16)] cursor-pointer font-semibold focus-visible:ring-rose-300/70 dark:bg-rose-900/50 dark:text-rose-200 dark:border-rose-700/60 dark:hover:bg-rose-900/70";
 
   const easySelectedClass =
     "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-500/55 shadow-[0_18px_46px_rgba(16,185,129,0.45),0_0_0_6px_rgba(16,185,129,0.10)] cursor-pointer font-extrabold focus-visible:ring-emerald-500/80";
@@ -566,8 +566,8 @@ export default function DownhillGenerator({
               onDragEnd={onSheetDragEnd}
               className={[
                 "pointer-events-auto w-full",
-                "bg-white/70 backdrop-blur-xl",
-                "rounded-2xl border border-white/30 shadow-xl p-4",
+                "bg-white/85 dark:bg-slate-900/90 backdrop-blur-xl",
+                "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl p-4",
                 "relative isolate",
               ].join(" ")}
               style={{ touchAction: "manipulation" }}
@@ -594,7 +594,7 @@ export default function DownhillGenerator({
               </div>
 
               <div className="flex items-center justify-center mb-2">
-                <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Plan Your Route</h2>
               </div>
 
               <ShimmerBar visible={loading || waitingForVariants} />
@@ -611,13 +611,13 @@ export default function DownhillGenerator({
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
                     />
-                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700">From</label>
+                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300">From</label>
                     <input
                       type="text"
                       placeholder="Current location"
                       value={fromLabel}
                       readOnly
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-default"
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 cursor-default"
                     />
                   </div>
 
@@ -626,7 +626,7 @@ export default function DownhillGenerator({
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-sky-600 bg-white shadow-sm"
                     />
-                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700">To</label>
+                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300">To</label>
                     <div className="relative flex-1">
                       <input
                         type="text"
@@ -676,10 +676,10 @@ export default function DownhillGenerator({
                           }
                         }}
                         className={[
-                          "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500",
+                          "w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500",
                           controlsLocked
-                            ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                            : "bg-white",
+                            ? "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed"
+                            : "bg-white dark:bg-slate-800",
                         ].join(" ")}
                       />
 
@@ -692,12 +692,14 @@ export default function DownhillGenerator({
                             transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
                             className={[
                               "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
-                              "rounded-xl overflow-hidden border border-white/70 ring-1 ring-black/5",
+                              "rounded-xl overflow-hidden",
+                              "border border-white/70 dark:border-slate-700/70",
+                              "ring-1 ring-black/5 dark:ring-white/5",
                               "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
+                              "bg-white dark:bg-slate-800",
                               "pointer-events-auto",
                             ].join(" ")}
                             style={{
-                              backgroundColor: "rgba(255,255,255,0.98)",
                               backdropFilter: "blur(20px)",
                               WebkitBackdropFilter: "blur(20px)",
                             }}
@@ -712,8 +714,8 @@ export default function DownhillGenerator({
                                   className={[
                                     "w-full text-left px-3 py-3 text-sm font-medium transition",
                                     controlsLocked
-                                      ? "text-slate-400 cursor-not-allowed"
-                                      : "text-slate-900 hover:bg-slate-900/5 active:bg-slate-900/10",
+                                      ? "text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                                      : "text-slate-900 dark:text-slate-100 hover:bg-slate-900/5 dark:hover:bg-white/8 active:bg-slate-900/10 dark:active:bg-white/12",
                                   ].join(" ")}
                                   onPointerDown={(e) => {
                                     e.preventDefault();
@@ -789,7 +791,7 @@ export default function DownhillGenerator({
                       <div
                         className={[
                           "grid grid-cols-2 gap-2 rounded-2xl p-1.5",
-                          "bg-slate-200/45 border border-slate-300/60 ring-1 ring-black/5",
+                          "bg-slate-200/45 dark:bg-slate-800/60 border border-slate-300/60 dark:border-slate-600/60 ring-1 ring-black/5 dark:ring-white/5",
                           "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
                           "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
                         ].join(" ")}
@@ -870,7 +872,7 @@ export default function DownhillGenerator({
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -2 }}
                           transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.8 }}
-                          className="mt-2 text-center text-xs text-slate-600"
+                          className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400"
                         >
                           Finding downhill routes
                           <InlineDots />
@@ -878,7 +880,7 @@ export default function DownhillGenerator({
                       )}
 
                       {!showWaitingHint && hasDestination && uiVariant === "easy" && (
-                        <p className="mt-2 text-center text-xs text-slate-600">
+                        <p className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400">
                           If no route appears, try Hard for more options.
                         </p>
                       )}
@@ -908,9 +910,9 @@ export default function DownhillGenerator({
                           isGenerated ? "cursor-default" : "hover:bg-emerald-600",
                         ].join(" ")
                       : [
-                          "bg-gray-200",
-                          "text-gray-500",
-                          "border border-slate-300/70",
+                          "bg-gray-200 dark:bg-slate-700",
+                          "text-gray-500 dark:text-slate-500",
+                          "border border-slate-300/70 dark:border-slate-600/70",
                           "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
                           "cursor-not-allowed",
                         ].join(" "),
@@ -936,7 +938,7 @@ export default function DownhillGenerator({
               </div>
               {!controlsLocked && message && message !== "Finding downhill routes…" && (
                 <div className="mt-4 space-y-3">
-                  <p className="text-center text-sm text-gray-700 whitespace-pre-line">{message}</p>
+                  <p className="text-center text-sm text-gray-700 dark:text-slate-300 whitespace-pre-line">{message}</p>
 
                   {recoveryAction && (
                     <div className="flex justify-center">

@@ -53,10 +53,10 @@ export default function SaveRouteControl({
 
   const sharedRound = "rounded-2xl";
 
-  const controlBackground = disabled ? "rgba(160,170,185,0.18)" : "rgba(255,255,255,0.22)";
+  const controlBackground = disabled ? "rgba(52,211,153,0.11)" : "rgba(255,255,255,0.22)";
 
   const controlBorder = disabled
-    ? "1px solid rgba(255,255,255,0.22)"
+    ? "1px solid rgba(52,211,153,0.26)"
     : "1px solid rgba(255,255,255,0.40)";
 
   const controlShadow = disabled
@@ -113,19 +113,19 @@ export default function SaveRouteControl({
           <Loader2
             strokeWidth={2.85}
             className="relative z-10 h-5 w-5 animate-spin"
-            style={{ color: disabled ? "rgba(112,128,150,0.98)" : "rgba(15,23,42,0.95)" }}
+            style={{ color: disabled ? "rgba(52,211,153,0.60)" : "rgba(15,23,42,0.95)" }}
           />
         ) : saved ? (
           <Check
             strokeWidth={2.85}
             className="relative z-10 h-5 w-5"
-            style={{ color: disabled ? "rgba(112,128,150,0.98)" : "rgba(15,23,42,0.95)" }}
+            style={{ color: disabled ? "rgba(52,211,153,0.60)" : "rgba(15,23,42,0.95)" }}
           />
         ) : (
           <Bookmark
             strokeWidth={2.85}
             className="relative z-10 h-5 w-5"
-            style={{ color: disabled ? "rgba(112,128,150,0.98)" : "rgba(15,23,42,0.95)" }}
+            style={{ color: disabled ? "rgba(52,211,153,0.60)" : "rgba(15,23,42,0.95)" }}
           />
         )}
       </button>

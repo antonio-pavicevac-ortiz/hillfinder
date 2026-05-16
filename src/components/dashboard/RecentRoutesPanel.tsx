@@ -178,8 +178,8 @@ export default function RecentRoutesPanel({
                 onDragEnd={onSheetDragEnd}
                 className={[
                   "pointer-events-auto w-full",
-                  "bg-white/70 backdrop-blur-xl",
-                  "rounded-2xl border border-white/30 shadow-xl p-5",
+                  "bg-white/85 dark:bg-slate-900/90 backdrop-blur-xl",
+                  "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl p-5",
                   "relative isolate",
                 ].join(" ")}
                 style={{ touchAction: "manipulation" }}
@@ -200,35 +200,35 @@ export default function RecentRoutesPanel({
                 </div>
 
                 <div className="flex items-center justify-center">
-                  <h2 className="text-lg font-semibold text-gray-900">Saved Routes</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Saved Routes</h2>
                 </div>
 
                 <div className="mt-4">
                   {isLoading ? (
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.65),inset_0_0_0_1px_rgba(15,23,42,0.03)]">
+                    <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/70 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.65),inset_0_0_0_1px_rgba(15,23,42,0.03)]">
                       <div className="space-y-2">
                         {[0, 1, 2].map((item) => (
                           <div
                             key={item}
-                            className="animate-pulse rounded-xl bg-white/75 px-3 py-3"
+                            className="animate-pulse rounded-xl bg-white/75 dark:bg-slate-700/75 px-3 py-3"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
-                                <div className="h-3 w-32 rounded bg-slate-200/80" />
-                                <div className="mt-2 h-3 w-24 rounded bg-slate-200/60" />
+                                <div className="h-3 w-32 rounded bg-slate-200/80 dark:bg-slate-600/80" />
+                                <div className="mt-2 h-3 w-24 rounded bg-slate-200/60 dark:bg-slate-600/60" />
                               </div>
-                              <div className="h-6 w-14 rounded-full bg-slate-200/70" />
+                              <div className="h-6 w-14 rounded-full bg-slate-200/70 dark:bg-slate-600/70" />
                             </div>
 
-                            <div className="mt-3 h-3 w-5/6 rounded bg-slate-200/60" />
+                            <div className="mt-3 h-3 w-5/6 rounded bg-slate-200/60 dark:bg-slate-600/60" />
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : !routes.length ? (
-                    <div className="rounded-xl border border-white/40 bg-white/55 px-4 py-3">
-                      <p className="text-sm font-medium text-slate-800">No saved routes yet.</p>
-                      <p className="mt-1 text-sm text-slate-600">
+                    <div className="rounded-xl border border-white/40 dark:border-slate-700/40 bg-white/55 dark:bg-slate-800/55 px-4 py-3">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">No saved routes yet.</p>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                         Save your first downhill run and it’ll appear here.
                       </p>
                     </div>
@@ -236,7 +236,7 @@ export default function RecentRoutesPanel({
                     <div className="relative">
                       <div
                         className={[
-                          "rounded-2xl border border-slate-200/80 bg-slate-50/70",
+                          "rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/70",
                           "shadow-[inset_0_1px_0_rgba(255,255,255,0.65),inset_0_0_0_1px_rgba(15,23,42,0.03)]",
                           "p-2",
                         ].join(" ")}
@@ -256,14 +256,14 @@ export default function RecentRoutesPanel({
                             return (
                               <div
                                 key={route._id}
-                                className={index > 0 ? "border-t border-slate-200/80" : ""}
+                                className={index > 0 ? "border-t border-slate-200/80 dark:border-slate-700/80" : ""}
                               >
                                 <div
                                   className={[
                                     "rounded-xl px-2 py-2 transition",
                                     isActive
-                                      ? "bg-emerald-50/90"
-                                      : "bg-transparent hover:bg-white/70",
+                                      ? "bg-emerald-50/90 dark:bg-emerald-900/30"
+                                      : "bg-transparent hover:bg-white/70 dark:hover:bg-slate-700/60",
                                   ].join(" ")}
                                 >
                                   <div
@@ -280,7 +280,7 @@ export default function RecentRoutesPanel({
                                   >
                                     <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-semibold leading-5 text-slate-900 [overflow-wrap:anywhere]">
+                                        <p className="text-sm font-semibold leading-5 text-slate-900 dark:text-slate-100 [overflow-wrap:anywhere]">
                                           {`${shortAreaName(route.from.name) || "From"} → ${shortAreaName(route.to.name) || "Destination"}`}
                                         </p>
 
@@ -293,7 +293,7 @@ export default function RecentRoutesPanel({
                                       </div>
 
                                       <div className="flex shrink-0 items-center gap-2 self-start">
-                                        <span className="rounded-full bg-slate-900/6 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-600">
+                                        <span className="rounded-full bg-slate-900/6 dark:bg-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                                           {route.difficulty}
                                         </span>
 
@@ -302,7 +302,7 @@ export default function RecentRoutesPanel({
                                           aria-label="Share saved route"
                                           title="Share saved route"
                                           onClick={(e) => handleShareRoute(e, route)}
-                                          className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50/80 text-sky-600 transition active:scale-95 hover:bg-sky-100"
+                                          className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200/80 dark:border-sky-700/60 bg-sky-50/80 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 transition active:scale-95 hover:bg-sky-100 dark:hover:bg-sky-900/50"
                                         >
                                           <Share2 className="h-4 w-4" strokeWidth={2.4} />
                                         </button>
@@ -318,8 +318,8 @@ export default function RecentRoutesPanel({
                                           className={[
                                             "flex h-8 w-8 items-center justify-center rounded-full border transition active:scale-95",
                                             isDeleting
-                                              ? "border-slate-200 bg-slate-100 text-slate-400"
-                                              : "border-rose-200/80 bg-rose-50/80 text-rose-600 hover:bg-rose-100",
+                                              ? "border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 text-slate-400"
+                                              : "border-rose-200/80 dark:border-rose-700/60 bg-rose-50/80 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50",
                                           ].join(" ")}
                                         >
                                           {isDeleting ? (
@@ -334,14 +334,14 @@ export default function RecentRoutesPanel({
                                       </div>
                                     </div>
 
-                                    <div className="mt-2 space-y-0.5 text-xs leading-5 text-slate-600">
+                                    <div className="mt-2 space-y-0.5 text-xs leading-5 text-slate-600 dark:text-slate-400">
                                       <div>
-                                        <span className="font-semibold text-slate-700">From:</span>{" "}
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300">From:</span>{" "}
                                         <span>{shortPlaceName(route.from.name) || "From"}</span>
                                       </div>
 
                                       <div>
-                                        <span className="font-semibold text-slate-700">To:</span>{" "}
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300">To:</span>{" "}
                                         <span>
                                           {shortPlaceName(route.to.name) || "Destination"}
                                         </span>
@@ -357,11 +357,11 @@ export default function RecentRoutesPanel({
 
                       <div
                         aria-hidden="true"
-                        className="pointer-events-none absolute left-2 right-3 top-2 h-5 rounded-t-2xl bg-gradient-to-b from-slate-50/95 via-slate-50/70 to-transparent"
+                        className="pointer-events-none absolute left-2 right-3 top-2 h-5 rounded-t-2xl bg-gradient-to-b from-slate-50/95 dark:from-slate-800/95 via-slate-50/70 dark:via-slate-800/70 to-transparent"
                       />
                       <div
                         aria-hidden="true"
-                        className="pointer-events-none absolute bottom-2 left-2 right-3 h-6 rounded-b-2xl bg-gradient-to-t from-slate-50/95 via-slate-50/70 to-transparent"
+                        className="pointer-events-none absolute bottom-2 left-2 right-3 h-6 rounded-b-2xl bg-gradient-to-t from-slate-50/95 dark:from-slate-800/95 via-slate-50/70 dark:via-slate-800/70 to-transparent"
                       />
                     </div>
                   )}

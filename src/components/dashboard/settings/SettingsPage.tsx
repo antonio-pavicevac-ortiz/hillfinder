@@ -1,23 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
-type Theme = "light" | "dark";
-
 export default function SettingsPage() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const { resolvedTheme, setTheme } = useTheme();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lockPortrait, setLockPortrait] = useState(true);
   const [hydrated, setHydrated] = useState(false);
+
+  const isDark = resolvedTheme === "dark";
 
   useEffect(() => {
     function syncSettings() {
       const savedVoice = window.localStorage.getItem("hf_voice_enabled");
       const savedPortrait = window.localStorage.getItem("hf_lock_portrait");
-
-      if (savedVoice) setVoiceEnabled(savedVoice === "true");
-      if (savedPortrait) setLockPortrait(savedPortrait === "true");
+      if (savedVoice !== null) setVoiceEnabled(savedVoice === "true");
+      if (savedPortrait !== null) setLockPortrait(savedPortrait === "true");
     }
 
     syncSettings();
@@ -33,45 +33,35 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const savedTheme = window.localStorage.getItem("hf_theme");
-    const savedVoice = window.localStorage.getItem("hf_voice_enabled");
-    const savedPortrait = window.localStorage.getItem("hf_lock_portrait");
-
-    if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-    if (savedVoice) setVoiceEnabled(savedVoice === "true");
-    if (savedPortrait) setLockPortrait(savedPortrait === "true");
-
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
     if (!hydrated) return;
-
-    window.localStorage.setItem("hf_theme", theme);
     window.localStorage.setItem("hf_voice_enabled", String(voiceEnabled));
     window.localStorage.setItem("hf_lock_portrait", String(lockPortrait));
-
     window.dispatchEvent(new Event("hf-settings-updated"));
-  }, [hydrated, theme, voiceEnabled, lockPortrait]);
+  }, [hydrated, voiceEnabled, lockPortrait]);
 
   if (!hydrated) return null;
 
   return (
-    <main className="min-h-screen bg-[#f6f7f2] px-5 py-6">
+    <main className="min-h-screen bg-[#f6f7f2] dark:bg-slate-900 px-5 py-6 transition-colors">
       <div className="mx-auto max-w-xl mt-20">
-        <Link href="/dashboard" className="text-sm text-emerald-700">
+        <Link
+          href="/dashboard"
+          className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
+        >
           ← Back to dashboard
         </Link>
 
-        <h1 className="mt-5 text-2xl font-semibold text-gray-900">Settings</h1>
-        <p className="mt-1 text-sm text-gray-600">Customize your Hillfinder experience.</p>
+        <h1 className="mt-5 text-2xl font-semibold text-gray-900 dark:text-slate-100">Settings</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">
+          Customize your Hillfinder experience.
+        </p>
 
         <div className="mt-6 space-y-4">
           <SettingRow
             title="Theme"
-            subtitle={theme === "dark" ? "Dark mode" : "Light mode"}
-            on={theme === "dark"}
-            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+            subtitle={isDark ? "Dark mode" : "Light mode"}
+            on={isDark}
+            onClick={() => setTheme(isDark ? "light" : "dark")}
           />
 
           <SettingRow
@@ -105,22 +95,27 @@ function SettingRow({
   onClick: () => void;
 }) {
   return (
-    <section className="flex items-center justify-between rounded-2xl border border-white/60 bg-white/80 p-4 shadow-sm">
+    <section className="flex items-center justify-between rounded-2xl border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-800/80 p-4 shadow-sm transition-colors">
       <div>
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100">{title}</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{subtitle}</p>
       </div>
 
       <button
         type="button"
         onClick={onClick}
-        className={`relative h-6 w-12 rounded-full transition ${
-          on ? "bg-emerald-500" : "bg-gray-300"
+        aria-pressed={on}
+        className={`relative h-6 w-12 rounded-full transition-all duration-200 ${
+          on
+            ? "bg-emerald-500 shadow-[0_1px_4px_rgba(16,185,129,0.45)]"
+            : "bg-slate-200 dark:bg-slate-700 shadow-[inset_0_1px_3px_rgba(0,0,0,0.18)] dark:shadow-[inset_0_2px_5px_rgba(0,0,0,0.45)]"
         }`}
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-            on ? "left-6" : "left-0.5"
+          className={`absolute top-0.5 h-5 w-5 rounded-full shadow-sm transition-all duration-200 ${
+            on
+              ? "left-6 bg-white"
+              : "left-0.5 bg-white/90 dark:bg-slate-300"
           }`}
         />
       </button>

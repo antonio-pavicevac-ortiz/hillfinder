@@ -42,18 +42,18 @@ export default async function ProfilePage() {
   const avatar = (dbUser && (dbUser as any).image) || (session.user.image as string | null) || null;
 
   return (
-    <section className="mx-auto max-w-3xl space-y-8 px-6 pt-4 pb-10 ">
+    <section className="mx-auto max-w-3xl space-y-8 px-6 pt-4 pb-10 min-h-screen bg-[#f6f7f2] dark:bg-slate-900 transition-colors">
       {/* Page Header */}
       <div className="mt-20">
-        <h1 className="text-2xl font-semibold text-gray-800">Profile Settings</h1>
-        <p className="text-gray-500 text-sm">
+        <h1 className="text-2xl font-semibold text-gray-800 dark:text-slate-100">Profile Settings</h1>
+        <p className="text-gray-500 dark:text-slate-400 text-sm">
           Manage your personal details and your Hillfinder identity.
         </p>
       </div>
 
       {/* Profile Picture Card */}
-      <div className="rounded-2xl bg-white/80 p-6 shadow-sm ring-1 ring-black/5 space-y-6">
-        <h2 className="text-2xl font-semibold text-gray-800 text-center md:text-left">
+      <div className="rounded-2xl bg-white/80 dark:bg-slate-800/80 p-6 shadow-sm ring-1 ring-black/5 dark:ring-white/5 space-y-6">
+        <h2 className="text-2xl font-semibold text-gray-800 dark:text-slate-100 text-center md:text-left">
           Profile Picture
         </h2>
 
@@ -80,17 +80,16 @@ export default async function ProfilePage() {
           {/* Upload Zone */}
           <div className="flex-1 w-full">
             <AvatarUploader initialAvatar={avatar} />
-            <p className="mt-4 text-xs text-gray-400 text-center md:text-center">
+            <p className="mt-4 text-xs text-gray-400 dark:text-slate-500 text-center md:text-center">
               Recommended: square image • JPG, PNG, or WEBP • up to 4MB
             </p>
           </div>
         </div>
       </div>
 
-      {/* Account Information Card ... (unchanged) */}
       {/* ACCOUNT DETAILS FORM */}
-      <div className="rounded-2xl bg-white/80 p-6 shadow-sm ring-1 ring-black/5 space-y-6">
-        <h2 className="text-lg font-semibold text-gray-800">Account Details</h2>
+      <div className="rounded-2xl bg-white/80 dark:bg-slate-800/80 p-6 shadow-sm ring-1 ring-black/5 dark:ring-white/5 space-y-6">
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-slate-100">Account Details</h2>
         <ProfileForm dbUser={safeUser} />
       </div>
     </section>
