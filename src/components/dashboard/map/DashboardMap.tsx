@@ -790,7 +790,7 @@ export default function DashboardMap({
     });
   }
 
-  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant, opts?: { skipFit?: boolean }) {
     const nextMode = map.getZoom() < DETAIL_ROUTE_ZOOM_THRESHOLD ? "overview" : "detail";
 
     clearOverviewRoute(map);
@@ -808,13 +808,15 @@ export default function DashboardMap({
 
     renderedRouteModeRef.current = nextMode;
 
-    requestAnimationFrame(() => {
+    if (!opts?.skipFit) {
       requestAnimationFrame(() => {
-        fitMapToRoute(map, variant.coords, {
-          variant: selectedVariantRef.current ?? "easy",
+        requestAnimationFrame(() => {
+          fitMapToRoute(map, variant.coords, {
+            variant: selectedVariantRef.current ?? "easy",
+          });
         });
       });
-    });
+    }
   }
 
   function loadSavedRoute(map: mapboxgl.Map, savedRoute: SavedRouteRecord) {
@@ -1324,6 +1326,14 @@ export default function DashboardMap({
     sweepRef.current.clear(map);
     renderedRouteModeRef.current = null;
 
+    const routeTimeoutId = setTimeout(() => {
+      controller.abort();
+      setRouteBusy(false, reqId);
+      onRouteFailed?.(
+        "Route is taking too long to generate. Try a different destination."
+      );
+    }, 25_000);
+
     try {
       const baseData = await fetchDirectionsRoute({ from, to, signal: controller.signal });
       if (reqId !== routeReqIdRef.current) return;
@@ -1438,6 +1448,7 @@ export default function DashboardMap({
       console.error("generateAlternativesBetweenPoints error:", err);
       onRouteFailed?.("Something went wrong generating the route.");
     } finally {
+      clearTimeout(routeTimeoutId);
       setRouteBusy(false, reqId);
     }
   }
@@ -1537,7 +1548,7 @@ export default function DashboardMap({
       if (renderedRouteModeRef.current === nextMode) return;
 
       const active = (selectedVariantRef.current ?? "easy") === "hard" ? v.hard : v.easy;
-      renderVariantForZoom(map, active);
+      renderVariantForZoom(map, active, { skipFit: true });
     };
 
     map.on("zoomend", rerenderForZoom);
@@ -1637,7 +1648,9 @@ export default function DashboardMap({
             void notifyFromPicked(ll, { immediateName: "Current location" });
           }
 
-          map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
+          if (!variantsRef.current) {
+            map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
+          }
         },
         () => {},
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
@@ -2215,7 +2228,7 @@ export default function DashboardMap({
 
     renderVariantForZoom(map, active);
     syncDestinationMarkerToActiveRouteEndpoint(map, active);
-  }, [selectedVariant, routeActive]);
+  }, [selectedVariant]);
 
   useEffect(() => {
     routeActiveRef.current = !!routeActive;
@@ -2228,6 +2241,8 @@ export default function DashboardMap({
     if (!map) return;
 
     if (isNavigatingRef.current) {
+      followCameraPausedUntilRef.current = Date.now() + 2000;
+
       const latest = latestDeviceLocationRef.current ?? fromMarkerRef.current?.getLngLat();
 
       if (latest) {
@@ -2237,7 +2252,9 @@ export default function DashboardMap({
           __setRotation?: (deg: number) => void;
         };
 
-        puckEl.__setRotation?.(0);
+        const initialHeading =
+          smoothedHeadingRef.current ?? lastResolvedHeadingRef.current ?? 0;
+        puckEl.__setRotation?.(initialHeading - map.getBearing());
       }
 
       fromMarkerRef.current?.getElement().style.setProperty("display", "none");
