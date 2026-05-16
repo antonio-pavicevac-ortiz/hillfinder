@@ -732,8 +732,6 @@ export default function DashboardMap({
   ) {
     if (!coords?.length) return;
 
-    map.resize();
-
     const bounds = new mapboxgl.LngLatBounds();
 
     coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
@@ -790,7 +788,7 @@ export default function DashboardMap({
     });
   }
 
-  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+  function drawVariantLayers(map: mapboxgl.Map, variant: Variant) {
     const nextMode = map.getZoom() < DETAIL_ROUTE_ZOOM_THRESHOLD ? "overview" : "detail";
 
     clearOverviewRoute(map);
@@ -807,6 +805,10 @@ export default function DashboardMap({
     }
 
     renderedRouteModeRef.current = nextMode;
+  }
+
+  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+    drawVariantLayers(map, variant);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -1301,11 +1303,6 @@ export default function DashboardMap({
     from: mapboxgl.LngLat,
     to: mapboxgl.LngLat
   ) {
-    console.log("[DashboardMap] generateAlternativesBetweenPoints START", {
-      selectedVariantProp: selectedVariant,
-
-      selectedVariantRef: selectedVariantRef.current,
-    });
     if (!map.isStyleLoaded()) {
       await new Promise<void>((resolve) => map.once("load", () => resolve()));
     }
@@ -1537,7 +1534,7 @@ export default function DashboardMap({
       if (renderedRouteModeRef.current === nextMode) return;
 
       const active = (selectedVariantRef.current ?? "easy") === "hard" ? v.hard : v.easy;
-      renderVariantForZoom(map, active);
+      drawVariantLayers(map, active);
     };
 
     map.on("zoomend", rerenderForZoom);
@@ -1717,7 +1714,9 @@ export default function DashboardMap({
             navigationPuckRef.current?.getElement().style.setProperty("display", "none");
           }
 
-          onNavigationLocationChange?.({ lat: latitude, lng: longitude });
+          if (isNavigatingRef.current) {
+            onNavigationLocationChange?.({ lat: latitude, lng: longitude });
+          }
 
           if (isNavigatingRef.current && Date.now() >= followCameraPausedUntilRef.current) {
             const nextBearing =
@@ -1820,12 +1819,6 @@ export default function DashboardMap({
   }, [controlsCssText]);
 
   useEffect(() => {
-    console.log("[DashboardMap][effect destination]", {
-      destination,
-      selectedVariantProp: selectedVariant,
-      routeActive: routeActiveRef.current,
-    });
-
     const map = mapRef.current;
     if (!map) return;
 
@@ -1861,25 +1854,7 @@ export default function DashboardMap({
       const isGeneratedRouteInFlight = generatedRouteRecentlyRan && !!busyReqIdRef.current;
 
       if (routeIsAlreadyPrepared || isGeneratedRouteInFlight) {
-        console.log(
-          "[DashboardMap][effect destination] preserve generated route while syncing destination marker",
-
-          {
-            routeAlternativesNonce,
-
-            destination,
-
-            selectedVariantProp: selectedVariant,
-
-            routeActive: routeActiveRef.current,
-
-            busyReqId: busyReqIdRef.current,
-
-            routeIsAlreadyPrepared,
-
-            isGeneratedRouteInFlight,
-          }
-        );
+        // preserve generated route while syncing destination marker
       } else {
         invalidateRouteNow();
       }
@@ -1908,15 +1883,6 @@ export default function DashboardMap({
   }, [destination]);
 
   useEffect(() => {
-    console.log("[DashboardMap][effect routeRequestNonce]", {
-      routeRequestNonce,
-
-      selectedVariantProp: selectedVariant,
-
-      fromLocation,
-
-      destination,
-    });
     const map = mapRef.current;
     if (!map) return;
     if (!routeRequestNonce) return;
@@ -2024,15 +1990,6 @@ export default function DashboardMap({
   }, [recenterNonce]);
 
   useEffect(() => {
-    console.log("[DashboardMap][effect routeAlternativesNonce]", {
-      routeAlternativesNonce,
-
-      selectedVariantProp: selectedVariant,
-
-      fromLocation,
-
-      destination,
-    });
     const map = mapRef.current;
     if (!map) return;
     if (!routeAlternativesNonce) return;

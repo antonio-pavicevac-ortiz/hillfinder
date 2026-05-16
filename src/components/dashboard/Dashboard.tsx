@@ -514,19 +514,6 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   }, [sharedRouteId, router]);
 
   useEffect(() => {
-    console.log("[Dashboard][TTS effect check]", {
-      status: navigation.status,
-
-      isNavMuted,
-
-      currentStepIndex: navigation.currentStepIndex,
-
-      stepsLength: navigation.steps.length,
-
-      hasSpokenCurrentStep: navigation.hasSpokenCurrentStep,
-
-      instruction: navigation.steps[navigation.currentStepIndex]?.instruction,
-    });
     if (navigation.status !== "navigating") return;
     if (isNavMuted) return;
 
