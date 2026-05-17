@@ -144,6 +144,8 @@ export default function DashboardMap({
   const sweepRef = useRef(createRouteSweepController());
 
   const lastHandledDownhillNonceRef = useRef<number>(0);
+  const lastAlternativesFromToRef = useRef<string>("");
+  const shownRouteFingerprintsRef = useRef<Set<string>>(new Set());
   const routeActiveRef = useRef(false);
   const isNavigatingRef = useRef(false);
   const followCameraPausedUntilRef = useRef(0);
@@ -211,21 +213,22 @@ export default function DashboardMap({
   function isNearDuplicateRoute(a: [number, number][], b: [number, number][]) {
     if (a.length < 2 || b.length < 2) return true;
 
-    const aStart = a[0];
-    const aEnd = a[a.length - 1];
-    const bStart = b[0];
-    const bEnd = b[b.length - 1];
-
-    const startDist = haversineMeters(aStart, bStart);
-    const endDist = haversineMeters(aEnd, bEnd);
-
+    const startDist = haversineMeters(a[0], b[0]);
+    const endDist = haversineMeters(a[a.length - 1], b[b.length - 1]);
     if (startDist > 40 || endDist > 40) return false;
 
-    const aLen = routeLengthMeters(a);
-    const bLen = routeLengthMeters(b);
-    const diff = Math.abs(aLen - bLen);
+    // Sample intermediate points by fractional index and measure path divergence
+    const samples = 6;
+    let totalDivergence = 0;
+    for (let i = 1; i <= samples; i++) {
+      const aIdx = Math.floor((i / (samples + 1)) * (a.length - 1));
+      const bIdx = Math.floor((i / (samples + 1)) * (b.length - 1));
+      totalDivergence += haversineMeters(a[aIdx], b[bIdx]);
+    }
+    const avgDivergence = totalDivergence / samples;
 
-    return diff < Math.max(60, aLen * 0.03);
+    // Routes are duplicates only if their midpoints are all within 40m on average
+    return avgDivergence < 40;
   }
 
   function pickMostDistinctVariant(base: Variant, candidates: Variant[], mode: "easy" | "hard") {
@@ -269,33 +272,38 @@ export default function DashboardMap({
     return new mapboxgl.LngLat((a.lng + b.lng) / 2, (a.lat + b.lat) / 2);
   }
 
-  function detourWaypoints(mid: mapboxgl.LngLat, meters: number) {
+  function detourWaypoints(mid: mapboxgl.LngLat, meters: number, angleOffsetRad = 0) {
     const dLat = metersToDegreesLat(meters);
     const dLng = metersToDegreesLng(meters, mid.lat);
+    const count = 8;
 
-    return [
-      new mapboxgl.LngLat(mid.lng + dLng, mid.lat),
-      new mapboxgl.LngLat(mid.lng - dLng, mid.lat),
-      new mapboxgl.LngLat(mid.lng, mid.lat + dLat),
-      new mapboxgl.LngLat(mid.lng, mid.lat - dLat),
-      new mapboxgl.LngLat(mid.lng + dLng, mid.lat + dLat),
-      new mapboxgl.LngLat(mid.lng + dLng, mid.lat - dLat),
-      new mapboxgl.LngLat(mid.lng - dLng, mid.lat + dLat),
-      new mapboxgl.LngLat(mid.lng - dLng, mid.lat - dLat),
-    ];
+    return Array.from({ length: count }, (_, i) => {
+      const angle = (2 * Math.PI * i) / count + angleOffsetRad;
+      return new mapboxgl.LngLat(
+        mid.lng + dLng * Math.cos(angle),
+        mid.lat + dLat * Math.sin(angle)
+      );
+    });
   }
 
-  function detourWaypointRings(from: mapboxgl.LngLat, to: mapboxgl.LngLat) {
+  function detourWaypointRings(from: mapboxgl.LngLat, to: mapboxgl.LngLat, randomize = false) {
     const mid = midpoint(from, to);
     const trip = from.distanceTo(to) ?? 1500;
 
-    const radii = [clamp(trip * 0.08, 120, 300), clamp(trip * 0.14, 260, 520)];
+    const radiusScale = randomize ? 0.7 + Math.random() * 0.6 : 1;
+    const radii = [
+      clamp(trip * 0.08 * radiusScale, 120, 300),
+      clamp(trip * 0.14 * radiusScale, 260, 520),
+    ];
+
+    // Rotate detour ring by a random angle — full 2π so each re-run explores a different direction
+    const angleOffset = randomize ? Math.random() * (2 * Math.PI) : 0;
 
     const seen = new Set<string>();
     const waypoints: mapboxgl.LngLat[] = [];
 
     for (const radius of radii) {
-      for (const wp of detourWaypoints(mid, radius)) {
+      for (const wp of detourWaypoints(mid, radius, angleOffset)) {
         const key = `${wp.lng.toFixed(5)},${wp.lat.toFixed(5)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -732,8 +740,6 @@ export default function DashboardMap({
   ) {
     if (!coords?.length) return;
 
-    map.resize();
-
     const bounds = new mapboxgl.LngLatBounds();
 
     coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
@@ -790,7 +796,7 @@ export default function DashboardMap({
     });
   }
 
-  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+  function drawVariantLayers(map: mapboxgl.Map, variant: Variant) {
     const nextMode = map.getZoom() < DETAIL_ROUTE_ZOOM_THRESHOLD ? "overview" : "detail";
 
     clearOverviewRoute(map);
@@ -807,6 +813,10 @@ export default function DashboardMap({
     }
 
     renderedRouteModeRef.current = nextMode;
+  }
+
+  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+    drawVariantLayers(map, variant);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -1164,7 +1174,7 @@ export default function DashboardMap({
             to,
             routeMeters: distMeters,
             baselineMeters,
-            maxDetourRatio: 1.28,
+            maxDetourRatio: 1.5,
             maxLoopiness: 2.35,
           })
         ) {
@@ -1210,9 +1220,21 @@ export default function DashboardMap({
     }
   }
 
-  function pickEasyAndHardVariants(candidates: Variant[]) {
-    const easySorted = [...candidates].sort((a, b) => a.easyScore - b.easyScore);
-    const hardSorted = [...candidates].sort((a, b) => b.hardScore - a.hardScore);
+  function pickEasyAndHardVariants(candidates: Variant[], avoidFingerprints?: Set<string>) {
+    const fingerprint = (c: Variant) => {
+      const mid = c.coords[Math.floor(c.coords.length / 2)];
+      return `${mid[0].toFixed(4)},${mid[1].toFixed(4)}`;
+    };
+
+    const fresh = avoidFingerprints
+      ? candidates.filter((c) => !avoidFingerprints.has(fingerprint(c)))
+      : candidates;
+
+    const easyPool = fresh.length > 0 ? fresh : candidates;
+    const hardPool = fresh.length > 0 ? fresh : candidates;
+
+    const easySorted = [...easyPool].sort((a, b) => a.easyScore - b.easyScore);
+    const hardSorted = [...hardPool].sort((a, b) => b.hardScore - a.hardScore);
 
     let easy = easySorted[0];
     let hard = hardSorted[0];
@@ -1299,13 +1321,9 @@ export default function DashboardMap({
   async function generateAlternativesBetweenPoints(
     map: mapboxgl.Map,
     from: mapboxgl.LngLat,
-    to: mapboxgl.LngLat
+    to: mapboxgl.LngLat,
+    opts?: { randomize?: boolean }
   ) {
-    console.log("[DashboardMap] generateAlternativesBetweenPoints START", {
-      selectedVariantProp: selectedVariant,
-
-      selectedVariantRef: selectedVariantRef.current,
-    });
     if (!map.isStyleLoaded()) {
       await new Promise<void>((resolve) => map.once("load", () => resolve()));
     }
@@ -1342,12 +1360,12 @@ export default function DashboardMap({
         candidates,
       });
 
-      if (candidates.length < 2) {
+      if (candidates.length < 2 || opts?.randomize) {
         await collectDetourCandidates({
           map,
           from,
           to,
-          waypoints: detourWaypointRings(from, to),
+          waypoints: detourWaypointRings(from, to, opts?.randomize),
           controller,
           reqId,
           candidates,
@@ -1369,7 +1387,16 @@ export default function DashboardMap({
         return;
       }
 
-      const { easy, hard } = pickEasyAndHardVariants(candidates);
+      const avoidFingerprints = opts?.randomize ? shownRouteFingerprintsRef.current : undefined;
+      const { easy, hard } = pickEasyAndHardVariants(candidates, avoidFingerprints);
+
+      const fp = (c: Variant) => {
+        const mid = c.coords[Math.floor(c.coords.length / 2)];
+        return `${mid[0].toFixed(4)},${mid[1].toFixed(4)}`;
+      };
+      shownRouteFingerprintsRef.current.add(fp(easy));
+      shownRouteFingerprintsRef.current.add(fp(hard));
+
 
       variantsRef.current = {
         easy,
@@ -1537,7 +1564,7 @@ export default function DashboardMap({
       if (renderedRouteModeRef.current === nextMode) return;
 
       const active = (selectedVariantRef.current ?? "easy") === "hard" ? v.hard : v.easy;
-      renderVariantForZoom(map, active);
+      drawVariantLayers(map, active);
     };
 
     map.on("zoomend", rerenderForZoom);
@@ -1717,7 +1744,9 @@ export default function DashboardMap({
             navigationPuckRef.current?.getElement().style.setProperty("display", "none");
           }
 
-          onNavigationLocationChange?.({ lat: latitude, lng: longitude });
+          if (isNavigatingRef.current) {
+            onNavigationLocationChange?.({ lat: latitude, lng: longitude });
+          }
 
           if (isNavigatingRef.current && Date.now() >= followCameraPausedUntilRef.current) {
             const nextBearing =
@@ -1820,12 +1849,6 @@ export default function DashboardMap({
   }, [controlsCssText]);
 
   useEffect(() => {
-    console.log("[DashboardMap][effect destination]", {
-      destination,
-      selectedVariantProp: selectedVariant,
-      routeActive: routeActiveRef.current,
-    });
-
     const map = mapRef.current;
     if (!map) return;
 
@@ -1861,25 +1884,7 @@ export default function DashboardMap({
       const isGeneratedRouteInFlight = generatedRouteRecentlyRan && !!busyReqIdRef.current;
 
       if (routeIsAlreadyPrepared || isGeneratedRouteInFlight) {
-        console.log(
-          "[DashboardMap][effect destination] preserve generated route while syncing destination marker",
-
-          {
-            routeAlternativesNonce,
-
-            destination,
-
-            selectedVariantProp: selectedVariant,
-
-            routeActive: routeActiveRef.current,
-
-            busyReqId: busyReqIdRef.current,
-
-            routeIsAlreadyPrepared,
-
-            isGeneratedRouteInFlight,
-          }
-        );
+        // preserve generated route while syncing destination marker
       } else {
         invalidateRouteNow();
       }
@@ -1908,15 +1913,6 @@ export default function DashboardMap({
   }, [destination]);
 
   useEffect(() => {
-    console.log("[DashboardMap][effect routeRequestNonce]", {
-      routeRequestNonce,
-
-      selectedVariantProp: selectedVariant,
-
-      fromLocation,
-
-      destination,
-    });
     const map = mapRef.current;
     if (!map) return;
     if (!routeRequestNonce) return;
@@ -2024,15 +2020,6 @@ export default function DashboardMap({
   }, [recenterNonce]);
 
   useEffect(() => {
-    console.log("[DashboardMap][effect routeAlternativesNonce]", {
-      routeAlternativesNonce,
-
-      selectedVariantProp: selectedVariant,
-
-      fromLocation,
-
-      destination,
-    });
     const map = mapRef.current;
     if (!map) return;
     if (!routeAlternativesNonce) return;
@@ -2041,7 +2028,12 @@ export default function DashboardMap({
     const to = destMarkerRef.current?.getLngLat();
     if (!from || !to) return;
 
-    void generateAlternativesBetweenPoints(map, from, to);
+    const destKey = `${to.lng.toFixed(5)},${to.lat.toFixed(5)}`;
+    const isRerun = lastAlternativesFromToRef.current === destKey;
+    lastAlternativesFromToRef.current = destKey;
+    if (!isRerun) shownRouteFingerprintsRef.current = new Set();
+
+    void generateAlternativesBetweenPoints(map, from, to, { randomize: isRerun });
   }, [routeAlternativesNonce]);
 
   useEffect(() => {

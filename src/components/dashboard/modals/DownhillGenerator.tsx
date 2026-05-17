@@ -195,7 +195,21 @@ export default function DownhillGenerator({
       if (stillWaitingOnSameRequest) {
         setRecoveryAction(null);
         setMessage("Still working… hang tight while we finish checking the terrain.");
-        failTimerRef.current = null;
+
+        // Hard bail-out if still stuck after another 20 seconds (45s total)
+        failTimerRef.current = window.setTimeout(() => {
+          abortRef.current?.abort();
+          abortRef.current = null;
+          setWaitingForVariants(false);
+          setLoading(false);
+          setGeneratedKey("");
+          lastCommittedRef.current = null;
+          setRecoveryAction("pick_destination");
+          setMessage("This is taking too long. Please try a different destination.");
+          onVariantSelected?.(null);
+          failTimerRef.current = null;
+        }, 20000);
+
         return;
       }
 
