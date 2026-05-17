@@ -25,6 +25,12 @@ import { haversineMeters } from "@/lib/geo/distance";
 import { formatStepDistance } from "@/lib/navigation/format";
 import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
 import { shouldAdvanceStep } from "@/lib/navigation/progress";
+import {
+  buildTerrainNarrations,
+  findUpcomingTerrainNarration,
+  TERRAIN_COOLDOWN_MS,
+  type TerrainNarration,
+} from "@/lib/navigation/terrainNarration";
 
 type Destination = { lat: number; lng: number; name?: string };
 type FromLocation = { lat: number; lng: number; name?: string };
@@ -93,6 +99,10 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   const hasAutoStartedVoiceRef = useRef(false);
   const lastSystemPromptSpokenAtRef = useRef<number | null>(null);
   const hasMovedSinceRouteLoadRef = useRef(false);
+
+  const terrainNarrationsRef = useRef<TerrainNarration[]>([]);
+  const lastTerrainSpokenAtRef = useRef<number>(0);
+  const spokenTerrainIndicesRef = useRef<Set<number>>(new Set());
 
   const [navigation, dispatchNavigation] = useReducer(navigationReducer, initialNavigationState);
   const [isNavMuted, setIsNavMuted] = useState(true);
@@ -528,9 +538,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     const synth = window.speechSynthesis;
     synth.cancel();
     synth.resume();
-    const spokenInstruction = step.terrainHint
-      ? `${step.instruction}. ${step.terrainHint}`
-      : step.instruction;
+    const spokenInstruction = step.instruction;
 
     const utterance = new SpeechSynthesisUtterance(spokenInstruction);
     utterance.rate = 1;
@@ -694,6 +702,46 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     }
   }, [isNavigating, liveNavLocation, destination, navigation.status, isNavMuted]);
 
+  // Terrain narration — fires when GPS updates during active navigation
+  useEffect(() => {
+    if (!isNavigating) return;
+    if (!liveNavLocation) return;
+    if (isNavMuted) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const userCoord: [number, number] = [liveNavLocation.lng, liveNavLocation.lat];
+    const result = findUpcomingTerrainNarration(
+      userCoord,
+      terrainNarrationsRef.current,
+      lastTerrainSpokenAtRef.current,
+      spokenTerrainIndicesRef.current
+    );
+
+    if (!result) return;
+
+    const synth = window.speechSynthesis;
+    if (synth.speaking) return; // don't interrupt an active turn instruction
+
+    spokenTerrainIndicesRef.current.add(result.index);
+    lastTerrainSpokenAtRef.current = Date.now();
+
+    const utterance = new SpeechSynthesisUtterance(result.narration.phrase);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    synth.cancel();
+    synth.resume();
+    synth.speak(utterance);
+  }, [isNavigating, liveNavLocation, isNavMuted]);
+
+  // Reset terrain narrations when the route is cleared
+  useEffect(() => {
+    if (!hasRoute) {
+      terrainNarrationsRef.current = [];
+      spokenTerrainIndicesRef.current = new Set();
+      lastTerrainSpokenAtRef.current = 0;
+    }
+  }, [hasRoute]);
+
   useEffect(() => {
     const update = () => {
       setIsLandscape(window.innerWidth > window.innerHeight);
@@ -823,6 +871,10 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
             lng: route.from.lng,
           };
           hasMovedSinceRouteLoadRef.current = false;
+
+          terrainNarrationsRef.current = buildTerrainNarrations(route.segments ?? []);
+          spokenTerrainIndicesRef.current = new Set();
+          lastTerrainSpokenAtRef.current = 0;
 
           setActiveRouteToSave(route);
 
