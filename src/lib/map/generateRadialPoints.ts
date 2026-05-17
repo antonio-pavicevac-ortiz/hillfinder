@@ -1,7 +1,8 @@
 export function generateRadialPoints(
   start: { lat: number; lng: number },
   count = 8,
-  distanceMeters = 1000
+  distanceMeters = 1000,
+  angleOffset = 0
 ) {
   const earthRadius = 6378137;
 
@@ -10,7 +11,7 @@ export function generateRadialPoints(
   const latRad = (start.lat * Math.PI) / 180;
 
   for (let i = 0; i < count; i++) {
-    const angle = (2 * Math.PI * i) / count;
+    const angle = (2 * Math.PI * i) / count + angleOffset;
 
     const dx = distanceMeters * Math.cos(angle);
     const dy = distanceMeters * Math.sin(angle);

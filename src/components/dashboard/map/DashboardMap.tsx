@@ -146,6 +146,8 @@ export default function DashboardMap({
   const lastHandledDownhillNonceRef = useRef<number>(0);
   const lastAlternativesFromToRef = useRef<string>("");
   const shownRouteFingerprintsRef = useRef<Set<string>>(new Set());
+  const shownDownhillFingerprintsRef = useRef<Set<string>>(new Set());
+  const lastDownhillOriginKeyRef = useRef<string>("");
   const routeActiveRef = useRef(false);
   const isNavigatingRef = useRef(false);
   const followCameraPausedUntilRef = useRef(0);
@@ -2088,8 +2090,15 @@ export default function DashboardMap({
       const reqId = ++routeReqIdRef.current;
       setRouteBusy(true, reqId);
 
+      const originKey = `${origin.lat.toFixed(4)},${origin.lng.toFixed(4)}`;
+      const isDownhillRerun = lastDownhillOriginKeyRef.current === originKey;
+      lastDownhillOriginKeyRef.current = originKey;
+      if (!isDownhillRerun) shownDownhillFingerprintsRef.current = new Set();
+
+      const angleOffset = Math.random() * (2 * Math.PI);
+
       try {
-        const result = await findDownhillNearby(
+        const results = await findDownhillNearby(
           { lat: origin.lat, lng: origin.lng },
           async (
             start: { lat: number; lng: number },
@@ -2098,10 +2107,18 @@ export default function DashboardMap({
           ) => {
             return buildNearbyRoute(new mapboxgl.LngLat(start.lng, start.lat), end, signal);
           },
-          controller.signal
+          controller.signal,
+          angleOffset
         );
 
         if (reqId !== routeReqIdRef.current) return;
+
+        const downhillFP = (r: typeof results[0]) =>
+          `${r.route.to.lat.toFixed(4)},${r.route.to.lng.toFixed(4)}`;
+
+        const fresh = results.filter((r) => !shownDownhillFingerprintsRef.current.has(downhillFP(r)));
+        const result = fresh.length > 0 ? fresh[0] : results[0];
+        shownDownhillFingerprintsRef.current.add(downhillFP(result));
 
         const to = new mapboxgl.LngLat(result.route.to.lng, result.route.to.lat);
 

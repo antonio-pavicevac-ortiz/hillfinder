@@ -25,9 +25,10 @@ type NearbyRouteResult = {
 export async function findDownhillNearby(
   start: LatLng,
   getRoute: (start: LatLng, end: LatLng, signal: AbortSignal) => Promise<NearbyRouteResult>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  angleOffset = 0
 ) {
-  const candidates = generateRadialPoints(start, 8, 1200);
+  const candidates = generateRadialPoints(start, 8, 1200, angleOffset);
 
   const results: { route: NearbyRouteResult; score: number }[] = [];
 
@@ -53,5 +54,5 @@ export async function findDownhillNearby(
   }
 
   results.sort((a, b) => a.score - b.score);
-  return results[0];
+  return results.slice(0, 5);
 }
