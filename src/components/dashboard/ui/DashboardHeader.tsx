@@ -31,6 +31,7 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
 
 function UserMenu({ user }: UserMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // ✅ Close menu when tapping/clicking outside (works on mobile too)
@@ -62,9 +63,13 @@ function UserMenu({ user }: UserMenuProps) {
         // ✅ tap-only behavior; avoids weird gesture feeling
         className="touch-manipulation w-9 h-9 rounded-full overflow-hidden bg-[var(--hf-card,#e5e7eb)] flex items-center justify-center text-[var(--hf-text,#374151)] font-semibold shadow-sm hover:shadow-md transition shadow-black/10 border border-[var(--hf-border,rgba(17,24,39,0.12))]"
       >
-        {user?.image ? (
-          // (Optional) next/image later, but fine for now
-          <img src={user.image} alt="Avatar" className="w-full h-full object-cover" />
+        {user?.image && !imgError ? (
+          <img
+            src={user.image}
+            alt="Avatar"
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
         ) : (
           <span className="text-sm">{initials}</span>
         )}

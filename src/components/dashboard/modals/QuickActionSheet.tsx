@@ -10,6 +10,7 @@ interface Props {
   onViewSaved: () => void;
   onFindDownhill: () => void;
   quickRouteEnabled?: boolean;
+  isOffline?: boolean;
 }
 
 export default function QuickActionsSheet({
@@ -20,8 +21,9 @@ export default function QuickActionsSheet({
   onViewSaved,
   onFindDownhill,
   quickRouteEnabled,
+  isOffline = false,
 }: Props) {
-  const canQuickRoute = quickRouteEnabled ?? true;
+  const canQuickRoute = !isOffline && (quickRouteEnabled ?? true);
 
   return (
     <>
@@ -57,32 +59,52 @@ export default function QuickActionsSheet({
             Quick Route
           </button>
 
-          {!canQuickRoute && (
+          {!canQuickRoute && !isOffline && (
             <p className="px-1 -mt-2 text-xs text-rose-400/80 dark:text-rose-600/80">
               Set a destination on the map first.
+            </p>
+          )}
+
+          {isOffline && (
+            <p className="px-1 -mt-2 text-xs text-slate-400/80 dark:text-slate-500/80">
+              Route generation needs a connection.
             </p>
           )}
 
           <button
             type="button"
             onClick={() => {
+              if (isOffline) return;
               onFindDownhill();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-emerald-100 hover:bg-emerald-200 border border-emerald-200 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 dark:border-emerald-800/60 px-4 py-3 rounded-xl text-emerald-900 dark:text-emerald-300 font-medium transition"
+            disabled={isOffline}
+            className={[
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition border font-medium",
+              isOffline
+                ? "bg-emerald-50 border-emerald-200/60 text-emerald-400 cursor-not-allowed opacity-60 dark:bg-emerald-950/25 dark:border-emerald-800/30 dark:text-emerald-600"
+                : "bg-emerald-100 hover:bg-emerald-200 border-emerald-200 text-emerald-900 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 dark:border-emerald-800/60 dark:text-emerald-300",
+            ].join(" ")}
           >
-            <TrendingDown className="text-emerald-800 dark:text-emerald-400" />
+            <TrendingDown className={isOffline ? "text-emerald-400 dark:text-emerald-600" : "text-emerald-800 dark:text-emerald-400"} />
             Find a Downhill
           </button>
 
           <button
             onClick={() => {
+              if (isOffline) return;
               onStartRoute();
               onClose();
             }}
-            className="w-full flex items-center gap-3 bg-blue-100 hover:bg-blue-200 border border-blue-200 dark:bg-blue-950/60 dark:hover:bg-blue-900/70 dark:border-blue-800/60 px-4 py-3 rounded-xl text-blue-900 dark:text-blue-300 font-medium transition"
+            disabled={isOffline}
+            className={[
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition border font-medium",
+              isOffline
+                ? "bg-blue-50 border-blue-200/60 text-blue-400 cursor-not-allowed opacity-60 dark:bg-blue-950/25 dark:border-blue-800/30 dark:text-blue-600"
+                : "bg-blue-100 hover:bg-blue-200 border-blue-200 text-blue-900 dark:bg-blue-950/60 dark:hover:bg-blue-900/70 dark:border-blue-800/60 dark:text-blue-300",
+            ].join(" ")}
           >
-            <Route className="text-blue-700 dark:text-blue-400" />
+            <Route className={isOffline ? "text-blue-400 dark:text-blue-600" : "text-blue-700 dark:text-blue-400"} />
             Plan Your Route
           </button>
 
