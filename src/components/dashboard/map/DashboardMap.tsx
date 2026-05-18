@@ -518,6 +518,10 @@ export default function DashboardMap({
   }
 
   function loadSavedRoute(map: mapboxgl.Map, savedRoute: SavedRouteRecord) {
+    // Do not attempt to draw while the Mapbox style is still loading.
+    // The map.on("load") handler will call this function again via savedRouteToLoadRef.
+    if (!map.isStyleLoaded()) return;
+
     abortRef.current?.abort();
     routeReqIdRef.current += 1;
     setRouteBusy(true);
@@ -1344,7 +1348,11 @@ export default function DashboardMap({
       // If a session route was set before the map loaded, draw it now.
       const pendingRoute = savedRouteToLoadRef.current;
       if (pendingRoute) {
-        loadSavedRoute(map, pendingRoute);
+        try {
+          loadSavedRoute(map, pendingRoute);
+        } catch (err) {
+          console.error("[DashboardMap] failed to restore pending route on load:", err);
+        }
       }
     });
 
@@ -1759,8 +1767,14 @@ export default function DashboardMap({
     const map = mapRef.current;
     if (!map) return;
     if (!savedRouteToLoad) return;
-
-    loadSavedRoute(map, savedRouteToLoad);
+    // If the style is not ready yet, savedRouteToLoadRef is already in sync and
+    // the map.on("load") handler will draw the route once the style is ready.
+    if (!map.isStyleLoaded()) return;
+    try {
+      loadSavedRoute(map, savedRouteToLoad);
+    } catch (err) {
+      console.error("[DashboardMap] failed to restore saved route:", err);
+    }
   }, [savedRouteToLoad]);
 
   useEffect(() => {
