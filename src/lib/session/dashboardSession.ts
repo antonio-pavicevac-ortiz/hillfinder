@@ -1,5 +1,4 @@
-import type { SaveRoutePayload, SavedRouteRecord, SavedRouteSegment } from "@/types/saved-route";
-import type { NavStep } from "@/lib/navigation/types";
+import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
 const SESSION_KEY = "hf_dashboard_session";
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // discard sessions older than 24 h
