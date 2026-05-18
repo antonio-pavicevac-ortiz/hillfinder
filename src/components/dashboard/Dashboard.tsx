@@ -35,7 +35,6 @@ import { shouldAdvanceStep } from "@/lib/navigation/progress";
 import {
   buildTerrainNarrations,
   findUpcomingTerrainNarration,
-  TERRAIN_COOLDOWN_MS,
   type TerrainNarration,
 } from "@/lib/navigation/terrainNarration";
 import {
@@ -164,7 +163,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     // Synthetic SavedRouteRecord triggers DashboardMap.loadSavedRoute after
     // the Mapbox map is ready — no route API calls are made.
     setSelectedSavedRoute(sessionPayloadToRecord(payload));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -203,31 +202,6 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
 
     console.log("[Dashboard][TTS system] speak()", message);
 
-    synth.speak(utterance);
-  }
-
-  function speakNavigationInstruction(instruction?: string) {
-    if (!instruction) return;
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    synth.resume();
-
-    const utterance = new SpeechSynthesisUtterance(instruction);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-
-    utterance.onstart = () => {
-      console.log("[Dashboard][TTS direct] speaking started", instruction);
-      dispatchNavigation({ type: "MARK_STEP_SPOKEN" });
-    };
-
-    utterance.onerror = (event) => {
-      console.warn("[Dashboard][TTS direct] speech error", event);
-    };
-
-    console.log("[Dashboard][TTS direct] speak()", instruction);
     synth.speak(utterance);
   }
 
