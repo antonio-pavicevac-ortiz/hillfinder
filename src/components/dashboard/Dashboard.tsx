@@ -21,6 +21,7 @@ import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
 import { useTheme } from "next-themes";
 
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { haversineMeters } from "@/lib/geo/distance";
 import { formatStepDistance } from "@/lib/navigation/format";
 import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
@@ -122,6 +123,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   const [hydrated, setHydrated] = useState(false);
   const { resolvedTheme } = useTheme();
   const theme = (resolvedTheme === "dark" ? "dark" : "light") as "light" | "dark";
+  const isOnline = useOnlineStatus();
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -353,6 +355,11 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   }
 
   async function handleQuickRoute() {
+    if (!isOnline) {
+      toast.error("You're offline. Route generation needs a connection.", { id: "offline-action" });
+      return;
+    }
+
     if (routeBusy) return;
 
     if (!fromLocation) {
@@ -460,6 +467,11 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     let cancelled = false;
 
     async function loadSharedRouteIntoDashboard() {
+      if (!navigator.onLine) {
+        toast.error("Can't load shared route while offline.");
+        return;
+      }
+
       try {
         setRouteBusy(true);
         setActiveRouteSource("saved");
@@ -759,6 +771,17 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   }, []);
 
   useEffect(() => {
+    if (!isOnline) {
+      toast("You're offline. Map and route generation features need a connection.", {
+        id: "offline-status",
+        duration: Infinity,
+      });
+    } else {
+      toast.dismiss("offline-status");
+    }
+  }, [isOnline]);
+
+  useEffect(() => {
     function syncSettings() {
       const savedPortrait = localStorage.getItem("hf_lock_portrait");
       if (savedPortrait) setLockPortrait(savedPortrait === "true");
@@ -903,6 +926,14 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
         savedRouteToLoad={selectedSavedRoute}
         isNavigating={isNavigating}
       />
+      {!isOnline && (
+        <div className="fixed inset-0 z-[10] flex items-center justify-center pointer-events-none">
+          <div className="rounded-xl bg-slate-900/90 px-5 py-4 text-center shadow-xl border border-white/10">
+            <p className="text-sm font-medium text-white">Map unavailable offline.</p>
+          </div>
+        </div>
+      )}
+
       {(routeBusy || routePreparing) && !hasRoute && !generatorOpen && (
         <LoadingOverlay
           text={
@@ -1043,6 +1074,11 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
           setRoutesOpen(true);
         }}
         onFindDownhill={async () => {
+          if (!isOnline) {
+            toast.error("You're offline. Route generation needs a connection.", { id: "offline-action" });
+            return;
+          }
+
           if (!fromLocation) {
             toast.error("Need your location first");
 
@@ -1078,6 +1114,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
           setFindDownhillNonce((n) => n + 1);
         }}
         quickRouteEnabled={quickRouteEnabled}
+        isOffline={!isOnline}
       />
       <DownhillGenerator
         open={generatorOpen}
@@ -1106,6 +1143,11 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
         selectedVariant={selectedVariant}
         onVariantSelected={(v) => setSelectedVariant(v)}
         onGenerate={async ({ variant }) => {
+          if (!isOnline) {
+            toast.error("You're offline. Route generation needs a connection.", { id: "offline-action" });
+            return;
+          }
+
           if (routeBusy) return;
 
           if (voiceEnabled) {
