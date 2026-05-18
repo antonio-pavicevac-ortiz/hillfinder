@@ -22,6 +22,12 @@ import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 import { useTheme } from "next-themes";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  clearDashboardSession,
+  loadDashboardSession,
+  saveDashboardSession,
+  sessionPayloadToRecord,
+} from "@/lib/session/dashboardSession";
 import { haversineMeters } from "@/lib/geo/distance";
 import { formatStepDistance } from "@/lib/navigation/format";
 import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
@@ -130,6 +136,35 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
   const { resolvedTheme } = useTheme();
   const theme = (resolvedTheme === "dark" ? "dark" : "light") as "light" | "dark";
   const isOnline = useOnlineStatus();
+
+  // ── Session restore ────────────────────────────────────────────────────────
+  // Runs once on mount. Reads persisted session from localStorage and
+  // rehydrates Dashboard state without triggering new API/route requests.
+  useEffect(() => {
+    const session = loadDashboardSession();
+    if (!session?.routePayload) return;
+
+    const payload = session.routePayload;
+
+    if (session.fromLocation) setFromLocation(session.fromLocation);
+    if (session.destination) {
+      setDestination(session.destination);
+      setPlannerTo(session.destination.name ?? "");
+    }
+    if (session.selectedVariant) setSelectedVariant(session.selectedVariant);
+    setActiveRouteSource(session.activeRouteSource ?? "generated");
+    setActiveRouteToSave(payload);
+    setHasRoute(true);
+    setVariantsReady(true);
+
+    if (payload.navSteps?.length) {
+      dispatchNavigation({ type: "LOAD_STEPS", steps: payload.navSteps });
+    }
+
+    // Synthetic SavedRouteRecord triggers DashboardMap.loadSavedRoute after
+    // the Mapbox map is ready — no route API calls are made.
+    setSelectedSavedRoute(sessionPayloadToRecord(payload));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -778,6 +813,21 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     };
   }, []);
 
+  // ── Session persistence ────────────────────────────────────────────────────
+  // Saves route session whenever a completed route payload is available.
+  // Short-lived loading states are never in activeRouteToSave, so we never
+  // persist partial in-flight state.
+  useEffect(() => {
+    if (!activeRouteToSave) return;
+    saveDashboardSession({
+      fromLocation,
+      destination,
+      selectedVariant,
+      activeRouteSource,
+      routePayload: activeRouteToSave,
+    });
+  }, [activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource]);
+
   useEffect(() => {
     if (!isOnline) {
       toast("You're offline. Map and route generation features need a connection.", {
@@ -838,7 +888,10 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
       )}
       <MapControls
         hasRoute={hasRoute}
-        onClearRoute={clearRoute}
+        onClearRoute={() => {
+          clearRoute();
+          clearDashboardSession();
+        }}
         onRecenter={() => setRecenterNonce((n) => n + 1)}
         hasDestination={!!destination}
         onUndoDestination={() => {
@@ -848,6 +901,7 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
           setBlocked(false);
           setRouteBusy(false);
           clearRoute();
+          clearDashboardSession();
         }}
         saveRoute={activeRouteToSave}
         onRouteSaved={() => setRefreshRoutesKey((n) => n + 1)}
