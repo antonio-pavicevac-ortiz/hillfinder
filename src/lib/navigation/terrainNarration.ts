@@ -1,6 +1,13 @@
 import { haversineMeters } from "@/lib/geo/distance";
 import type { RouteSegmentDifficulty } from "@/types/saved-route";
-import { getTerrainGuidancePhrase, type TerrainKind } from "./terrainPhrases";
+import {
+  getTerrainGuidancePhrase,
+  DEFAULT_TERRAIN_VOICE_STYLE,
+  type TerrainKind,
+  type TerrainVoiceStyle,
+} from "./terrainPhrases";
+
+export type { TerrainVoiceStyle };
 
 // ─── Thresholds ────────────────────────────────────────────────────────────
 
@@ -114,20 +121,23 @@ function toTerrainKind(cluster: TerrainCluster): TerrainKind {
   }
 }
 
-function buildPhrase(cluster: TerrainCluster): string {
-  return getTerrainGuidancePhrase(toTerrainKind(cluster));
+function buildPhrase(cluster: TerrainCluster, style: TerrainVoiceStyle): string {
+  return getTerrainGuidancePhrase(toTerrainKind(cluster), style);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
 
-export function buildTerrainNarrations(segments: RawSegment[]): TerrainNarration[] {
+export function buildTerrainNarrations(
+  segments: RawSegment[],
+  style: TerrainVoiceStyle = DEFAULT_TERRAIN_VOICE_STYLE
+): TerrainNarration[] {
   if (!segments.length) return [];
 
   return clusterSegments(segments)
     .filter(isSignificant)
     .map((cluster, index) => ({
       index,
-      phrase: buildPhrase(cluster),
+      phrase: buildPhrase(cluster, style),
       triggerCoord: cluster.startCoord,
       clusterDistanceMeters: cluster.distanceMeters,
     }));

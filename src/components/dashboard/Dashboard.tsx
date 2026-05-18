@@ -32,6 +32,12 @@ import {
   TERRAIN_COOLDOWN_MS,
   type TerrainNarration,
 } from "@/lib/navigation/terrainNarration";
+import {
+  DEFAULT_TERRAIN_VOICE_STYLE,
+  STYLE_TTS,
+  TERRAIN_STYLE_STORAGE_KEY,
+  type TerrainVoiceStyle,
+} from "@/lib/navigation/terrainPhrases";
 
 type Destination = { lat: number; lng: number; name?: string };
 type FromLocation = { lat: number; lng: number; name?: string };
@@ -738,8 +744,10 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
     lastTerrainSpokenAtRef.current = Date.now();
 
     const utterance = new SpeechSynthesisUtterance(result.narration.phrase);
-    utterance.rate = 1;
-    utterance.pitch = 1;
+    const terrainStyle = (localStorage.getItem(TERRAIN_STYLE_STORAGE_KEY) as TerrainVoiceStyle) ?? DEFAULT_TERRAIN_VOICE_STYLE;
+    const ttsSetting = STYLE_TTS[terrainStyle];
+    utterance.rate = ttsSetting.rate;
+    utterance.pitch = ttsSetting.pitch;
     synth.cancel();
     synth.resume();
     synth.speak(utterance);
@@ -895,7 +903,8 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
           };
           hasMovedSinceRouteLoadRef.current = false;
 
-          terrainNarrationsRef.current = buildTerrainNarrations(route.segments ?? []);
+          const terrainStyle = (localStorage.getItem(TERRAIN_STYLE_STORAGE_KEY) as TerrainVoiceStyle) ?? DEFAULT_TERRAIN_VOICE_STYLE;
+          terrainNarrationsRef.current = buildTerrainNarrations(route.segments ?? [], terrainStyle);
           spokenTerrainIndicesRef.current = new Set();
           lastTerrainSpokenAtRef.current = 0;
 
