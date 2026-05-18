@@ -184,6 +184,153 @@ function pickIndex(length: number, exclude: number): number {
   return idx;
 }
 
+// ─── Progress phrase bank ─────────────────────────────────────────────────────
+// Used for mid-section reassurance when terrain stays consistent over distance.
+// "still / continues / remains" language distinguishes these from change cues.
+
+const PROGRESS_PHRASES: Record<TerrainVoiceStyle, Record<TerrainKind, readonly string[]>> = {
+  calm: {
+    short_uphill: [
+      "This climb continues a little longer.",
+      "You're still on the uphill stretch.",
+      "The rise is still going.",
+      "Still climbing — nearly there.",
+    ],
+    sustained_uphill: [
+      "This climb continues. Keep your pace.",
+      "You're still on the long uphill.",
+      "The climb carries on ahead.",
+      "Still on the sustained rise — stay steady.",
+    ],
+    steep_uphill: [
+      "This demanding climb continues.",
+      "You're still in the hard climb.",
+      "The tough section carries on a bit.",
+      "Steep terrain continues ahead.",
+    ],
+    gentle_downhill: [
+      "You're still on a gentle descent.",
+      "This downhill stretch continues.",
+      "The route stays downhill for now.",
+      "You're still in a smooth descent.",
+    ],
+    sustained_downhill: [
+      "You're still on a steady downhill stretch.",
+      "This descent keeps going.",
+      "The downhill continues ahead.",
+      "Terrain remains downhill for now.",
+    ],
+    steep_downhill: [
+      "The steep descent continues. Stay in control.",
+      "You're still on the fast downhill.",
+      "This steep section carries on.",
+      "Steep terrain continues ahead.",
+    ],
+    flat: [
+      "Terrain stays mostly flat here.",
+      "The route remains level for now.",
+      "You're still on the flat section.",
+      "This section stays consistent for a bit.",
+    ],
+    rolling: [
+      "The route stays mixed through here.",
+      "You're still on varied terrain.",
+      "This rolling section continues.",
+      "More mixed terrain ahead.",
+    ],
+    easing: [
+      "Terrain is still leveling out.",
+      "The route continues to flatten.",
+      "You're still coming off the climb.",
+      "Things are still smoothing out.",
+    ],
+    difficult_ahead: [
+      "Difficult terrain continues.",
+      "You're still in the challenging section.",
+      "This tough stretch carries on.",
+      "Hard terrain continues ahead.",
+    ],
+  },
+
+  energetic: {
+    short_uphill: [
+      "Still climbing — keep it moving.",
+      "The uphill keeps going — stay with it.",
+      "This rise continues — push through.",
+      "You're still on the climb.",
+    ],
+    sustained_uphill: [
+      "Still on the climb — you've got this.",
+      "The uphill keeps going — dig in.",
+      "You're still in the long climb — stay strong.",
+      "This climb continues — keep pushing.",
+    ],
+    steep_uphill: [
+      "Still on the hard climb — stay strong.",
+      "The tough climb continues — give it everything.",
+      "You're still pushing through — nearly there.",
+      "This demanding climb carries on — dig deep.",
+    ],
+    gentle_downhill: [
+      "Nice, this downhill keeps going.",
+      "Still on the descent — enjoy it.",
+      "You're still rolling downhill.",
+      "This smooth descent continues.",
+    ],
+    sustained_downhill: [
+      "The long downhill just keeps going — love it.",
+      "Still on the descent — let it flow.",
+      "You're still rolling on the downhill.",
+      "This descent continues — enjoy the ride.",
+    ],
+    steep_downhill: [
+      "Still on the steep drop — stay sharp.",
+      "The fast descent continues — stay controlled.",
+      "You're still on the quick downhill — ride smart.",
+      "Steep drop continues — keep it together.",
+    ],
+    flat: [
+      "Still on the flat — use it to recover.",
+      "Flat terrain continues — good chance to reset.",
+      "You're still on the easy section — stay ready.",
+      "The level ground keeps going.",
+    ],
+    rolling: [
+      "More rolling terrain ahead — stay nimble.",
+      "Still on the mixed section — keep adapting.",
+      "You're still in the ups and downs.",
+      "This varied terrain continues — stay on it.",
+    ],
+    easing: [
+      "Almost out — terrain keeps flattening.",
+      "Still easing off — nearly through it.",
+      "You're still coming out of the tough section.",
+      "The terrain is still opening up.",
+    ],
+    difficult_ahead: [
+      "Still in the tough section — keep going.",
+      "Hard terrain continues — you've got this.",
+      "You're still pushing through — stay focused.",
+      "This demanding stretch carries on — dig in.",
+    ],
+  },
+
+  minimal: {
+    short_uphill:     ["Still climbing.", "Climb continues.", "Still on the rise.", "Uphill continues."],
+    sustained_uphill: ["Still climbing.", "Long climb continues.", "Still on the rise.", "Climb ahead."],
+    steep_uphill:     ["Still on hard climb.", "Steep climb continues.", "Still climbing.", "Climb carries on."],
+    gentle_downhill:  ["Still downhill.", "Descent continues.", "Still descending.", "Downhill continues."],
+    sustained_downhill: ["Still downhill.", "Descent continues.", "Long descent continues.", "Still descending."],
+    steep_downhill:   ["Still steep.", "Descent continues.", "Still dropping.", "Steep continues."],
+    flat:             ["Still flat.", "Level continues.", "Flat ahead.", "Still level."],
+    rolling:          ["Still rolling.", "Mixed continues.", "Still varied.", "Ups and downs."],
+    easing:           ["Still easing.", "Getting flatter.", "Still smoothing out.", "Still leveling."],
+    difficult_ahead:  ["Still tough.", "Hard terrain.", "Still difficult.", "Challenging ahead."],
+  },
+};
+
+const lastProgressIndex = new Map<string, number>();
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function getTerrainGuidancePhrase(
@@ -195,5 +342,17 @@ export function getTerrainGuidancePhrase(
   const prev = lastIndex.get(key) ?? -1;
   const next = pickIndex(variants.length, prev);
   lastIndex.set(key, next);
+  return variants[next];
+}
+
+export function getTerrainProgressPhrase(
+  kind: TerrainKind,
+  style: TerrainVoiceStyle = DEFAULT_TERRAIN_VOICE_STYLE
+): string {
+  const variants = PROGRESS_PHRASES[style][kind];
+  const key = `${style}:${kind}`;
+  const prev = lastProgressIndex.get(key) ?? -1;
+  const next = pickIndex(variants.length, prev);
+  lastProgressIndex.set(key, next);
   return variants[next];
 }
