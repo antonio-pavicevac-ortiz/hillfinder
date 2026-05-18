@@ -1,5 +1,6 @@
 import { haversineMeters } from "@/lib/geo/distance";
 import type { RouteSegmentDifficulty } from "@/types/saved-route";
+import { getTerrainGuidancePhrase, type TerrainKind } from "./terrainPhrases";
 
 // ─── Thresholds ────────────────────────────────────────────────────────────
 
@@ -96,26 +97,25 @@ function isSignificant(cluster: TerrainCluster): boolean {
 
 // ─── Phrase builder ────────────────────────────────────────────────────────
 
-function distancePhrase(meters: number): string {
-  if (meters < 300) return "a short stretch";
-  if (meters < 650) return "about a quarter mile";
-  if (meters < 1100) return "about half a mile";
-  if (meters < 1700) return "nearly a mile";
-  return "over a mile";
+function toTerrainKind(cluster: TerrainCluster): TerrainKind {
+  const { difficulty, distanceMeters, prevDifficulty } = cluster;
+
+  switch (difficulty) {
+    case "easy":
+      return prevDifficulty === "hard" || prevDifficulty === "uphill" ? "easing" : "flat";
+    case "uphill":
+      if (distanceMeters < 300) return "short_uphill";
+      if (distanceMeters < 800) return "sustained_uphill";
+      return "steep_uphill";
+    case "medium":
+      return distanceMeters < 400 ? "gentle_downhill" : "sustained_downhill";
+    case "hard":
+      return "steep_downhill";
+  }
 }
 
 function buildPhrase(cluster: TerrainCluster): string {
-  const dist = distancePhrase(cluster.distanceMeters);
-  switch (cluster.difficulty) {
-    case "hard":
-      return `Steep downhill for the next ${dist}. Watch your speed.`;
-    case "medium":
-      return `Gradual descent ahead for the next ${dist}.`;
-    case "uphill":
-      return `Climb coming up for the next ${dist}.`;
-    case "easy":
-      return `Terrain flattens out for the next ${dist}.`;
-  }
+  return getTerrainGuidancePhrase(toTerrainKind(cluster));
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
