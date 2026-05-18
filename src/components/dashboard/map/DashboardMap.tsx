@@ -155,6 +155,13 @@ export default function DashboardMap({
   const lastResolvedHeadingRef = useRef<number | null>(null);
   const smoothedHeadingRef = useRef<number | null>(null);
 
+  // Tracks the latest savedRouteToLoad prop so the map.on("load") handler can
+  // restore a session route that arrived before the map was ready.
+  const savedRouteToLoadRef = useRef<SavedRouteRecord | null>(savedRouteToLoad ?? null);
+  useEffect(() => {
+    savedRouteToLoadRef.current = savedRouteToLoad ?? null;
+  }, [savedRouteToLoad]);
+
   function setRouteBusy(busy: boolean, reqId?: number) {
     if (busy) {
       if (typeof reqId === "number") busyReqIdRef.current = reqId;
@@ -1333,6 +1340,12 @@ export default function DashboardMap({
           maximumAge: 0,
         }
       );
+
+      // If a session route was set before the map loaded, draw it now.
+      const pendingRoute = savedRouteToLoadRef.current;
+      if (pendingRoute) {
+        loadSavedRoute(map, pendingRoute);
+      }
     });
 
     return () => {
