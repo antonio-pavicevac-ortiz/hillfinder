@@ -9,7 +9,7 @@ import {
   type TerrainVoiceStyle,
 } from "@/lib/navigation/terrainPhrases";
 
-export default function SettingsPage() {
+export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const { resolvedTheme, setTheme } = useTheme();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lockPortrait, setLockPortrait] = useState(true);
@@ -52,13 +52,23 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-[#f6f7f2] dark:bg-slate-900 px-5 py-6 transition-colors">
-      <div className="mx-auto max-w-xl mt-20">
-        <Link
-          href="/dashboard"
-          className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
-        >
-          ← Back to dashboard
-        </Link>
+      <div className="mx-auto max-w-xl mt-6">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
+          >
+            ← Back to map
+          </button>
+        ) : (
+          <Link
+            href="/dashboard"
+            className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
+          >
+            ← Back to dashboard
+          </Link>
+        )}
 
         <h1 className="mt-5 text-2xl font-semibold text-gray-900 dark:text-slate-100">Settings</h1>
         <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">

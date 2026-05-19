@@ -10,6 +10,8 @@ import MapControls from "@/components/dashboard/map/MapControls";
 import NavigationCard from "@/components/dashboard/map/NavigationCard";
 
 import DashboardHeader from "@/components/dashboard/ui/DashboardHeader";
+import ProfilePanel from "@/components/dashboard/panels/ProfilePanel";
+import SettingsPanel from "@/components/dashboard/panels/SettingsPanel";
 import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
@@ -18,6 +20,7 @@ import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
+import type { DashboardUser } from "@/types/user";
 
 import { useTheme } from "next-themes";
 
@@ -64,14 +67,16 @@ const glassBar =
   "before:bg-gradient-to-b before:from-white/20 before:to-transparent";
 
 type DashboardProps = {
+  user?: DashboardUser;
   voiceEnabled: boolean;
   setVoiceEnabled: (next: boolean) => void;
 };
 
-export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardProps) {
+export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: DashboardProps) {
   const [qaOpen, setQaOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [routesOpen, setRoutesOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<null | "settings" | "profile">(null);
 
   const [hasRoute, setHasRoute] = useState(false);
 
@@ -985,11 +990,15 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
         />
       )}
       <header
-        className="fixed top-0 left-0 right-0 z-20 pointer-events-none"
+        className="fixed top-0 left-0 right-0 z-[80] pointer-events-none"
         style={{ height: HEADER_H }}
       >
         <div className={`h-full ${glassBar} pointer-events-auto`}>
-          <DashboardHeader />
+          <DashboardHeader
+            user={user}
+            onOpenSettings={() => setActivePanel("settings")}
+            onOpenProfile={() => setActivePanel("profile")}
+          />
         </div>
       </header>
       {routesOpen && (
@@ -1153,6 +1162,12 @@ export default function Dashboard({ voiceEnabled, setVoiceEnabled }: DashboardPr
         quickRouteEnabled={quickRouteEnabled}
         isOffline={!isOnline}
       />
+      {activePanel === "settings" && (
+        <SettingsPanel onClose={() => setActivePanel(null)} />
+      )}
+      {activePanel === "profile" && (
+        <ProfilePanel onClose={() => setActivePanel(null)} />
+      )}
       <DownhillGenerator
         open={generatorOpen}
         fromLabel={
