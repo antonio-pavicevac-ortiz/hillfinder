@@ -3,8 +3,13 @@
 import { useEffect, useState } from "react";
 
 import Dashboard from "@/components/dashboard/Dashboard";
+import type { DashboardUser } from "@/types/user";
 
-export default function DashboardShell() {
+type DashboardShellProps = {
+  user?: DashboardUser;
+};
+
+export default function DashboardShell({ user }: DashboardShellProps) {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
 
   useEffect(() => {
@@ -30,5 +35,5 @@ export default function DashboardShell() {
     window.dispatchEvent(new Event("hf-settings-updated"));
   }
 
-  return <Dashboard voiceEnabled={voiceEnabled} setVoiceEnabled={updateVoiceEnabled} />;
+  return <Dashboard user={user} voiceEnabled={voiceEnabled} setVoiceEnabled={updateVoiceEnabled} />;
 }

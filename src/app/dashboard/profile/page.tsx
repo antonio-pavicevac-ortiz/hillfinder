@@ -44,8 +44,14 @@ export default async function ProfilePage() {
   return (
     <section className="mx-auto max-w-3xl space-y-8 px-6 pt-4 pb-10 min-h-screen bg-[#f6f7f2] dark:bg-slate-900 transition-colors">
       {/* Page Header */}
-      <div className="mt-20">
-        <h1 className="text-2xl font-semibold text-gray-800 dark:text-slate-100">Profile Settings</h1>
+      <div className="mt-6">
+        <a
+          href="/dashboard"
+          className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
+        >
+          ← Back to dashboard
+        </a>
+        <h1 className="mt-4 text-2xl font-semibold text-gray-800 dark:text-slate-100">Profile Settings</h1>
         <p className="text-gray-500 dark:text-slate-400 text-sm">
           Manage your personal details and your Hillfinder identity.
         </p>
