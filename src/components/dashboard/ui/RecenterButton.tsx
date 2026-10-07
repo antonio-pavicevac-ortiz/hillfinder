@@ -1,6 +1,9 @@
 "use client";
 
+import { mapControlStyle, MAP_CONTROL_ICON } from "./mapControlStyle";
+
 type Props = {
+  interacted?: boolean;
   onClick: () => void;
   disabled?: boolean;
   /** Optional override for the icon stroke */
@@ -12,13 +15,14 @@ type Props = {
 
 export default function RecenterButton({
   onClick,
+  interacted = false,
   disabled = false,
   strokeColor,
   className,
   ariaLabel = "Recenter map",
 }: Props) {
   const effectiveStroke =
-    strokeColor ?? (disabled ? "rgba(56,189,248,0.65)" : "rgba(15,23,42,0.95)");
+    strokeColor ?? (interacted ? "#FFFFFF" : MAP_CONTROL_ICON);
 
   return (
     <button
@@ -38,11 +42,7 @@ export default function RecenterButton({
       style={{
         width: 48,
         height: 48,
-        background: disabled ? "rgba(56,189,248,0.13)" : "rgba(255,255,255,0.22)",
-        border: disabled ? "1px solid rgba(56,189,248,0.28)" : "1px solid rgba(255,255,255,0.40)",
-        backdropFilter: "blur(26px)",
-        WebkitBackdropFilter: "blur(26px)",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
+        ...mapControlStyle("#0085FF", interacted),
         // Important: button should receive taps
         pointerEvents: "auto",
       }}

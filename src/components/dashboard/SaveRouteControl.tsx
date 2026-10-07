@@ -1,5 +1,6 @@
 "use client";
 
+import { mapControlStyle } from "./ui/mapControlStyle";
 import type { SaveRoutePayload } from "@/types/saved-route";
 import { Bookmark, Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -17,6 +18,7 @@ export default function SaveRouteControl({
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveUsed, setSaveUsed] = useState(false);
 
   useEffect(() => {
     setSaved(false);
@@ -41,6 +43,7 @@ export default function SaveRouteControl({
       }
 
       setSaved(true);
+      setSaveUsed(true);
       onSaved?.();
     } catch (err) {
       console.error("[SaveRouteControl]", err);
@@ -94,11 +97,7 @@ export default function SaveRouteControl({
         style={{
           width: 48,
           height: 48,
-          background: controlBackground,
-          border: controlBorder,
-          backdropFilter: "blur(26px)",
-          WebkitBackdropFilter: "blur(26px)",
-          boxShadow: controlShadow,
+          ...mapControlStyle("#00B86B", saveUsed || saved || isActiveSavedRoute),
         }}
       >
         <div
@@ -113,19 +112,19 @@ export default function SaveRouteControl({
           <Loader2
             strokeWidth={2.85}
             className="relative z-10 h-5 w-5 animate-spin"
-            style={{ color: disabled ? "rgba(52,211,153,0.60)" : "rgba(15,23,42,0.95)" }}
+            style={{ color: "inherit" }}
           />
         ) : saved ? (
           <Check
             strokeWidth={2.85}
             className="relative z-10 h-5 w-5"
-            style={{ color: disabled ? "rgba(52,211,153,0.60)" : "rgba(15,23,42,0.95)" }}
+            style={{ color: "inherit" }}
           />
         ) : (
           <Bookmark
             strokeWidth={2.85}
             className="relative z-10 h-5 w-5"
-            style={{ color: disabled ? "rgba(52,211,153,0.60)" : "rgba(15,23,42,0.95)" }}
+            style={{ color: "inherit" }}
           />
         )}
       </button>
