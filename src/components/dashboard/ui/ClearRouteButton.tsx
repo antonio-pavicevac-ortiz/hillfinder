@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { mapControlStyle, MAP_CONTROL_ICON } from "./mapControlStyle";
 
 type Props = {
+  interacted?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   className?: string;
@@ -15,13 +17,14 @@ export const CLEAR_ROUTE_ROUNDED = "rounded-2xl";
 
 export default function ClearRouteButton({
   disabled,
+  interacted = false,
   onClick,
   className = "",
   size = 48,
   ariaLabel,
   pulse = false,
 }: Props) {
-  const strokeColor = disabled ? "rgba(251,146,60,0.65)" : "rgba(15,23,42,0.95)";
+  const strokeColor = interacted ? "#FFFFFF" : MAP_CONTROL_ICON;
 
   useEffect(() => {
     const id = "hf-undo-pulse-style";
@@ -59,11 +62,7 @@ export default function ClearRouteButton({
       style={{
         width: size,
         height: size,
-        background: disabled ? "rgba(251,146,60,0.12)" : "rgba(255,255,255,0.22)",
-        border: disabled ? "1px solid rgba(251,146,60,0.28)" : "1px solid rgba(255,255,255,0.40)",
-        backdropFilter: "blur(26px)",
-        WebkitBackdropFilter: "blur(26px)",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
+        ...mapControlStyle("#FF6415", interacted),
       }}
     >
       <div

@@ -129,6 +129,9 @@ export default function DashboardMap({
     ((map: mapboxgl.Map, lng: number, lat: number) => Promise<number>) | null
   >(null);
 
+  // Each new route request increments this ID. Any async callback that sees a
+  // stale ID knows a newer request has taken over and bails out, preventing an
+  // older slower fetch from overwriting a fresher result.
   const routeReqIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -501,6 +504,8 @@ export default function DashboardMap({
   function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
     drawVariantLayers(map, variant);
 
+    // Two rAFs let the browser finish painting the new route layers before
+    // fitBounds runs, so the padding calculation sees the final layout.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         fitMapToRoute(map, variant.coords, {
@@ -928,6 +933,9 @@ export default function DashboardMap({
         return;
       }
 
+      // When the user re-runs generation from the same origin, pass previously
+      // shown route midpoints so pickEasyAndHardVariants skips near-duplicates
+      // and surfaces a genuinely different path.
       const avoidFingerprints = opts?.randomize ? shownRouteFingerprintsRef.current : undefined;
       const { easy, hard } = pickEasyAndHardVariants(candidates, avoidFingerprints);
 
@@ -1074,6 +1082,8 @@ export default function DashboardMap({
     const prevBodyOverscroll = (document.body.style as any).overscrollBehavior;
     let watchId: number | null = null;
 
+    // Lock the page scroll so iOS rubber-band overscroll can't visually pull
+    // the full-screen map away from the viewport edges.
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
     document.body.style.height = "100%";
@@ -1114,6 +1124,8 @@ export default function DashboardMap({
       followCameraPausedUntilRef.current = Date.now() + 10_000;
     };
 
+    // Pause camera follow for 10 s after any manual gesture so the map doesn't
+    // snap back to the user's position mid-interaction.
     map.on("dragstart", pauseFollowCamera);
     map.on("rotatestart", pauseFollowCamera);
     map.on("pitchstart", pauseFollowCamera);
@@ -1264,7 +1276,9 @@ export default function DashboardMap({
             if (typeof targetHeading === "number" && Number.isFinite(targetHeading)) {
               const prev = smoothedHeadingRef.current ?? targetHeading;
 
-              // simple smoothing (lerp)
+              // Exponential moving average to smooth out GPS heading jitter.
+              // Alpha of 0.2 means each new reading contributes 20% weight,
+              // keeping the puck arrow stable while still tracking turns.
               const alpha = 0.2;
               const smoothed = prev + (targetHeading - prev) * alpha;
 

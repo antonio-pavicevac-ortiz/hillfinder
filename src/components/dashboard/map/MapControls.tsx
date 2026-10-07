@@ -4,6 +4,7 @@ import SaveRouteControl from "@/components/dashboard/SaveRouteControl";
 import ClearRouteButton from "@/components/dashboard/ui/ClearRouteButton";
 import { DashboardLegendPanel } from "@/components/dashboard/ui/DashboardLegend";
 import RecenterButton from "@/components/dashboard/ui/RecenterButton";
+import { mapControlStyle, MAP_CONTROL_ICON } from "@/components/dashboard/ui/mapControlStyle";
 import type { SaveRoutePayload } from "@/types/saved-route";
 import { useEffect, useRef, useState } from "react";
 
@@ -33,6 +34,9 @@ export default function MapControls({
   isActiveSavedRoute = false,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
+  const [recenterUsed, setRecenterUsed] = useState(false);
+  const [clearUsed, setClearUsed] = useState(false);
+  const [legendUsed, setLegendUsed] = useState(false);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -54,7 +58,7 @@ export default function MapControls({
   const legendDisabled = !legendEnabled;
   const showUndoDestination = hasDestination && !hasRoute;
   const middleDisabled = showUndoDestination ? !onUndoDestination : !hasRoute;
-  const legendStrokeColor = legendDisabled ? "rgba(139,92,246,0.65)" : "rgba(15,23,42,0.95)";
+  const legendStrokeColor = legendUsed ? "#FFFFFF" : MAP_CONTROL_ICON;
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -97,7 +101,14 @@ export default function MapControls({
           onTouchStartCapture={stopMapTouchStart}
           onMouseDownCapture={stopMapMouseDown}
         >
-          <RecenterButton onClick={onRecenter} disabled={recenterDisabled} />
+          <RecenterButton
+            onClick={() => {
+              setRecenterUsed(true);
+              onRecenter();
+            }}
+            interacted={recenterUsed}
+            disabled={recenterDisabled}
+          />
         </div>
 
         <div
@@ -107,7 +118,12 @@ export default function MapControls({
           onMouseDownCapture={stopMapMouseDown}
         >
           <ClearRouteButton
-            onClick={showUndoDestination ? (onUndoDestination ?? (() => {})) : onClearRoute}
+            onClick={() => {
+              setClearUsed(true);
+              if (showUndoDestination) onUndoDestination?.();
+              else onClearRoute();
+            }}
+            interacted={clearUsed}
             disabled={middleDisabled}
             ariaLabel={showUndoDestination ? "Undo destination" : "Clear route"}
             pulse={showUndoDestination}
@@ -143,6 +159,7 @@ export default function MapControls({
             disabled={legendDisabled}
             onClick={() => {
               if (legendDisabled) return;
+              setLegendUsed(true);
               setLegendOpen((v) => !v);
             }}
             className={[
@@ -152,13 +169,7 @@ export default function MapControls({
             style={{
               width: 48,
               height: 48,
-              background: legendDisabled ? "rgba(139,92,246,0.12)" : "rgba(255,255,255,0.22)",
-              border: legendDisabled
-                ? "1px solid rgba(139,92,246,0.28)"
-                : "1px solid rgba(255,255,255,0.40)",
-              backdropFilter: "blur(26px)",
-              WebkitBackdropFilter: "blur(26px)",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.25), 0 4px 10px rgba(0,0,0,0.20)",
+              ...mapControlStyle("#8845FF", legendUsed),
             }}
           >
             <div
