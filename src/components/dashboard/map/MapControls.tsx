@@ -3,8 +3,12 @@
 import SaveRouteControl from "@/components/dashboard/SaveRouteControl";
 import ClearRouteButton from "@/components/dashboard/ui/ClearRouteButton";
 import { DashboardLegendPanel } from "@/components/dashboard/ui/DashboardLegend";
+import MapControlTooltip from "@/components/dashboard/ui/MapControlTooltip";
 import RecenterButton from "@/components/dashboard/ui/RecenterButton";
-import { mapControlStyle, MAP_CONTROL_ICON } from "@/components/dashboard/ui/mapControlStyle";
+import {
+  mapControlStyle,
+  MAP_CONTROL_ICON,
+} from "@/components/dashboard/ui/mapControlStyle";
 import type { SaveRoutePayload } from "@/types/saved-route";
 import { useEffect, useRef, useState } from "react";
 
@@ -13,10 +17,13 @@ type Props = {
   onClearRoute: () => void;
   onRecenter: () => void;
   recenterDisabled?: boolean;
+  recenterActive?: boolean;
   hasDestination?: boolean;
   onUndoDestination?: () => void;
   saveRoute?: SaveRoutePayload | null;
-  onRouteSaved?: () => void;
+  onRouteSaved?: (routeId: string, route: SaveRoutePayload) => void;
+  onCreateRoute?: () => void;
+  savedRouteId?: string | null;
   isActiveSavedRoute?: boolean;
 };
 
@@ -27,16 +34,16 @@ export default function MapControls({
   onClearRoute,
   onRecenter,
   recenterDisabled = false,
+  recenterActive = false,
   hasDestination = false,
   onUndoDestination,
   saveRoute = null,
   onRouteSaved,
+  onCreateRoute,
+  savedRouteId = null,
   isActiveSavedRoute = false,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
-  const [recenterUsed, setRecenterUsed] = useState(false);
-  const [clearUsed, setClearUsed] = useState(false);
-  const [legendUsed, setLegendUsed] = useState(false);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -58,7 +65,12 @@ export default function MapControls({
   const legendDisabled = !legendEnabled;
   const showUndoDestination = hasDestination && !hasRoute;
   const middleDisabled = showUndoDestination ? !onUndoDestination : !hasRoute;
-  const legendStrokeColor = legendUsed ? "#FFFFFF" : MAP_CONTROL_ICON;
+  const legendVisible = legendOpen && legendEnabled;
+  const legendStrokeColor = legendVisible ? "#FFFFFF" : MAP_CONTROL_ICON;
+
+  useEffect(() => {
+    if (!legendEnabled) setLegendOpen(false);
+  }, [legendEnabled]);
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -95,114 +107,105 @@ export default function MapControls({
       }}
     >
       <div className="flex flex-col items-end gap-3 pointer-events-auto touch-none">
-        <div
-          className="pointer-events-auto touch-none"
-          onPointerDownCapture={stopMapPointerDown}
-          onTouchStartCapture={stopMapTouchStart}
-          onMouseDownCapture={stopMapMouseDown}
-        >
-          <RecenterButton
-            onClick={() => {
-              setRecenterUsed(true);
-              onRecenter();
-            }}
-            interacted={recenterUsed}
-            disabled={recenterDisabled}
-          />
-        </div>
-
-        <div
-          className="pointer-events-auto touch-none"
-          onPointerDownCapture={stopMapPointerDown}
-          onTouchStartCapture={stopMapTouchStart}
-          onMouseDownCapture={stopMapMouseDown}
-        >
-          <ClearRouteButton
-            onClick={() => {
-              setClearUsed(true);
-              if (showUndoDestination) onUndoDestination?.();
-              else onClearRoute();
-            }}
-            interacted={clearUsed}
-            disabled={middleDisabled}
-            ariaLabel={showUndoDestination ? "Undo destination" : "Clear route"}
-            pulse={showUndoDestination}
-          />
-        </div>
-
-        <div
-          className="pointer-events-auto touch-none"
-          onPointerDownCapture={stopMapPointerDown}
-          onTouchStartCapture={stopMapTouchStart}
-          onMouseDownCapture={stopMapMouseDown}
-        >
-          <SaveRouteControl
-            route={saveRoute}
-            onSaved={onRouteSaved}
-            compact
-            isActiveSavedRoute={isActiveSavedRoute}
-          />
-        </div>
-
-        <div
-          className="relative pointer-events-auto touch-none"
-          ref={wrapRef}
-          onPointerDownCapture={stopMapPointerDown}
-          onTouchStartCapture={stopMapTouchStart}
-          onMouseDownCapture={stopMapMouseDown}
-        >
-          <button
-            type="button"
-            aria-label={legendOpen ? "Hide legend" : "Show legend"}
-            aria-pressed={legendOpen}
-            ref={buttonRef}
-            disabled={legendDisabled}
-            onClick={() => {
-              if (legendDisabled) return;
-              setLegendUsed(true);
-              setLegendOpen((v) => !v);
-            }}
-            className={[
-              "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
-              "rounded-2xl",
-            ].join(" ")}
-            style={{
-              width: 48,
-              height: 48,
-              ...mapControlStyle("#8845FF", legendUsed),
-            }}
-          >
-            <div
-              aria-hidden
-              className="absolute inset-0 pointer-events-none rounded-2xl"
-              style={{
-                background:
-                  "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
-              }}
+        <MapControlTooltip label="Recenter on your location">
+          {(descriptionId) => (
+            <RecenterButton
+              onClick={onRecenter}
+              interacted={recenterActive}
+              disabled={recenterDisabled}
+              ariaDescribedBy={descriptionId}
             />
+          )}
+        </MapControlTooltip>
 
-            <svg
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              fill="none"
-              stroke={legendStrokeColor}
-              strokeWidth="2.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="relative z-10"
-              aria-hidden="true"
-            >
-              <circle cx="6" cy="7" r="1.6" />
-              <circle cx="6" cy="12" r="1.6" />
-              <circle cx="6" cy="17" r="1.6" />
-              <path d="M10 7h8" />
-              <path d="M10 12h8" />
-              <path d="M10 17h8" />
-            </svg>
-          </button>
+        <MapControlTooltip
+          label={showUndoDestination ? "Undo destination" : "Clear route"}
+        >
+          {(descriptionId) => (
+            <ClearRouteButton
+              onClick={() => {
+                if (showUndoDestination) onUndoDestination?.();
+                else onClearRoute();
+              }}
+              interacted={!middleDisabled}
+              disabled={middleDisabled}
+              ariaLabel={
+                showUndoDestination ? "Undo destination" : "Clear route"
+              }
+              ariaDescribedBy={descriptionId}
+              pulse={showUndoDestination}
+            />
+          )}
+        </MapControlTooltip>
 
-          {legendOpen && (
+        <SaveRouteControl
+          route={saveRoute}
+          onSaved={onRouteSaved}
+          onCreateRoute={onCreateRoute}
+          savedRouteId={savedRouteId}
+          compact
+          isActiveSavedRoute={isActiveSavedRoute}
+        />
+
+        <div className="relative pointer-events-auto touch-none" ref={wrapRef}>
+          <MapControlTooltip
+            label={legendVisible ? "Hide legend" : "Show legend"}
+          >
+            {(descriptionId) => (
+              <button
+                type="button"
+                aria-describedby={descriptionId}
+                aria-label={legendVisible ? "Hide legend" : "Show legend"}
+                aria-pressed={legendVisible}
+                ref={buttonRef}
+                disabled={legendDisabled}
+                onClick={() => {
+                  if (legendDisabled) return;
+                  setLegendOpen((v) => !v);
+                }}
+                className={[
+                  "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
+                  "rounded-2xl",
+                ].join(" ")}
+                style={{
+                  width: 48,
+                  height: 48,
+                  ...mapControlStyle("#8845FF", legendVisible),
+                }}
+              >
+                <div
+                  aria-hidden
+                  className="absolute inset-0 pointer-events-none rounded-2xl"
+                  style={{
+                    background:
+                      "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+                  }}
+                />
+
+                <svg
+                  viewBox="0 0 24 24"
+                  width="24"
+                  height="24"
+                  fill="none"
+                  stroke={legendStrokeColor}
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="relative z-10"
+                  aria-hidden="true"
+                >
+                  <circle cx="6" cy="7" r="1.6" />
+                  <circle cx="6" cy="12" r="1.6" />
+                  <circle cx="6" cy="17" r="1.6" />
+                  <path d="M10 7h8" />
+                  <path d="M10 12h8" />
+                  <path d="M10 17h8" />
+                </svg>
+              </button>
+            )}
+          </MapControlTooltip>
+
+          {legendVisible && (
             <div
               ref={popoverRef}
               className={[

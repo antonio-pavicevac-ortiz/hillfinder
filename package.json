@@ -12,7 +12,8 @@
     "dev:clean": "npm run clean && npm run dev",
     "dev:fresh": "npm run dev:clean",
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
-    "dev:cloudflare": "npm run clean && concurrently \"npm run dev\" \"npm run tunnel\""
+    "dev:cloudflare": "node scripts/dev-cloudflare.mjs",
+    "dev:ngrok": "node scripts/dev-ngrok.mjs"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.10.0",

@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Toaster
           position="top-center"
           toastOptions={{
-            className: "hf-toast hf-toast--drop",
+            className: "hf-toast hf-toast--drop hf-toast-centered",
           }}
           style={{ zIndex: 9999 }}
         />

@@ -170,34 +170,68 @@ body {
 /* -----------------------------
    Sonner toaster layout
    ----------------------------- */
-[data-sonner-toaster][data-position="top-center"] {
-  left: 0 !important;
-  right: 0 !important;
-  transform: none !important;
-  width: 100vw !important;
-
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
+[data-sonner-toaster][data-x-position="center"][data-y-position="top"] {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  width: min(var(--width), calc(100% - 32px)) !important;
 
   pointer-events: none;
 }
 
-[data-sonner-toaster][data-position="top-center"] [data-sonner-toast] {
+[data-sonner-toaster][data-x-position="center"][data-y-position="top"] [data-sonner-toast] {
   pointer-events: auto;
-  margin-left: auto !important;
-  margin-right: auto !important;
+  left: 50% !important;
+  right: auto !important;
+  translate: -50% 0;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
-[data-sonner-toast] [data-content],
-[data-sonner-toast] [data-title],
-[data-sonner-toast] [data-description] {
+[data-sonner-toast][data-styled="true"].hf-toast-centered {
+  display: grid !important;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 2px 6px;
+  /* Matching side columns center the text and keep the icon out of its space. */
+  padding: 10px 12px !important;
+}
+
+[data-sonner-toast][data-styled="true"].hf-toast-centered [data-content] {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+[data-sonner-toast][data-styled="true"].hf-toast-centered [data-title],
+[data-sonner-toast][data-styled="true"].hf-toast-centered [data-description] {
   width: 100% !important;
   text-align: center !important;
+  line-height: 1.35;
 }
 
-[data-sonner-toast] [data-icon] {
+[data-sonner-toast][data-styled="true"].hf-toast-centered [data-icon] {
+  position: static;
+  grid-column: 1;
+  grid-row: 1;
+  width: 16px;
+  height: 16px;
+  margin: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+}
+
+[data-sonner-toast][data-styled="true"].hf-toast-centered [data-button] {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: center;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+  line-height: 1.35;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }

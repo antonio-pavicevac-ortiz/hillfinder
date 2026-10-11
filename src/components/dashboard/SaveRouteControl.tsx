@@ -1,31 +1,53 @@
 "use client";
 
+import MapControlTooltip from "./ui/MapControlTooltip";
 import { mapControlStyle } from "./ui/mapControlStyle";
 import type { SaveRoutePayload } from "@/types/saved-route";
 import { Bookmark, Check, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export default function SaveRouteControl({
   route,
   onSaved,
+  onCreateRoute,
+  savedRouteId = null,
   compact = false,
   isActiveSavedRoute = false,
 }: {
   route: SaveRoutePayload | null;
-  onSaved?: () => void;
+  onSaved?: (routeId: string, route: SaveRoutePayload) => void;
+  onCreateRoute?: () => void;
+  savedRouteId?: string | null;
   compact?: boolean;
   isActiveSavedRoute?: boolean;
 }) {
   const [isSaving, setIsSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [saveUsed, setSaveUsed] = useState(false);
-
-  useEffect(() => {
-    setSaved(false);
-  }, [route]);
+  const saved = !!route && !!savedRouteId && !isActiveSavedRoute;
 
   async function handleSave() {
-    if (!route || isSaving || saved || isActiveSavedRoute) return;
+    if (isSaving || saved || isActiveSavedRoute) return;
+    if (!route) {
+      if (onCreateRoute) {
+        toast.info("Create a route to save it", {
+          id: "save-route-guidance",
+          duration: 6000,
+          action: { label: "Create a route", onClick: onCreateRoute },
+          actionButtonStyle: {
+            background: "transparent",
+            color: "inherit",
+            padding: "6px 0",
+            height: "auto",
+            fontWeight: 700,
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+          },
+        });
+      }
+      return;
+    }
+
+    const savingToast = toast.loading("Saving route…");
 
     try {
       setIsSaving(true);
@@ -42,21 +64,27 @@ export default function SaveRouteControl({
         throw new Error("Failed to save route");
       }
 
-      setSaved(true);
-      setSaveUsed(true);
-      onSaved?.();
+      const data = await res.json();
+      if (typeof data.route?._id !== "string") {
+        throw new Error("Saved route response is missing its ID");
+      }
+      onSaved?.(data.route._id, route);
     } catch (err) {
-      console.error("[SaveRouteControl]", err);
+      console.warn("[SaveRouteControl]", err);
+      toast.error("Couldn't save route. Try again.");
     } finally {
+      toast.dismiss(savingToast);
       setIsSaving(false);
     }
   }
 
-  const disabled = !route || isSaving || isActiveSavedRoute;
+  const disabled = (!route && !onCreateRoute) || isSaving || saved || isActiveSavedRoute;
 
   const sharedRound = "rounded-2xl";
 
-  const controlBackground = disabled ? "rgba(52,211,153,0.11)" : "rgba(255,255,255,0.22)";
+  const controlBackground = disabled
+    ? "rgba(52,211,153,0.11)"
+    : "rgba(255,255,255,0.22)";
 
   const controlBorder = disabled
     ? "1px solid rgba(52,211,153,0.26)"
@@ -82,52 +110,72 @@ export default function SaveRouteControl({
         ? "This route is already saved"
         : "Save Route";
 
+  const tooltipLabel = isSaving
+    ? "Saving route"
+    : saved || isActiveSavedRoute
+      ? "Route already saved"
+      : route
+        ? "Save this route"
+        : "Create a route to save it";
+
   if (compact) {
     return (
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        title={title}
-        className={[
-          "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
-          sharedRound,
-        ].join(" ")}
-        style={{
-          width: 48,
-          height: 48,
-          ...mapControlStyle("#00B86B", saveUsed || saved || isActiveSavedRoute),
-        }}
-      >
-        <div
-          aria-hidden
-          className={["absolute inset-0 pointer-events-none", sharedRound].join(" ")}
-          style={{
-            background: "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
-          }}
-        />
+      <MapControlTooltip label={tooltipLabel}>
+        {(descriptionId) => (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={disabled}
+            aria-label={ariaLabel}
+            aria-busy={isSaving}
+            aria-describedby={descriptionId}
+            className={[
+              "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",
+              sharedRound,
+            ].join(" ")}
+            style={{
+              width: 48,
+              height: 48,
+              ...mapControlStyle(
+                "#00B86B",
+                !!route && (saved || isActiveSavedRoute),
+              ),
+            }}
+          >
+            <div
+              aria-hidden
+              className={[
+                "absolute inset-0 pointer-events-none",
+                sharedRound,
+              ].join(" ")}
+              style={{
+                background:
+                  "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+              }}
+            />
 
-        {isSaving ? (
-          <Loader2
-            strokeWidth={2.85}
-            className="relative z-10 h-5 w-5 animate-spin"
-            style={{ color: "inherit" }}
-          />
-        ) : saved ? (
-          <Check
-            strokeWidth={2.85}
-            className="relative z-10 h-5 w-5"
-            style={{ color: "inherit" }}
-          />
-        ) : (
-          <Bookmark
-            strokeWidth={2.85}
-            className="relative z-10 h-5 w-5"
-            style={{ color: "inherit" }}
-          />
+            {isSaving ? (
+              <Loader2
+                strokeWidth={2.85}
+                className="relative z-10 h-5 w-5 animate-spin"
+                style={{ color: "inherit" }}
+              />
+            ) : saved ? (
+              <Check
+                strokeWidth={2.85}
+                className="relative z-10 h-5 w-5"
+                style={{ color: "inherit" }}
+              />
+            ) : (
+              <Bookmark
+                strokeWidth={2.85}
+                className="relative z-10 h-5 w-5"
+                style={{ color: "inherit" }}
+              />
+            )}
+          </button>
         )}
-      </button>
+      </MapControlTooltip>
     );
   }
 
@@ -136,6 +184,7 @@ export default function SaveRouteControl({
       type="button"
       onClick={handleSave}
       disabled={disabled}
+      aria-busy={isSaving}
       title={title}
       className={[
         "relative w-full flex items-center justify-center gap-2 transition active:scale-95 disabled:cursor-default overflow-hidden",
@@ -152,9 +201,12 @@ export default function SaveRouteControl({
     >
       <div
         aria-hidden
-        className={["absolute inset-0 pointer-events-none", sharedRound].join(" ")}
+        className={["absolute inset-0 pointer-events-none", sharedRound].join(
+          " ",
+        )}
         style={{
-          background: "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+          background:
+            "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
         }}
       />
 
@@ -196,7 +248,10 @@ export default function SaveRouteControl({
         </>
       ) : isActiveSavedRoute ? (
         <>
-          <Bookmark strokeWidth={2.6} className="relative z-10 h-4 w-4 text-slate-500/95" />
+          <Bookmark
+            strokeWidth={2.6}
+            className="relative z-10 h-4 w-4 text-slate-500/95"
+          />
           <span className="relative z-10 text-sm font-medium leading-none text-slate-500/95">
             Already Saved
           </span>
