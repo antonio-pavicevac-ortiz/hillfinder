@@ -25,6 +25,12 @@ import type { DashboardUser } from "@/types/user";
 import { useTheme } from "next-themes";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  clearDashboardSession,
+  loadDashboardSession,
+  saveDashboardSession,
+  sessionPayloadToRecord,
+} from "@/lib/session/dashboardSession";
 import { haversineMeters } from "@/lib/geo/distance";
 import { formatStepDistance } from "@/lib/navigation/format";
 import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
@@ -32,7 +38,6 @@ import { shouldAdvanceStep } from "@/lib/navigation/progress";
 import {
   buildTerrainNarrations,
   findUpcomingTerrainNarration,
-  TERRAIN_COOLDOWN_MS,
   type TerrainNarration,
 } from "@/lib/navigation/terrainNarration";
 import {
@@ -147,6 +152,35 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const theme = (resolvedTheme === "dark" ? "dark" : "light") as "light" | "dark";
   const isOnline = useOnlineStatus();
 
+  // ── Session restore ────────────────────────────────────────────────────────
+  // Runs once on mount. Reads persisted session from localStorage and
+  // rehydrates Dashboard state without triggering new API/route requests.
+  useEffect(() => {
+    const session = loadDashboardSession();
+    if (!session?.routePayload) return;
+
+    const payload = session.routePayload;
+
+    if (session.fromLocation) setFromLocation(session.fromLocation);
+    if (session.destination) {
+      setDestination(session.destination);
+      setPlannerTo(session.destination.name ?? "");
+    }
+    if (session.selectedVariant) setSelectedVariant(session.selectedVariant);
+    setActiveRouteSource(session.activeRouteSource ?? "generated");
+    setActiveRouteToSave(payload);
+    setHasRoute(true);
+    setVariantsReady(true);
+
+    if (payload.navSteps?.length) {
+      dispatchNavigation({ type: "LOAD_STEPS", steps: payload.navSteps });
+    }
+
+    // Synthetic SavedRouteRecord triggers DashboardMap.loadSavedRoute after
+    // the Mapbox map is ready — no route API calls are made.
+    setSelectedSavedRoute(sessionPayloadToRecord(payload));
+  }, []);
+
   let distanceToNextStepMeters: number | null = null;
 
   if (liveNavLocation && distanceTargetStep?.location) {
@@ -184,31 +218,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
     console.log("[Dashboard][TTS system] speak()", message);
 
-    synth.speak(utterance);
-  }
-
-  function speakNavigationInstruction(instruction?: string) {
-    if (!instruction) return;
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    synth.resume();
-
-    const utterance = new SpeechSynthesisUtterance(instruction);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-
-    utterance.onstart = () => {
-      console.log("[Dashboard][TTS direct] speaking started", instruction);
-      dispatchNavigation({ type: "MARK_STEP_SPOKEN" });
-    };
-
-    utterance.onerror = (event) => {
-      console.warn("[Dashboard][TTS direct] speech error", event);
-    };
-
-    console.log("[Dashboard][TTS direct] speak()", instruction);
     synth.speak(utterance);
   }
 
@@ -795,6 +804,21 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     };
   }, []);
 
+  // ── Session persistence ────────────────────────────────────────────────────
+  // Saves route session whenever a completed route payload is available.
+  // Short-lived loading states are never in activeRouteToSave, so we never
+  // persist partial in-flight state.
+  useEffect(() => {
+    if (!activeRouteToSave) return;
+    saveDashboardSession({
+      fromLocation,
+      destination,
+      selectedVariant,
+      activeRouteSource,
+      routePayload: activeRouteToSave,
+    });
+  }, [activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource]);
+
   useEffect(() => {
     if (!isOnline) {
       toast("You're offline. Map and route generation features need a connection.", {
@@ -855,7 +879,10 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       )}
       <MapControls
         hasRoute={hasRoute}
-        onClearRoute={clearRoute}
+        onClearRoute={() => {
+          clearRoute();
+          clearDashboardSession();
+        }}
         onRecenter={() => {
           setRecenterActive(true);
           setRecenterNonce((n) => n + 1);
@@ -869,6 +896,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           setBlocked(false);
           setRouteBusy(false);
           clearRoute();
+          clearDashboardSession();
         }}
         saveRoute={activeRouteToSave}
         onCreateRoute={handlePlanRoute}

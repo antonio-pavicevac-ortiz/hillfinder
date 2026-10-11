@@ -57,9 +57,10 @@ self.addEventListener("fetch", (event) => {
           cached ??
           fetch(request).then((response) => {
             if (response.ok) {
-              caches
-                .open(STATIC_CACHE)
-                .then((cache) => cache.put(request, response.clone()));
+              // Clone synchronously before any async operation so the body
+              // isn't consumed by the time the cache.put() callback runs.
+              const clone = response.clone();
+              caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
             }
             return response;
           })
@@ -80,9 +81,8 @@ self.addEventListener("fetch", (event) => {
           cached ??
           fetch(request).then((response) => {
             if (response.ok) {
-              caches
-                .open(SHELL_CACHE)
-                .then((cache) => cache.put(request, response.clone()));
+              const clone = response.clone();
+              caches.open(SHELL_CACHE).then((cache) => cache.put(request, clone));
             }
             return response;
           })

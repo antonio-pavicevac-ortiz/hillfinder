@@ -597,3 +597,13 @@ Copy this section for a newly assigned task:
   checks passed; ESLint found no errors and 15 existing warnings.
 - The unrelated untracked directory and ignored environment files are excluded.
 - No push requested for this checkpoint.
+
+## Merge conflict resolution — October 11, 2026
+
+- Merged `origin/main` (`9141211`) into the dashboard interaction branch.
+- Resolved the overlapping MapControls props in `Dashboard.tsx` by retaining
+  main's persisted-session clearing and this branch's Recenter highlight/reset.
+- Retained main's route-session restoration and service-worker cache fixes.
+- Validation: TypeScript and whitespace checks passed; scoped ESLint reported
+  no errors and 13 existing map hook warnings. No conflict markers remain.
+- Ownership released for review. This entry is included in the merge commit.

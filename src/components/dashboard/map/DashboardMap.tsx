@@ -165,6 +165,13 @@ export default function DashboardMap({
   const lastResolvedHeadingRef = useRef<number | null>(null);
   const smoothedHeadingRef = useRef<number | null>(null);
 
+  // Tracks the latest savedRouteToLoad prop so the map.on("load") handler can
+  // restore a session route that arrived before the map was ready.
+  const savedRouteToLoadRef = useRef<SavedRouteRecord | null>(savedRouteToLoad ?? null);
+  useEffect(() => {
+    savedRouteToLoadRef.current = savedRouteToLoad ?? null;
+  }, [savedRouteToLoad]);
+
   function setRouteBusy(busy: boolean, reqId?: number) {
     if (busy) {
       if (typeof reqId === "number") busyReqIdRef.current = reqId;
@@ -523,6 +530,10 @@ export default function DashboardMap({
   }
 
   function loadSavedRoute(map: mapboxgl.Map, savedRoute: SavedRouteRecord) {
+    // Do not attempt to draw while the Mapbox style is still loading.
+    // The map.on("load") handler will call this function again via savedRouteToLoadRef.
+    if (!map.isStyleLoaded()) return;
+
     abortRef.current?.abort();
     routeReqIdRef.current += 1;
     setRouteBusy(true);
@@ -1362,6 +1373,16 @@ export default function DashboardMap({
           maximumAge: 0,
         }
       );
+
+      // If a session route was set before the map loaded, draw it now.
+      const pendingRoute = savedRouteToLoadRef.current;
+      if (pendingRoute) {
+        try {
+          loadSavedRoute(map, pendingRoute);
+        } catch (err) {
+          console.error("[DashboardMap] failed to restore pending route on load:", err);
+        }
+      }
     });
 
     return () => {
@@ -1792,8 +1813,14 @@ export default function DashboardMap({
     const map = mapRef.current;
     if (!map) return;
     if (!savedRouteToLoad) return;
-
-    loadSavedRoute(map, savedRouteToLoad);
+    // If the style is not ready yet, savedRouteToLoadRef is already in sync and
+    // the map.on("load") handler will draw the route once the style is ready.
+    if (!map.isStyleLoaded()) return;
+    try {
+      loadSavedRoute(map, savedRouteToLoad);
+    } catch (err) {
+      console.error("[DashboardMap] failed to restore saved route:", err);
+    }
   }, [savedRouteToLoad]);
 
   useEffect(() => {
