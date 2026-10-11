@@ -84,6 +84,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
   const [routeAlternativesNonce, setRouteAlternativesNonce] = useState(0);
   const [recenterNonce, setRecenterNonce] = useState(0);
+  const [recenterActive, setRecenterActive] = useState(false);
   const [clearRouteNonce, setClearRouteNonce] = useState(0);
   const [clearDestinationNonce, setClearDestinationNonce] = useState(0);
   const [findDownhillNonce, setFindDownhillNonce] = useState(0);
@@ -99,6 +100,16 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const [selectedSavedRoute, setSelectedSavedRoute] = useState<SavedRouteRecord | null>(null);
   const [refreshRoutesKey, setRefreshRoutesKey] = useState(0);
   const [activeRouteSource, setActiveRouteSource] = useState<ActiveRouteSource>(null);
+  const [savedRouteEntry, setSavedRouteEntry] = useState<{
+    id: string;
+    route: SaveRoutePayload;
+  } | null>(null);
+  const activeSavedRouteId =
+    activeRouteSource === "saved"
+      ? selectedSavedRoute?._id ?? null
+      : activeRouteToSave && savedRouteEntry?.route === activeRouteToSave
+        ? savedRouteEntry.id
+        : null;
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -290,13 +301,14 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
   function handleDeletedRoute(routeId: string) {
     setRefreshRoutesKey((n) => n + 1);
+    setSavedRouteEntry((entry) => (entry?.id === routeId ? null : entry));
 
     const wasActive = selectedSavedRoute?._id === routeId;
 
     if (wasActive) {
-      clearRoute();
-      setDestination(null);
-      setPlannerTo("");
+      // Deleting storage does not discard the route currently on the map.
+      setSelectedSavedRoute(null);
+      setActiveRouteSource("generated");
     }
 
     toast.success("Saved route deleted");
@@ -844,7 +856,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       <MapControls
         hasRoute={hasRoute}
         onClearRoute={clearRoute}
-        onRecenter={() => setRecenterNonce((n) => n + 1)}
+        onRecenter={() => {
+          setRecenterActive(true);
+          setRecenterNonce((n) => n + 1);
+        }}
+        recenterActive={recenterActive}
         hasDestination={!!destination}
         onUndoDestination={() => {
           setClearDestinationNonce((n) => n + 1);
@@ -855,7 +871,35 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           clearRoute();
         }}
         saveRoute={activeRouteToSave}
-        onRouteSaved={() => setRefreshRoutesKey((n) => n + 1)}
+        onCreateRoute={handlePlanRoute}
+        onRouteSaved={(routeId, route) => {
+          setSavedRouteEntry({ id: routeId, route });
+          setRefreshRoutesKey((n) => n + 1);
+          toast.success("Route saved", {
+            duration: 6000,
+            actionButtonStyle: {
+              marginLeft: 0,
+              background: "transparent",
+              color: "inherit",
+              padding: "6px 0",
+              height: "auto",
+              borderRadius: 0,
+              fontWeight: 700,
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+              whiteSpace: "nowrap",
+            },
+            action: {
+              label: "View saved routes",
+              onClick: () => {
+                setQaOpen(false);
+                setGeneratorOpen(false);
+                setRoutesOpen(true);
+              },
+            },
+          });
+        }}
+        savedRouteId={activeSavedRouteId}
         isActiveSavedRoute={activeRouteSource === "saved"}
       />
       <DashboardMap
@@ -863,6 +907,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         destination={destination}
         fromLocation={fromLocation}
         recenterNonce={recenterNonce}
+        onManualMapMove={() => setRecenterActive(false)}
         clearRouteNonce={clearRouteNonce}
         clearDestinationNonce={clearDestinationNonce}
         findDownhillNonce={findDownhillNonce}
@@ -1022,7 +1067,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
                   `Route loaded\n${shortAreaName(route.from.name)} → ${shortAreaName(route.to.name)}`
                 );
               }}
-              activeRouteId={selectedSavedRoute?._id ?? null}
+              activeRouteId={activeSavedRouteId}
               onDeletedRoute={handleDeletedRoute}
             />
           </div>

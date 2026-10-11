@@ -74,6 +74,7 @@ export default function DashboardMap({
   onFromPicked,
   fromLocation,
   recenterNonce,
+  onManualMapMove,
   routeAlternativesNonce,
   selectedVariant,
   onVariantsReady,
@@ -100,6 +101,7 @@ export default function DashboardMap({
   onFromPicked?: (loc: { name: string; lat: number; lng: number }) => void;
   fromLocation?: { lat: number; lng: number; name?: string } | null;
   recenterNonce?: number;
+  onManualMapMove?: () => void;
   routeAlternativesNonce?: number;
   selectedVariant?: VariantKey | null;
   onVariantsReady?: () => void;
@@ -118,6 +120,11 @@ export default function DashboardMap({
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const onManualMapMoveRef = useRef(onManualMapMove);
+
+  useEffect(() => {
+    onManualMapMoveRef.current = onManualMapMove;
+  }, [onManualMapMove]);
 
   const fromMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -1120,6 +1127,14 @@ export default function DashboardMap({
 
     map.on("zoomend", rerenderForZoom);
 
+    const resetRecenterOnManualMove = (
+      event: mapboxgl.MapboxEvent & { originalEvent?: Event }
+    ) => {
+      // Recenter animations and automatic camera updates have no original input event.
+      if (event.originalEvent) onManualMapMoveRef.current?.();
+    };
+    map.on("movestart", resetRecenterOnManualMove);
+
     const pauseFollowCamera = () => {
       followCameraPausedUntilRef.current = Date.now() + 10_000;
     };
@@ -1375,6 +1390,7 @@ export default function DashboardMap({
 
       try {
         map.off("dragstart", pauseFollowCamera);
+        map.off("movestart", resetRecenterOnManualMove);
         map.off("rotatestart", pauseFollowCamera);
         map.off("pitchstart", pauseFollowCamera);
       } catch {}
@@ -1528,35 +1544,48 @@ export default function DashboardMap({
     if (!map) return;
     if (!recenterNonce) return;
 
+    const recenterAt = (ll: mapboxgl.LngLat) => {
+      if (!isNavigatingRef.current) {
+        const existing = fromMarkerRef.current?.getLngLat();
+
+        if (
+          !existing ||
+          Math.abs(existing.lng - ll.lng) > 0.00005 ||
+          Math.abs(existing.lat - ll.lat) > 0.00005
+        ) {
+          ensureFromMarker(map, ll);
+        }
+        void notifyFromPicked(ll, { immediateName: "Current location" });
+      }
+
+      followCameraPausedUntilRef.current = 0;
+      map.easeTo({
+        center: [ll.lng, ll.lat],
+        zoom: Math.max(map.getZoom(), 14),
+        duration: 550,
+        essential: true,
+      });
+    };
+
+    // The location watcher already updates this point. Reuse it immediately
+    // instead of waiting for a new high-accuracy GPS fix on every press.
+    const latestLocation = latestDeviceLocationRef.current;
+    if (latestLocation) {
+      recenterAt(latestLocation);
+      return;
+    }
+
+    let cancelled = false;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (cancelled) return;
         const { latitude, longitude } = pos.coords;
         const ll = new mapboxgl.LngLat(longitude, latitude);
         latestDeviceLocationRef.current = ll;
-
-        if (!isNavigatingRef.current) {
-          const existing = fromMarkerRef.current?.getLngLat();
-
-          if (
-            !existing ||
-            Math.abs(existing.lng - ll.lng) > 0.00005 ||
-            Math.abs(existing.lat - ll.lat) > 0.00005
-          ) {
-            ensureFromMarker(map, ll);
-          }
-          void notifyFromPicked(ll, { immediateName: "Current location" });
-        }
-
-        followCameraPausedUntilRef.current = 0;
-
-        map.easeTo({
-          center: [longitude, latitude],
-          zoom: Math.max(map.getZoom(), 14),
-          duration: 550,
-          essential: true,
-        });
+        recenterAt(ll);
       },
       () => {
+        if (cancelled) return;
         const markerLL = fromMarkerRef.current?.getLngLat();
         const lng = fromLocation?.lng ?? markerLL?.lng;
         const lat = fromLocation?.lat ?? markerLL?.lat;
@@ -1572,6 +1601,9 @@ export default function DashboardMap({
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
+    return () => {
+      cancelled = true;
+    };
   }, [recenterNonce]);
 
   useEffect(() => {

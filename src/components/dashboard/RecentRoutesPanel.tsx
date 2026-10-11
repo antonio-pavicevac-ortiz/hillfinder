@@ -34,9 +34,29 @@ export default function RecentRoutesPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [openingRouteId, setOpeningRouteId] = useState<string | null>(null);
+  const openingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const dragControls = useDragControls();
+
+  function handleOpenRoute(route: SavedRouteRecord) {
+    if (openingTimerRef.current || deletingRouteId) return;
+    setOpeningRouteId(route._id);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    openingTimerRef.current = setTimeout(() => {
+      openingTimerRef.current = null;
+      onLoadRoute(route);
+    }, reducedMotion ? 0 : 250);
+  }
+
+  useEffect(() => {
+    if (!open) setOpeningRouteId(null);
+    return () => {
+      if (openingTimerRef.current) clearTimeout(openingTimerRef.current);
+      openingTimerRef.current = null;
+    };
+  }, [open]);
 
   async function fetchRoutes() {
     try {
@@ -149,7 +169,7 @@ export default function RecentRoutesPanel({
   return createPortal(
     <div className="fixed inset-0 z-[140] pointer-events-none">
       <div
-        className="absolute inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto"
+        className={`absolute inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto transition-opacity duration-200 motion-reduce:transition-none ${openingRouteId ? "opacity-0" : "opacity-100"}`}
         onClick={onClose}
       />
 
@@ -167,9 +187,9 @@ export default function RecentRoutesPanel({
             <div className="mx-auto max-w-[42rem] pb-3">
               <motion.div
                 initial={{ y: 80, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
+                animate={openingRouteId ? { y: 40, opacity: 0 } : { y: 0, opacity: 1 }}
                 exit={{ y: 80, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 520, damping: 40, mass: 0.9 }}
+                transition={openingRouteId ? { duration: 0.22, ease: "easeOut" } : { type: "spring", stiffness: 520, damping: 40, mass: 0.9 }}
                 drag="y"
                 dragControls={dragControls}
                 dragListener={false}
@@ -252,6 +272,7 @@ export default function RecentRoutesPanel({
                           {routes.map((route, index) => {
                             const isActive = Boolean(activeRouteId && route._id === activeRouteId);
                             const isDeleting = deletingRouteId === route._id;
+                            const isOpening = openingRouteId === route._id;
 
                             return (
                               <div
@@ -261,20 +282,22 @@ export default function RecentRoutesPanel({
                                 <div
                                   className={[
                                     "rounded-xl px-2 py-2 transition",
-                                    isActive
+                                    isActive || isOpening
                                       ? "bg-emerald-50/90 dark:bg-emerald-900/30"
                                       : "bg-transparent hover:bg-white/70 dark:hover:bg-slate-700/60",
                                   ].join(" ")}
                                 >
                                   <div
-                                    onClick={() => onLoadRoute(route)}
+                                    onClick={() => handleOpenRoute(route)}
+                                    aria-busy={isOpening}
+                                    aria-disabled={!!openingRouteId || !!deletingRouteId}
                                     className="w-full cursor-pointer rounded-lg px-1 py-1 text-left transition active:scale-[0.99]"
                                     role="button"
                                     tabIndex={0}
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter" || e.key === " ") {
                                         e.preventDefault();
-                                        onLoadRoute(route);
+                                        handleOpenRoute(route);
                                       }
                                     }}
                                   >
@@ -284,7 +307,12 @@ export default function RecentRoutesPanel({
                                           {`${shortAreaName(route.from.name) || "From"} → ${shortAreaName(route.to.name) || "Destination"}`}
                                         </p>
 
-                                        {isActive && (
+                                        {isOpening ? (
+                                          <div role="status" className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-600">
+                                            <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                            Opening route…
+                                          </div>
+                                        ) : isActive && (
                                           <div className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-600">
                                             <span className="h-2 w-2 rounded-full bg-emerald-500" />
                                             Active
@@ -302,6 +330,7 @@ export default function RecentRoutesPanel({
                                           aria-label="Share saved route"
                                           title="Share saved route"
                                           onClick={(e) => handleShareRoute(e, route)}
+                                          disabled={!!openingRouteId}
                                           className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200/80 dark:border-sky-700/60 bg-sky-50/80 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 transition active:scale-95 hover:bg-sky-100 dark:hover:bg-sky-900/50"
                                         >
                                           <Share2 className="h-4 w-4" strokeWidth={2.4} />
@@ -313,7 +342,7 @@ export default function RecentRoutesPanel({
                                             isDeleting ? "Deleting route" : "Delete saved route"
                                           }
                                           title={isDeleting ? "Deleting..." : "Delete saved route"}
-                                          disabled={isDeleting}
+                                          disabled={isDeleting || !!openingRouteId}
                                           onClick={(e) => handleDeleteRoute(e, route)}
                                           className={[
                                             "flex h-8 w-8 items-center justify-center rounded-full border transition active:scale-95",

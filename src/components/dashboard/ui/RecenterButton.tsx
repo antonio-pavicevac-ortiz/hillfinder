@@ -11,6 +11,7 @@ type Props = {
   className?: string;
   /** Accessibility label */
   ariaLabel?: string;
+  ariaDescribedBy?: string;
 };
 
 export default function RecenterButton({
@@ -19,7 +20,8 @@ export default function RecenterButton({
   disabled = false,
   strokeColor,
   className,
-  ariaLabel = "Recenter map",
+  ariaLabel = "Recenter on your location",
+  ariaDescribedBy,
 }: Props) {
   const effectiveStroke =
     strokeColor ?? (interacted ? "#FFFFFF" : MAP_CONTROL_ICON);
@@ -27,6 +29,7 @@ export default function RecenterButton({
   return (
     <button
       type="button"
+      aria-describedby={ariaDescribedBy}
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={onClick}
@@ -52,7 +55,8 @@ export default function RecenterButton({
         aria-hidden
         className="absolute inset-0 pointer-events-none rounded-2xl"
         style={{
-          background: "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+          background:
+            "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
         }}
       />
       {/* Crosshair icon */}

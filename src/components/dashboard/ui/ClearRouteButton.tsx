@@ -10,6 +10,7 @@ type Props = {
   className?: string;
   size?: number;
   ariaLabel?: string;
+  ariaDescribedBy?: string;
   pulse?: boolean;
 };
 
@@ -22,6 +23,7 @@ export default function ClearRouteButton({
   className = "",
   size = 48,
   ariaLabel,
+  ariaDescribedBy,
   pulse = false,
 }: Props) {
   const strokeColor = interacted ? "#FFFFFF" : MAP_CONTROL_ICON;
@@ -50,6 +52,7 @@ export default function ClearRouteButton({
   return (
     <button
       type="button"
+      aria-describedby={ariaDescribedBy}
       disabled={disabled}
       onClick={onClick}
       aria-label={ariaLabel ?? "Clear current route"}
@@ -67,9 +70,13 @@ export default function ClearRouteButton({
     >
       <div
         aria-hidden
-        className={["absolute inset-0 pointer-events-none", CLEAR_ROUTE_ROUNDED].join(" ")}
+        className={[
+          "absolute inset-0 pointer-events-none",
+          CLEAR_ROUTE_ROUNDED,
+        ].join(" ")}
         style={{
-          background: "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
+          background:
+            "linear-gradient(to bottom, rgba(255,255,255,0.28), rgba(255,255,255,0.0))",
         }}
       />
 
