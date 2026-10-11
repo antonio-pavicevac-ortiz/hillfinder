@@ -4,9 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { connectToDatabase } from "@/lib/mongoose";
 import SavedRoute from "@/models/SavedRoute";
+import { isValidObjectId } from "mongoose";
 
 // GET → Fetch recent routes for logged-in user
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -15,6 +16,17 @@ export async function GET() {
     }
 
     await connectToDatabase();
+
+    const routeId = req.nextUrl.searchParams.get("id");
+    if (routeId) {
+      if (!isValidObjectId(routeId)) {
+        return NextResponse.json({ error: "Route not found" }, { status: 404 });
+      }
+      const route = await SavedRoute.findOne({ _id: routeId, userId: session.user.email }).lean();
+      return route
+        ? NextResponse.json({ route })
+        : NextResponse.json({ error: "Route not found" }, { status: 404 });
+    }
 
     const routes = await SavedRoute.find({
       userId: session.user.email,

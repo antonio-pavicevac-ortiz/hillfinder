@@ -12,6 +12,7 @@ export type DashboardSession = {
   selectedVariant: "easy" | "hard" | null;
   activeRouteSource: "generated" | "saved" | null;
   routePayload: SaveRoutePayload | null;
+  savedRouteId?: string | null;
 };
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -51,6 +52,18 @@ export function clearDashboardSession(): void {
   try {
     localStorage.removeItem(SESSION_KEY);
   } catch {}
+}
+
+// Check by ID rather than the recent-routes list, which only includes five rows.
+export async function savedRouteExists(id: string, signal?: AbortSignal): Promise<boolean> {
+  const response = await fetch(`/api/routes?id=${encodeURIComponent(id)}`, {
+    cache: "no-store",
+    signal,
+  });
+  if (response.status === 404) return false;
+  if (!response.ok) throw new Error("Could not verify saved route");
+  const data = await response.json();
+  return data.route?._id === id;
 }
 
 // ─── Conversion ───────────────────────────────────────────────────────────────

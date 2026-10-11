@@ -30,6 +30,7 @@ import {
   loadDashboardSession,
   saveDashboardSession,
   sessionPayloadToRecord,
+  savedRouteExists,
 } from "@/lib/session/dashboardSession";
 import { haversineMeters } from "@/lib/geo/distance";
 import { formatStepDistance } from "@/lib/navigation/format";
@@ -109,6 +110,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     id: string;
     route: SaveRoutePayload;
   } | null>(null);
+  const [checkingSavedRoute, setCheckingSavedRoute] = useState<SaveRoutePayload | null>(null);
+  const savedRouteVerificationRef = useRef<{ id: string; controller: AbortController } | null>(null);
   const activeSavedRouteId =
     activeRouteSource === "saved"
       ? selectedSavedRoute?._id ?? null
@@ -167,7 +170,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       setPlannerTo(session.destination.name ?? "");
     }
     if (session.selectedVariant) setSelectedVariant(session.selectedVariant);
-    setActiveRouteSource(session.activeRouteSource ?? "generated");
+    // The synthetic map record is not proof that this route exists in storage.
+    setActiveRouteSource("generated");
     setActiveRouteToSave(payload);
     setHasRoute(true);
     setVariantsReady(true);
@@ -179,6 +183,26 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     // Synthetic SavedRouteRecord triggers DashboardMap.loadSavedRoute after
     // the Mapbox map is ready — no route API calls are made.
     setSelectedSavedRoute(sessionPayloadToRecord(payload));
+    const id = session.savedRouteId;
+    if (!id) return;
+    const controller = new AbortController();
+    savedRouteVerificationRef.current = { id, controller };
+    setCheckingSavedRoute(payload);
+    void savedRouteExists(id, controller.signal)
+      .then((exists) => {
+        if (!controller.signal.aborted && exists) setSavedRouteEntry({ id, route: payload });
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        // A failed connection does not prove deletion. Preserve the saved ID.
+        setSavedRouteEntry({ id, route: payload });
+        toast.warning("Couldn't verify saved route. Refresh when you're online.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCheckingSavedRoute(null);
+        if (savedRouteVerificationRef.current?.controller === controller) savedRouteVerificationRef.current = null;
+      });
+    return () => controller.abort();
   }, []);
 
   let distanceToNextStepMeters: number | null = null;
@@ -309,6 +333,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleDeletedRoute(routeId: string) {
+    if (savedRouteVerificationRef.current?.id === routeId) {
+      savedRouteVerificationRef.current.controller.abort();
+      savedRouteVerificationRef.current = null;
+      setCheckingSavedRoute(null);
+    }
     setRefreshRoutesKey((n) => n + 1);
     setSavedRouteEntry((entry) => (entry?.id === routeId ? null : entry));
 
@@ -809,15 +838,16 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   // Short-lived loading states are never in activeRouteToSave, so we never
   // persist partial in-flight state.
   useEffect(() => {
-    if (!activeRouteToSave) return;
+    if (!activeRouteToSave || checkingSavedRoute === activeRouteToSave) return;
     saveDashboardSession({
       fromLocation,
       destination,
       selectedVariant,
       activeRouteSource,
       routePayload: activeRouteToSave,
+      savedRouteId: activeSavedRouteId,
     });
-  }, [activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource]);
+  }, [activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource, activeSavedRouteId, checkingSavedRoute]);
 
   useEffect(() => {
     if (!isOnline) {
@@ -928,9 +958,25 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           });
         }}
         savedRouteId={activeSavedRouteId}
+        isCheckingSavedRoute={!!activeRouteToSave && checkingSavedRoute === activeRouteToSave}
         isActiveSavedRoute={activeRouteSource === "saved"}
       />
       <DashboardMap
+        onSavedRouteNeedsRegeneration={() => {
+          savedRouteVerificationRef.current?.controller.abort();
+          savedRouteVerificationRef.current = null;
+          setCheckingSavedRoute(null);
+          setSavedRouteEntry(null);
+          setSelectedSavedRoute(null);
+          setActiveRouteToSave(null);
+          setActiveRouteSource("generated");
+          setHasRoute(false);
+          setVariantsReady(false);
+          setRoutePreparing(true);
+          setRouteBusy(true);
+          clearDashboardSession();
+          toast.info("Finding a route without redundant detours…");
+        }}
         theme={theme}
         destination={destination}
         fromLocation={fromLocation}
@@ -986,7 +1032,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           spokenTerrainIndicesRef.current = new Set();
           lastTerrainSpokenAtRef.current = 0;
 
-          setActiveRouteToSave(route);
+          // Drawing a restored route emits a new payload for the same coordinates.
+          // Keep its existing object so the saved association/check remains valid.
+          setActiveRouteToSave((current) => current?.coords === route.coords ? current : route);
 
           setActiveRouteSource((currentSource) => {
             if (currentSource === "saved") {
