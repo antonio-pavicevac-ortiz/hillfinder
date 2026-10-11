@@ -607,3 +607,169 @@ Copy this section for a newly assigned task:
 - Validation: TypeScript and whitespace checks passed; scoped ESLint reported
   no errors and 13 existing map hook warnings. No conflict markers remain.
 - Ownership released for review. This entry is included in the merge commit.
+
+## Follow-up: Verify saved status after session restoration
+
+- Implementer: Codex (Sol).
+- Files: `Dashboard.tsx`, `SaveRouteControl.tsx`, `map/MapControls.tsx`,
+  `src/lib/session/dashboardSession.ts`, `src/app/api/routes/route.ts`,
+  and `scripts/dashboard-session.test.mjs`.
+- Sessions now persist the actual saved record ID. Restoration uses a synthetic
+  record solely to draw the map and checks the real ID against an authenticated,
+  owner-filtered lookup. It does not use the five-entry recent-routes list.
+- A confirmed saved record restores the saved association; 404 leaves the map
+  payload intact and enables saving again. Save is temporarily disabled during
+  verification. Network/server failures retain the remembered saved association
+  and show a warning instead of treating the record as deleted.
+- Session writes wait for verification. Deleting the record during verification
+  cancels that check. Restored map emission preserves the payload object so the
+  saved association is not lost when the map finishes drawing.
+- Legacy sessions have no real saved ID, so they restore neutrally. No ID can
+  be recovered reliably from the previous synthetic record.
+- Checks: Six automated session/verification tests passed; TypeScript, scoped
+  ESLint, and whitespace checks passed. Tests mock storage and HTTP; an actual
+  authenticated phone walkthrough remains needed (save-refresh, delete-refresh,
+  unsaved-refresh, clear-refresh).
+- Status: Complete locally; ownership released for review. Uncommitted.
+
+## Follow-up: Retry map restoration after terrain/style readiness
+
+- Implementer: Codex (Sol). Files: `map/DashboardMap.tsx`,
+  `map/restoreWhenStyleReady.ts`, and `scripts/route-restoration.test.mjs`.
+- User reported that refresh kept Save green but did not display the route.
+  The load handler adds terrain before restoring; this can leave the style
+  temporarily unready, causing the previous one-shot restoration to return.
+- Restoration now waits for load/styledata/idle readiness, draws once, and
+  removes listeners before adding sources. Cancellation prevents discarded or
+  replaced pending routes from drawing. Initial GPS no longer flies the camera
+  away when a restored/pending route exists.
+- Checks: Nine session/restoration tests passed, including the terrain-load
+  race and cancellation. TypeScript and whitespace checks passed; scoped ESLint
+  reported no errors with existing map hook warnings. Actual phone refresh
+  confirmation remains needed.
+- Status: Local fix, uncommitted; ownership released for review.
+
+## Follow-up: Reject unnecessary retraced route excursions
+
+- Implementer: Codex (Sol). Files: `src/lib/map/routeBacktracking.ts`,
+  `src/lib/map/directionsApi.ts`, `map/DashboardMap.tsx`, and
+  `scripts/route-backtracking.test.mjs`.
+- Read-only inspection of the identified Easy saved route confirmed an
+  approximately 330m excursion returning to the same junction. Segment
+  coordinates match the route coordinates; the branch is not a drawing error.
+- New route candidates reject excursions of at least 60m that return within
+  2m of a junction and retrace the outward path within 6m at eight samples.
+  Different-street loops and short routing adjustments remain eligible.
+- Candidate filtering covers planned alternatives, fallback selection, direct
+  directions, and nearby generation. Navigation instructions/metrics remain
+  those of an accepted provider route; no geometry is silently clipped.
+- Existing saved routes are not rewritten. Generate a fresh route for the same
+  endpoints to see the change, then save it if desired.
+- Checks: Five regression tests passed, including the observed saved-coordinate
+  excursion, differing point density, real loops, and short adjustments.
+  TypeScript, scoped ESLint, and whitespace checks passed.
+- Status: Complete locally, uncommitted; ownership released for review.
+
+## Follow-up: Broader backtracking check for artificial detours
+
+- The next screenshot showed a nearby-junction spur and parallel return path.
+  The first check required near-exact return coordinates and could miss these.
+- Waypoint-generated detours now use a broader check: return within 20m,
+  outward/return paths within 20m, and excursion distance at least four times
+  the return gap. The 60m minimum remains. Baseline provider routes retain the
+  stricter check so necessary access around nearby paths remains available.
+- Files: `routeBacktracking.ts`, `directionsApi.ts`, `DashboardMap.tsx`, and
+  `scripts/route-backtracking.test.mjs`.
+- Eight geometry tests passed, including nearby-junction and parallel-path
+  cases and distinct-street loop preservation. TypeScript, scoped ESLint,
+  and whitespace checks passed. The screenshot's exact new coordinates have
+  not been captured; a fresh generated-route check is still needed.
+- Status: Local/uncommitted; ownership released for review.
+
+## Follow-up: Clear stale segments and apply waypoint detour penalties
+
+- The latest screenshot still showed a spur. Exact new route coordinates are
+  pending: Antonio was asked whether the route is saved and for its endpoints.
+- Found two independent code defects: `clearRouteLayers` skipped cleanup when
+  source updates made `isStyleLoaded()` false, then waited for a "load" event
+  that need not recur; old high-index segment layers could survive a shorter
+  replacement. Cleanup now removes existing layers/sources from the current
+  style without waiting. Initial absent styles are handled safely.
+- `collectDetourCandidates` omitted `baselineDistanceMeters` when scoring a
+  candidate. This made detour ratios default to 1, disabling the intended
+  detour penalties. It now passes the actual baseline distance.
+- Files: `src/lib/map/clearRouteLayers.ts`, `DashboardMap.tsx`,
+  `scripts/route-layer-cleanup.test.mjs`.
+- Checks: Ten geometry/cleanup tests passed; TypeScript, scoped ESLint, and
+  whitespace checks passed. Screenshot cause is not yet proven by coordinates.
+- Status: Local/uncommitted; ownership released for review.
+
+- Exact follow-up route identified by Antonio's new endpoints was inspected
+  read-only: 134 coordinates, segments match geometry, and a roughly 494m
+  excursion returns to the same junction. Both current backtracking checks
+  reject the complete saved geometry. Added that geometry as a second regression
+  case; all nine backtracking tests pass. The stored route itself remains
+  unchanged; a newly generated route still needs UI confirmation.
+
+## Follow-up: Enforce redundant-detour checks across all route entry points
+
+- Implementer: Codex (Sol). Files: `DashboardMap.tsx`, `Dashboard.tsx`,
+  and `directionsApi.ts`.
+- The broader check now applies to baseline candidates as well as waypoint
+  candidates. Final generated variant construction and direct route drawing
+  also guard against retraced excursions before displaying a route.
+- Saved/session records previously bypassed candidate filtering. Those with
+  detected redundant excursions now regenerate using their original endpoints
+  and difficulty. Dashboard clears their saved association and session, cancels
+  pending saved-ID verification, and shows regeneration feedback. The corrected
+  route remains unsaved; the existing database record is not changed.
+- If no acceptable candidate is available, the existing failure feedback is
+  used instead of drawing a rejected route or clipping geometry/instructions.
+- Checks: Twenty geometry, cleanup, restoration, and session tests passed;
+  TypeScript and whitespace checks passed; scoped ESLint found no errors and
+  13 existing map hook warnings. Live map result still needs confirmation.
+- Status: Local/uncommitted; ownership released for review.
+
+## Fix: Mapbox startup cleanup exception
+
+- Antonio's ngrok screenshot exposed `getStyle()` throwing "Style is not done
+  loading" during initial destination invalidation. Previous cleanup only
+  handled an undefined style and did not guard serialization exceptions.
+- `clearRouteLayers.ts` now returns safely when the initial style cannot be
+  read, while retaining immediate cleanup during source updates when accessible.
+- Three cleanup regression tests, TypeScript, scoped ESLint, and whitespace
+  checks passed. An actual Mapbox instance in headless Chrome verified safe
+  startup and removal of low/high-index old route layers with isStyleLoaded()
+  false, preserving unrelated road layers. No token or external map data used.
+- Files: `src/lib/map/clearRouteLayers.ts`, cleanup test, and this handoff.
+- Status: Fixed locally; uncommitted; ownership released for review.
+
+## Follow-up: Reject closed excursions on different paths
+
+- Latest ngrok screenshot showed a triangular excursion near the blue marker.
+  Retrace-only checks could allow loops whose outward/return paths differ.
+- Added `hasRedundantDetour` as the common condition for generated, direct,
+  and saved/restored route entry points. For distinct endpoints, excursions
+  of at least 100m returning within 12m of a junction with at least a 6:1
+  distance-to-return-gap ratio are rejected, as are previous retraced cases.
+  Trips whose overall endpoints coincide remain allowed as deliberate round trips.
+- Added triangular/arrival-loop tests plus direct-corner and deliberate-round-trip
+  coverage. Thirteen geometry tests passed; TypeScript, scoped ESLint, and
+  whitespace checks passed. Exact coordinates of the screenshot remain uncaptured;
+  a live newly generated-route check remains required.
+- Files: `routeBacktracking.ts`, `directionsApi.ts`, `DashboardMap.tsx`,
+  and `scripts/route-backtracking.test.mjs`.
+- Status: Local/uncommitted, ownership released for review.
+
+## Saved checkpoint: Route reliability and redundant-detour prevention
+
+- Antonio requested committing and pushing the current fixes on
+  `feat/dashboard-button-interaction-styles`.
+- The commit containing this entry includes saved-ID verification, map style
+  readiness/restoration, cleanup crash prevention, detour penalties and shared
+  geometry guards, saved-route regeneration, and regression tests.
+- Final checks: All 31 script tests passed; TypeScript and whitespace checks
+  passed; ESLint reported no errors with existing map hook warnings.
+- Earlier local/uncommitted notes are historical and superseded by this checkpoint.
+- Live route confirmation remains outstanding. No production deployment or
+  merge is performed by this checkpoint. Unrelated untracked content is excluded.

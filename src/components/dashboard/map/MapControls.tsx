@@ -24,6 +24,7 @@ type Props = {
   onRouteSaved?: (routeId: string, route: SaveRoutePayload) => void;
   onCreateRoute?: () => void;
   savedRouteId?: string | null;
+  isCheckingSavedRoute?: boolean;
   isActiveSavedRoute?: boolean;
 };
 
@@ -41,6 +42,7 @@ export default function MapControls({
   onRouteSaved,
   onCreateRoute,
   savedRouteId = null,
+  isCheckingSavedRoute = false,
   isActiveSavedRoute = false,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
@@ -143,6 +145,7 @@ export default function MapControls({
           onSaved={onRouteSaved}
           onCreateRoute={onCreateRoute}
           savedRouteId={savedRouteId}
+          isCheckingSavedRoute={isCheckingSavedRoute}
           compact
           isActiveSavedRoute={isActiveSavedRoute}
         />

@@ -1,5 +1,7 @@
 "use client";
 
+import { restoreWhenStyleReady } from "./restoreWhenStyleReady";
+import { hasRedundantDetour } from "@/lib/map/routeBacktracking";
 import { createNavigationPuck } from "@/components/dashboard/map/NavigationPuck";
 import { classifySegments } from "@/lib/map/classifySegments";
 import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
@@ -19,7 +21,6 @@ import {
 } from "@/lib/map/directionsApi";
 import { findDownhillNearby } from "@/lib/map/findDownhillNearby";
 import { createCircleEl, reverseGeocodeName } from "@/lib/map/markerElements";
-import { resampleCoords } from "@/lib/map/resampleCoords";
 import { computeRouteStats, scoreEasy, scoreHard } from "@/lib/map/routeDifficulty";
 import {
   detourWaypointRings,
@@ -83,6 +84,7 @@ export default function DashboardMap({
   onRouteBusyChange,
   onRouteReady,
   savedRouteToLoad,
+  onSavedRouteNeedsRegeneration,
   canAcceptDestination,
   findDownhillNonce,
   onNavigationLocationChange,
@@ -110,6 +112,7 @@ export default function DashboardMap({
   onRouteBusyChange?: (busy: boolean) => void;
   onRouteReady?: (route: SaveRoutePayload) => void;
   savedRouteToLoad?: SavedRouteRecord | null;
+  onSavedRouteNeedsRegeneration?: () => void;
   canAcceptDestination?: (loc: { lat: number; lng: number }) => boolean;
   findDownhillNonce?: number;
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
@@ -343,6 +346,9 @@ export default function DashboardMap({
       navSteps?: ReturnType<typeof buildNavSteps>;
     }
   ) {
+    if (hasRedundantDetour(coords)) {
+      throw new Error("Route contains a redundant out-and-back detour");
+    }
     const getElevation = getElevationRef.current;
     const elevations = await Promise.all(
       coords.map(([lng, lat]) => (getElevation ? getElevation(map, lng, lat) : Promise.resolve(0)))
@@ -398,15 +404,16 @@ export default function DashboardMap({
       signal,
     });
 
-    const first = data?.routes?.[0];
+    const first = getRoutesArray(data).find((route) => getRouteCoords(route));
     const navSteps = first ? buildNavSteps(first) : [];
     const raw = first?.geometry?.coordinates as [number, number][] | undefined;
 
-    if (!raw?.length) {
+    if (!first || !raw?.length) {
       throw new Error("No route found for nearby candidate");
     }
 
-    const coords = resampleCoords(raw);
+    const coords = getRouteCoords(first);
+    if (!coords) throw new Error("Nearby candidate contains an unnecessary out-and-back");
     const geomMeters = routeLengthMeters(coords);
     const distMeters = typeof first?.distance === "number" ? first.distance : geomMeters;
 
@@ -531,8 +538,21 @@ export default function DashboardMap({
 
   function loadSavedRoute(map: mapboxgl.Map, savedRoute: SavedRouteRecord) {
     // Do not attempt to draw while the Mapbox style is still loading.
-    // The map.on("load") handler will call this function again via savedRouteToLoadRef.
+    // The restoration effect retries when terrain and style updates finish.
     if (!map.isStyleLoaded()) return;
+
+    if (hasRedundantDetour(savedRoute.coords)) {
+      // Saved and restored records bypass the candidate filter. Regenerate
+      // using the real endpoints instead of drawing their redundant journey.
+      onSavedRouteNeedsRegeneration?.();
+      const from = new mapboxgl.LngLat(savedRoute.from.lng, savedRoute.from.lat);
+      const to = new mapboxgl.LngLat(savedRoute.to.lng, savedRoute.to.lat);
+      ensureFromMarker(map, from);
+      ensureDestMarker(map, to);
+      selectedVariantRef.current = savedRoute.difficulty;
+      void generateAlternativesBetweenPoints(map, from, to);
+      return;
+    }
 
     abortRef.current?.abort();
     routeReqIdRef.current += 1;
@@ -623,6 +643,9 @@ export default function DashboardMap({
 
       navSteps: ReturnType<typeof buildNavSteps> = []
     ) => {
+      if (hasRedundantDetour(coords)) {
+        throw new Error("Route contains a redundant out-and-back detour");
+      }
       drawOverviewRoute(map, coords);
 
       renderedRouteModeRef.current = "overview";
@@ -693,12 +716,12 @@ export default function DashboardMap({
       const res = await fetch(url, { signal: controller.signal });
       const data = await res.json();
 
-      const firstRoute = data?.routes?.[0];
+      const firstRoute = getRoutesArray(data).find((route) => getRouteCoords(route));
       const navSteps = firstRoute ? buildNavSteps(firstRoute) : [];
 
       if (reqId !== routeReqIdRef.current) return;
 
-      if (!data?.routes?.length) {
+      if (!firstRoute) {
         const fallback = lastGoodDestRef.current;
         if (fallback && destMarkerRef.current) {
           destMarkerRef.current.setLngLat(fallback);
@@ -708,8 +731,8 @@ export default function DashboardMap({
         return;
       }
 
-      const rawCoords = data.routes[0].geometry.coordinates as [number, number][];
-      const coords = resampleCoords(rawCoords);
+      const coords = getRouteCoords(firstRoute);
+      if (!coords) return;
 
       lastGoodDestRef.current = new mapboxgl.LngLat(to.lng, to.lat);
 
@@ -825,6 +848,8 @@ export default function DashboardMap({
       if (!detourRoutes.length) continue;
 
       for (const detourRoute of detourRoutes.slice(0, 2)) {
+        // Artificial waypoints must not manufacture narrow loops or parallel
+        // out-and-backs.
         const coords = getRouteCoords(detourRoute);
         if (!coords) continue;
 
@@ -848,6 +873,7 @@ export default function DashboardMap({
         const candidate = await buildVariant(map, coords, {
           distanceMeters: distMeters,
           durationSeconds: getRouteDurationSeconds(detourRoute),
+          baselineDistanceMeters: baselineMeters,
           navSteps: buildNavSteps(detourRoute as any),
         });
 
@@ -1243,7 +1269,9 @@ export default function DashboardMap({
             void notifyFromPicked(ll, { immediateName: "Current location" });
           }
 
-          map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
+          if (!variantsRef.current && !savedRouteToLoadRef.current) {
+            map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
+          }
         },
         () => {},
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
@@ -1374,15 +1402,7 @@ export default function DashboardMap({
         }
       );
 
-      // If a session route was set before the map loaded, draw it now.
-      const pendingRoute = savedRouteToLoadRef.current;
-      if (pendingRoute) {
-        try {
-          loadSavedRoute(map, pendingRoute);
-        } catch (err) {
-          console.error("[DashboardMap] failed to restore pending route on load:", err);
-        }
-      }
+
     });
 
     return () => {
@@ -1813,14 +1833,14 @@ export default function DashboardMap({
     const map = mapRef.current;
     if (!map) return;
     if (!savedRouteToLoad) return;
-    // If the style is not ready yet, savedRouteToLoadRef is already in sync and
-    // the map.on("load") handler will draw the route once the style is ready.
-    if (!map.isStyleLoaded()) return;
-    try {
-      loadSavedRoute(map, savedRouteToLoad);
-    } catch (err) {
-      console.error("[DashboardMap] failed to restore saved route:", err);
-    }
+    return restoreWhenStyleReady(map, () => {
+      try {
+        loadSavedRoute(map, savedRouteToLoad);
+      } catch (err) {
+        console.error("[DashboardMap] failed to restore saved route:", err);
+        onRouteFailed?.("Couldn't display the restored route. Try opening it from Saved routes.");
+      }
+    });
   }, [savedRouteToLoad]);
 
   useEffect(() => {

@@ -12,6 +12,7 @@ export default function SaveRouteControl({
   onSaved,
   onCreateRoute,
   savedRouteId = null,
+  isCheckingSavedRoute = false,
   compact = false,
   isActiveSavedRoute = false,
 }: {
@@ -19,6 +20,7 @@ export default function SaveRouteControl({
   onSaved?: (routeId: string, route: SaveRoutePayload) => void;
   onCreateRoute?: () => void;
   savedRouteId?: string | null;
+  isCheckingSavedRoute?: boolean;
   compact?: boolean;
   isActiveSavedRoute?: boolean;
 }) {
@@ -26,7 +28,7 @@ export default function SaveRouteControl({
   const saved = !!route && !!savedRouteId && !isActiveSavedRoute;
 
   async function handleSave() {
-    if (isSaving || saved || isActiveSavedRoute) return;
+    if (isCheckingSavedRoute || isSaving || saved || isActiveSavedRoute) return;
     if (!route) {
       if (onCreateRoute) {
         toast.info("Create a route to save it", {
@@ -78,7 +80,7 @@ export default function SaveRouteControl({
     }
   }
 
-  const disabled = (!route && !onCreateRoute) || isSaving || saved || isActiveSavedRoute;
+  const disabled = (!route && !onCreateRoute) || isCheckingSavedRoute || isSaving || saved || isActiveSavedRoute;
 
   const sharedRound = "rounded-2xl";
 
@@ -110,7 +112,9 @@ export default function SaveRouteControl({
         ? "This route is already saved"
         : "Save Route";
 
-  const tooltipLabel = isSaving
+  const tooltipLabel = isCheckingSavedRoute
+    ? "Checking saved route"
+    : isSaving
     ? "Saving route"
     : saved || isActiveSavedRoute
       ? "Route already saved"
@@ -127,7 +131,7 @@ export default function SaveRouteControl({
             onClick={handleSave}
             disabled={disabled}
             aria-label={ariaLabel}
-            aria-busy={isSaving}
+            aria-busy={isSaving || isCheckingSavedRoute}
             aria-describedby={descriptionId}
             className={[
               "relative flex items-center justify-center transition active:scale-95 disabled:cursor-default overflow-hidden",

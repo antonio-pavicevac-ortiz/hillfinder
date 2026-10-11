@@ -1,4 +1,5 @@
 import { resampleCoords } from "@/lib/map/resampleCoords";
+import { hasRedundantDetour } from "@/lib/map/routeBacktracking";
 import { routeLengthMeters } from "@/lib/map/routeGeometry";
 import type { DirectionsApiRoute } from "@/lib/map/variantTypes";
 import mapboxgl from "mapbox-gl";
@@ -39,7 +40,8 @@ export function getRoutesArray(data: unknown): DirectionsApiRoute[] {
 export function getRouteCoords(route: DirectionsApiRoute): [number, number][] | null {
   const raw = route.geometry?.coordinates;
   if (!raw?.length) return null;
-  return resampleCoords(raw);
+  const coords = resampleCoords(raw);
+  return hasRedundantDetour(coords) ? null : coords;
 }
 
 export function getRouteDistanceMeters(route: DirectionsApiRoute, coords: [number, number][]) {
