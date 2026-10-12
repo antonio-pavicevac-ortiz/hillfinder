@@ -230,11 +230,14 @@ export default function DashboardMap({
   function ensureFromMarker(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike) {
     if (fromMarkerRef.current) {
       fromMarkerRef.current.setLngLat(lngLat);
+      fromMarkerRef.current.setDraggable(!isNavigatingRef.current);
+      fromMarkerRef.current.getElement().style.removeProperty("display");
+      fromMarkerRef.current.getElement().style.removeProperty("opacity");
       return fromMarkerRef.current;
     }
 
     const el = createCircleEl("#16a34a");
-    const marker = new mapboxgl.Marker({ element: el, draggable: true, anchor: "center" })
+    const marker = new mapboxgl.Marker({ element: el, draggable: !isNavigatingRef.current, anchor: "center" })
       .setLngLat(lngLat)
       .addTo(map);
 
@@ -310,6 +313,8 @@ export default function DashboardMap({
 
     // Make sure it's visible
     fromMarkerRef.current?.getElement().style.removeProperty("display");
+    fromMarkerRef.current?.getElement().style.removeProperty("opacity");
+    fromMarkerRef.current?.setDraggable(true);
 
     // Hide navigation puck if it exists
     navigationPuckRef.current?.getElement().style.setProperty("display", "none");
@@ -1275,7 +1280,7 @@ export default function DashboardMap({
             // Use puck immediately instead of showing raw GPS marker
             const puck = ensureNavigationPuck(map, ll);
             puck.getElement().style.removeProperty("display");
-          } else {
+          } else if (!variantsRef.current && !savedRouteToLoadRef.current) {
             ensureFromMarker(map, ll);
             void notifyFromPicked(ll, { immediateName: "Current location" });
           }
@@ -1354,10 +1359,13 @@ export default function DashboardMap({
               puckEl.__setRotation?.(relativeHeading);
             }
 
-            fromMarkerRef.current?.getElement().style.setProperty("display", "none");
+            fromMarkerRef.current?.getElement().style.removeProperty("display");
+            fromMarkerRef.current?.getElement().style.removeProperty("opacity");
+            fromMarkerRef.current?.setDraggable(false);
           } else {
-            // Normal browsing mode → show raw GPS dot
-            ensureFromMarker(map, ll);
+            // GPS updates only move the green marker when no route is present.
+            // Otherwise it remains the fixed start, even when guidance is paused.
+            if (!variantsRef.current && !savedRouteToLoadRef.current) ensureFromMarker(map, ll);
             fromMarkerRef.current?.getElement().style.removeProperty("display");
 
             // Hide puck when not navigating
@@ -1597,7 +1605,7 @@ export default function DashboardMap({
     if (!recenterNonce) return;
 
     const recenterAt = (ll: mapboxgl.LngLat) => {
-      if (!isNavigatingRef.current) {
+      if (!isNavigatingRef.current && !variantsRef.current && !savedRouteToLoadRef.current) {
         const existing = fromMarkerRef.current?.getLngLat();
 
         if (
@@ -1894,19 +1902,20 @@ export default function DashboardMap({
         puckEl.__setRotation?.(0);
       }
 
-      fromMarkerRef.current?.getElement().style.setProperty("display", "none");
-      // Ensure raw GPS marker stays hidden during navigation
-      fromMarkerRef.current?.getElement().style.setProperty("opacity", "0");
+      fromMarkerRef.current?.getElement().style.removeProperty("display");
+      fromMarkerRef.current?.getElement().style.removeProperty("opacity");
+      fromMarkerRef.current?.setDraggable(false);
       return;
     }
 
     const latest = latestDeviceLocationRef.current;
-    if (latest) {
+    if (latest && !variantsRef.current && !savedRouteToLoadRef.current) {
       ensureFromMarker(map, latest);
     }
 
     fromMarkerRef.current?.getElement().style.removeProperty("display");
     fromMarkerRef.current?.getElement().style.removeProperty("opacity");
+    fromMarkerRef.current?.setDraggable(true);
     navigationPuckRef.current?.getElement().style.setProperty("display", "none");
   }, [isNavigating]);
 
