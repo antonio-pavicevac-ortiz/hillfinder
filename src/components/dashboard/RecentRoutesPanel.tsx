@@ -1,5 +1,7 @@
 "use client";
 
+import SheetDragHandle from "@/components/dashboard/ui/SheetDragHandle";
+
 import type { SavedRouteRecord } from "@/types/saved-route";
 import { AnimatePresence, motion, useDragControls, type PanInfo } from "framer-motion";
 import { Loader2, Share2, Trash2 } from "lucide-react";
@@ -199,25 +201,18 @@ export default function RecentRoutesPanel({
                 className={[
                   "pointer-events-auto w-full",
                   "bg-white/85 dark:bg-slate-900/90 backdrop-blur-xl",
-                  "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl p-5",
+                  "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl px-5 pb-5 pt-12",
                   "relative isolate",
                 ].join(" ")}
                 style={{ touchAction: "manipulation" }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="mb-1 flex justify-center">
-                  <button
-                    type="button"
-                    aria-label="Minimize routes"
-                    className="group -my-2 flex w-full cursor-grab justify-center py-3 active:cursor-grabbing"
-                    style={{ touchAction: "none" }}
-                    onPointerDown={handlePillPointerDown}
-                    onClick={onClose}
-                  >
-                    <div className="h-1.5 w-12 rounded-full bg-gray-400/60 transition-colors duration-200 group-hover:bg-gray-600/70 group-active:bg-gray-600/70" />
-                  </button>
-                </div>
+                <SheetDragHandle
+                  label="Minimize routes"
+                  onClose={onClose}
+                  onPointerDown={handlePillPointerDown}
+                />
 
                 <div className="flex items-center justify-center">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Saved Routes</h2>
