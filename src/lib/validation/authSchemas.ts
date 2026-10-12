@@ -8,9 +8,12 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Schema for validating user signup data
 export const signupSchema = z
   .object({
-    name: z.string().min(2, "Name must be at least 2 characters"),
-    email: z.string().email("Invalid email address"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    name: z.string().trim().min(2, "Name must be at least 2 characters").max(80, "Name is too long"),
+    email: z.string().trim().toLowerCase().email("Invalid email address"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(72, "Password must be 72 characters or fewer"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {

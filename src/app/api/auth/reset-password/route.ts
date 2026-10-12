@@ -1,4 +1,6 @@
 import { connectToDB } from "@/lib/mongodb";
+import { clientIp, rateLimit } from "@/lib/security/rateLimit";
+import { resetPasswordSchema } from "@/lib/validation/authSchemas";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -6,46 +8,49 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { token, password } = await req.json();
-
-    if (!token) {
-      console.error("Reset password attempt failed: Missing reset token.");
-      return NextResponse.json({ message: "Missing reset token." }, { status: 400 });
-    }
-    if (!password) {
-      console.error("Reset password attempt failed: Missing new password.");
-      return NextResponse.json({ message: "Missing password." }, { status: 400 });
+    if (!rateLimit(`reset:${clientIp(req.headers)}`, 10, 60 * 60 * 1000)) {
+      return NextResponse.json(
+        { error: "Too many reset attempts. Try again later." },
+        { status: 429 }
+      );
     }
 
-    console.log("Received reset token:", token);
-    console.log("Received new password length:", password.length);
+    const body = await req.json();
+    const { token } = body;
+
+    if (typeof token !== "string" || !token) {
+      return NextResponse.json({ error: "Missing reset token." }, { status: 400 });
+    }
+
+    // Enforce the same password rules as the reset form
+    const parsed = resetPasswordSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid password." },
+        { status: 400 }
+      );
+    }
 
     await connectToDB();
-    console.log("Connected to MongoDB.");
 
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-    console.log("Hashed reset token for lookup:", hashedToken);
 
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() },
     });
 
-    if (user) console.log(`Matched reset token for user: ${user.email}`);
-
     if (!user) {
-      console.error("Invalid or expired reset token provided:", token);
-      return NextResponse.json({ message: "Invalid or expired token." }, { status: 400 });
+      return NextResponse.json({ error: "Invalid or expired token." }, { status: 400 });
     }
 
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
+    user.password = await bcrypt.hash(parsed.data.password, salt);
 
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
 
     await user.save();
-    console.log("Password updated and reset token cleared for user:", user._id);
 
     return NextResponse.json(
       { message: "✅ Password successfully updated. You can now sign in." },
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Error during password reset process:", error);
     return NextResponse.json(
-      { message: "Something went wrong. Please try again later." },
+      { error: "Something went wrong. Please try again later." },
       { status: 500 }
     );
   }
