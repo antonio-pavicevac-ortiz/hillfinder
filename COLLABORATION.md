@@ -823,3 +823,38 @@ Copy this section for a newly assigned task:
 - TypeScript and whitespace checks passed; scoped ESLint reported no errors
   with existing map hook warnings and the pre-existing unused-tone warning.
 - Excludes unrelated untracked content; no merge or production deployment.
+
+## Follow-up: Saved-route turn-by-turn instructions — October 12, 2026
+
+- Implementer: Codex (Sol). Files: `src/models/SavedRoute.ts`,
+  `src/app/api/routes/route.ts`, `Dashboard.tsx`, `map/DashboardMap.tsx`,
+  and `scripts/saved-route-navigation.test.mjs`.
+- Cause: Save POST ignored navSteps and the strict Mongoose schema omitted
+  them. Existing saved records could draw coordinates without instructions.
+  Selection started navigation before drawing, then onRouteReady reset it.
+- API/model now persist validated instructions, distances, durations, maneuver
+  locations/types/modifiers, flags, and terrain hints. Cached dev models gain
+  the new field on hot reload rather than silently dropping it until restart.
+- Saved-route completion starts navigation after camera settling, regardless
+  of mute; voice obeys the existing preference. Old saved/session routes missing
+  steps rebuild with explicit feedback and remain unsaved until saved again.
+  Rebuilding can produce a different path; instructions are never attached to
+  mismatched stored geometry. No database records were edited or backfilled.
+- Auto-voice startup waits for loading, cancels stale timers, and starts rebuilt
+  saved routes after preparation. Clear/failure reset pending startup.
+- Checks: Four model serialization/validation/legacy/hot-reload tests passed,
+  TypeScript, scoped ESLint, and whitespace checks passed. Phone walkthrough
+  still needed: save a generated route, reload it, verify directions and voice
+  preference, and exercise the legacy rebuild/resave flow.
+- Status: Local/uncommitted; ownership released for review.
+
+## Saved checkpoint on a dedicated navigation branch — October 12, 2026
+
+- Current branch: `fix/saved-route-navigation`, created from the current
+  dashboard interaction branch to isolate this follow-up commit.
+- Antonio requested a new branch and saving the pending turn-by-turn fixes.
+- The commit containing this entry saves navigation persistence, loaded-route
+  startup, legacy rebuilding, and the four model regression tests. Earlier
+  local/uncommitted notes for this task are superseded by this checkpoint.
+- Checks: Four navigation persistence tests, TypeScript, and whitespace checks
+  passed. No unrelated untracked content is included. No push requested yet.
