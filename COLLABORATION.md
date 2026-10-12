@@ -938,3 +938,31 @@ Copy this section for a newly assigned task:
   notes for this task are superseded. TypeScript, scoped ESLint, and whitespace
   checks passed, with the five browser scenarios documented above passing.
 - Unrelated untracked content is excluded. No merge or deployment is performed.
+
+## Current task: Keep the fixed route start visible during navigation
+
+- Branch: `fix/navigation-marker-visibility`, created from latest `origin/main`
+  (`7568898`). Antonio approved a separate branch and keeping the original
+  green marker alongside the moving navigation puck.
+- Implementer: Codex (Sol). File: `map/DashboardMap.tsx` and this handoff.
+- Removed navigation's display/opacity hiding of the green start marker. GPS
+  updates, initial GPS response, pause/completion, and Recenter now preserve
+  its route-start location while a prepared/pending saved route exists.
+- Moving puck continues following/snapping to GPS; blue destination remains
+  fixed. Green marker is non-draggable during active navigation and becomes
+  draggable again when navigation stops. Clearing a route restores the green
+  marker to the current device location and hides the navigation puck.
+- Checks: TypeScript and whitespace checks passed; scoped ESLint has no errors
+  and 13 existing map hook warnings. GPS walking verification still needed:
+  start navigation, move away, pause/complete, recenter, clear, and reload a
+  saved route. Markers may overlap when the device is exactly at the start.
+- Status: Complete locally, uncommitted/unpushed; ownership released for review.
+
+## Navigation-marker checkpoint — October 12, 2026
+
+- Antonio requested committing and pushing `fix/navigation-marker-visibility`.
+- The commit containing this entry saves the fixed green start marker alongside
+  the moving navigation puck. Earlier uncommitted notes for this task are
+  superseded. TypeScript and whitespace checks passed; ESLint found no errors
+  with existing map hook warnings. Real GPS walkthrough remains outstanding.
+- No unrelated untracked content included; no merge or deployment performed.
