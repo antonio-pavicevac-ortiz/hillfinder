@@ -900,3 +900,41 @@ Copy this section for a newly assigned task:
   top/bottom edges. Earlier uncommitted notes for these changes are superseded.
 - Scoped ESLint and whitespace checks passed. Unrelated untracked content is
   excluded; no merge or deployment is performed by this checkpoint.
+
+## Saved-route branch completion — October 12, 2026
+
+- Antonio asked to finish saved-route work, then proceed with orientation work.
+- `fix/saved-route-navigation` was clean at `a64732e`; its changes are included
+  in `origin/main` (`e404c36`, PR #68). All 35 script tests, TypeScript, and
+  whitespace checks passed. No additional saved-route edits were needed.
+
+## Current task: Orientation overlay ordering and device scope
+
+- Branch: `fix/orientation-overlay`, started from `origin/main` (`e404c36`).
+- Implementer: Codex (Sol).
+- Files: `Dashboard.tsx`, `ui/PortraitOrientationOverlay.tsx`, `src/globals.css`,
+  and this handoff.
+- Cause: The dashboard is a stacking context; its high-z-index orientation
+  message was still below Saved Routes, which is portaled to document.body.
+- Fix: Portal orientation guidance to document.body at z-index 10000, covering
+  sheets, controls, loading cards, and notifications with the existing dark
+  blurred backdrop. Preserve the portrait-lock preference.
+- Device scope: CSS shows guidance only in landscape on devices with a coarse
+  primary pointer and no hover. No width cutoff excludes large tablets. Desktop
+  windows with a mouse do not receive a rotation blocker. Portrait is unblocked.
+- Checks: TypeScript, scoped ESLint, and whitespace checks passed. Headless
+  Chrome fixtures using the actual CSS tested desktop, phone portrait/landscape,
+  and large-tablet portrait/landscape. Hit testing confirmed the orientation
+  layer covers Saved Routes/loading; rotating back hides guidance. Real-device
+  confirmation remains needed, especially tablets with attached input devices.
+- Status: Implemented locally; ownership released for read-only review.
+  Uncommitted/unpushed; no production deployment performed.
+
+## Orientation checkpoint — October 12, 2026
+
+- Antonio requested committing and pushing the orientation fixes.
+- The commit containing this entry saves the page-root rotation overlay and
+  touch-first landscape scope on `fix/orientation-overlay`; earlier uncommitted
+  notes for this task are superseded. TypeScript, scoped ESLint, and whitespace
+  checks passed, with the five browser scenarios documented above passing.
+- Unrelated untracked content is excluded. No merge or deployment is performed.

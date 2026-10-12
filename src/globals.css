@@ -167,6 +167,27 @@ body {
   filter: saturate(0) brightness(0.15);
 }
 
+/* Touch-first phones/tablets need portrait guidance; desktop windows do not. */
+.hf-orientation-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: rgb(0 0 0 / 80%);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+@media (pointer: coarse) and (hover: none) and (orientation: landscape) {
+  .hf-orientation-overlay {
+    display: flex;
+  }
+}
+
 /* -----------------------------
    Sonner toaster layout
    ----------------------------- */

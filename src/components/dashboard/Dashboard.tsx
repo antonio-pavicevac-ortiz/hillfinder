@@ -18,6 +18,7 @@ import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
 import QuickActionsSheet from "@/components/dashboard/modals/QuickActionSheet";
 import RecentRoutesPanel from "@/components/dashboard/RecentRoutesPanel";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
+import PortraitOrientationOverlay from "@/components/dashboard/ui/PortraitOrientationOverlay";
 
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 import type { DashboardUser } from "@/types/user";
@@ -156,7 +157,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const nextNavStep = activeNavSteps[currentStepIndex + 1];
   const maneuverTargetStep = nextNavStep?.location ? nextNavStep : currentNavStep;
   const distanceTargetStep = maneuverTargetStep;
-  const [isLandscape, setIsLandscape] = useState(false);
 
   const [lockPortrait, setLockPortrait] = useState(true);
   const [hydrated, setHydrated] = useState(false);
@@ -838,22 +838,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     }
   }, [hasRoute]);
 
-  useEffect(() => {
-    const update = () => {
-      setIsLandscape(window.innerWidth > window.innerHeight);
-    };
-
-    update();
-
-    window.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
-
-    return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
-    };
-  }, []);
-
   // ── Session persistence ────────────────────────────────────────────────────
   // Saves route session whenever a completed route payload is available.
   // Short-lived loading states are never in activeRouteToSave, so we never
@@ -921,13 +905,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   return (
     <main className="fixed inset-0 bg-background">
       {" "}
-      {lockPortrait && isLandscape && (
-        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center text-center p-6">
-          <p className="text-white text-lg font-semibold">
-            Rotate your device for the best experience 📱
-          </p>
-        </div>
-      )}
+      <PortraitOrientationOverlay enabled={lockPortrait} />
       <MapControls
         hasRoute={hasRoute}
         onClearRoute={() => {
