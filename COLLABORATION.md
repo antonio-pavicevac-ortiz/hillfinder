@@ -773,3 +773,53 @@ Copy this section for a newly assigned task:
 - Earlier local/uncommitted notes are historical and superseded by this checkpoint.
 - Live route confirmation remains outstanding. No production deployment or
   merge is performed by this checkpoint. Unrelated untracked content is excluded.
+
+## Follow-up: Slightly deeper active saved-route highlight — October 12, 2026
+
+- Implementer: Codex (Sol). File: `RecentRoutesPanel.tsx`.
+- Deepened active/opening row fill from emerald-50 at 90% opacity to
+  emerald-100 at 80%. Dark-mode emerald-900 opacity increased from 30% to 40%.
+  Keeps the existing soft green treatment with a clearer selected state.
+- Checks: Scoped ESLint and whitespace checks passed.
+- Status: Local/uncommitted; ownership released for review.
+
+## Follow-up: Clear saved-route loading feedback — October 12, 2026
+
+- Implementer: Codex (Sol). Files: `Dashboard.tsx`, `RecentRoutesPanel.tsx`,
+  and `map/DashboardMap.tsx`.
+- Saved-route rows now show a larger spinner and stronger "Loading saved route…"
+  label. Once selected, a centered loading card with a light backdrop stays
+  visible while the map draws and finishes its camera transition, including
+  when another route was already visible.
+- The previous immediate "Route loaded" toast now appears after camera settling.
+  Completion is checked against the route request/map instance and pending
+  saved ID. Clear, planning another route, failure, and redundant-route
+  regeneration dismiss loading; regeneration retains its own existing feedback.
+- Checks: TypeScript, scoped ESLint, and whitespace checks passed; ESLint has
+  existing map hook warnings. Authenticated interaction confirmation remains
+  needed: select a saved route, observe the spinner through the camera motion,
+  then confirm success and disappearance of the loading card.
+- Status: Local/uncommitted; ownership released for review.
+
+## Follow-up: Single saved-route loading card with background blur
+
+- Implementer: Codex (Sol). Files: `Dashboard.tsx`,
+  `src/components/ui/LoadingOverlay.tsx`.
+- Kept the centered saved-route loading card and removed the extra loaded-route
+  toast. NavigationCard is hidden during saved-route loading and returns when
+  loading completes. The loader backdrop now blurs 4px with light dimming and
+  sits above dashboard controls, so only the loading card stays sharp.
+- Checks: TypeScript, scoped ESLint, and whitespace checks passed (existing
+  LoadingOverlay unused-tone warning). No new timing delay was added.
+- Status: Local/uncommitted; ownership released for review.
+
+## Saved checkpoint — October 12, 2026
+
+- Antonio requested committing and pushing the active-row highlight and
+  saved-route loading-feedback changes to the current feature branch.
+- The commit containing this entry supersedes the local/uncommitted notes
+  above for these changes. Includes darker green selection, loading feedback
+  through camera settling, one loading card, and background blur.
+- TypeScript and whitespace checks passed; scoped ESLint reported no errors
+  with existing map hook warnings and the pre-existing unused-tone warning.
+- Excludes unrelated untracked content; no merge or production deployment.
