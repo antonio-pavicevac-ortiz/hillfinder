@@ -1,5 +1,7 @@
 "use client";
 
+import SheetDragHandle from "@/components/dashboard/ui/SheetDragHandle";
+
 import { AnimatePresence, motion, useDragControls, type PanInfo } from "framer-motion";
 import {
   useEffect,
@@ -581,31 +583,22 @@ export default function DownhillGenerator({
               className={[
                 "pointer-events-auto w-full",
                 "bg-white/85 dark:bg-slate-900/90 backdrop-blur-xl",
-                "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl p-4",
+                "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl px-4 pb-4 pt-12",
                 "relative isolate",
               ].join(" ")}
               style={{ touchAction: "manipulation" }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-center mb-1">
-                <button
-                  type="button"
-                  aria-label="Minimize planner"
-                  className="group w-full flex justify-center py-3 -my-2 cursor-grab active:cursor-grabbing"
-                  style={{ touchAction: "none" }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    onHandlePointerDown?.(e);
-                    dragControls.start(e as any);
-                  }}
-                  onClick={() => {
-                    (onMinimize ?? onClose)();
-                  }}
-                >
-                  <div className="h-1.5 w-12 rounded-full bg-gray-400/60 transition-colors duration-200 group-hover:bg-gray-600/70 group-active:bg-gray-600/70" />
-                </button>
-              </div>
+              <SheetDragHandle
+                label="Minimize planner"
+                onClose={() => (onMinimize ?? onClose)()}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  onHandlePointerDown?.(event);
+                  dragControls.start(event);
+                }}
+              />
 
               <div className="flex items-center justify-center mb-2">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Plan Your Route</h2>

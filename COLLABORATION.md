@@ -966,3 +966,48 @@ Copy this section for a newly assigned task:
   superseded. TypeScript and whitespace checks passed; ESLint found no errors
   with existing map hook warnings. Real GPS walkthrough remains outstanding.
 - No unrelated untracked content included; no merge or deployment performed.
+
+## Current task: Quick Actions drag handle — October 12, 2026
+
+- Branch: `feat/quick-actions-drag-handle`, created from latest main (`edb384a`).
+- Antonio requested a new/separate branch to bring Quick Actions in line with
+  Saved Routes and Plan Your Route.
+- Implementer: Codex (Sol). File: `modals/QuickActionSheet.tsx` and this handoff.
+- Added a centered grey 48x6px handle above the action buttons. It is an
+  accessible close button and initiates downward sheet dragging. Dismissal
+  thresholds match Saved Routes (110px displacement or 900px/s velocity).
+  Action buttons do not initiate dragging. Backdrop dismissal remains.
+- Framer Motion owns the slide/drag transition, respecting reduced motion.
+  The closed sheet is inert and aria-hidden so its controls cannot receive focus.
+- Checks: TypeScript, scoped ESLint, and whitespace checks passed. Actual
+  touch drag, short-drag rebound, mouse drag, tap, and keyboard confirmation
+  remain needed in the preview.
+- Status: Complete locally; uncommitted/unpushed; ownership released for review.
+
+## Follow-up: Consistent drag-handle spacing across all three sheets
+
+- Antonio requested matching the top spacing of Quick Actions, Plan Your Route,
+  and Saved Routes. Previously pills sat about 20px/20px/24px below the top.
+- Added shared `ui/SheetDragHandle.tsx` and used it in all three sheets. It
+  positions a 48x6px pill 24px below the inside top edge within a 48px-high
+  accessible touch area. Each sheet reserves 48px above its content. Existing
+  click/minimize and pointer drag callbacks are preserved.
+- Files: `SheetDragHandle.tsx`, `QuickActionSheet.tsx`, `DownhillGenerator.tsx`,
+  `RecentRoutesPanel.tsx`, and this handoff. Branch remains
+  `feat/quick-actions-drag-handle`.
+- Checks: TypeScript and whitespace passed; scoped ESLint has no errors and two
+  existing planner warnings. Chrome measurements using the actual shared
+  component markup/CSS in panel fixtures verified identical 24px top gaps,
+  centered 48x6px pills and 48px hit areas at 390px and 1280px widths.
+  Authenticated sheet gesture confirmation remains needed.
+- Status: Local/uncommitted/unpushed; ownership released for review.
+
+## Shared sheet-handle checkpoint — October 12, 2026
+
+- Antonio approved the preview and requested pushing the current changes.
+- The commit containing this entry saves the Quick Actions drag handle and
+  shared handle/spacing across all three sheets on `feat/quick-actions-drag-handle`.
+  Earlier local/uncommitted notes for this task are superseded.
+- TypeScript, whitespace, and scoped ESLint checks passed with two existing
+  planner warnings. Browser spacing verification is documented above.
+- Unrelated untracked content excluded. No merge or deployment performed.

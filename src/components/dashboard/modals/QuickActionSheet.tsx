@@ -1,6 +1,9 @@
 "use client";
 
+import SheetDragHandle from "@/components/dashboard/ui/SheetDragHandle";
+
 import { Route, Star, TrendingDown, Zap } from "lucide-react";
+import { motion, useDragControls, useReducedMotion, type PanInfo } from "framer-motion";
 
 interface Props {
   open: boolean;
@@ -24,6 +27,12 @@ export default function QuickActionsSheet({
   isOffline = false,
 }: Props) {
   const canQuickRoute = !isOffline && (quickRouteEnabled ?? true);
+  const dragControls = useDragControls();
+  const reducedMotion = useReducedMotion();
+
+  function handleDragEnd(_: PointerEvent, info: PanInfo) {
+    if (info.offset.y > 110 || info.velocity.y > 900) onClose();
+  }
 
   return (
     <>
@@ -31,16 +40,35 @@ export default function QuickActionsSheet({
         <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       )}
 
-      <div
+      <motion.div
+        initial={false}
+        animate={{ y: open ? 0 : "100%" }}
+        transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40, mass: 0.9 }}
+        drag="y"
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={{ top: 0 }}
+        dragElastic={0.18}
+        onDragEnd={handleDragEnd}
+        inert={!open}
+        aria-hidden={!open}
         className={`
           fixed left-0 right-0 bottom-0 z-50
           rounded-t-2xl border-t border-black/10 dark:border-white/10
           bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-lg
-          transition-transform duration-300
-          ${open ? "translate-y-0 pointer-events-auto" : "translate-y-full pointer-events-none"}
+          ${open ? "pointer-events-auto" : "pointer-events-none"}
         `}
       >
-        <div className="p-6 space-y-4">
+        <div className="px-6 pt-12 pb-6">
+          <SheetDragHandle
+            label="Close Quick Actions"
+            onClose={onClose}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              dragControls.start(event);
+            }}
+          />
+          <div className="space-y-4">
           <button
             onClick={() => {
               if (!canQuickRoute) return;
@@ -119,7 +147,8 @@ export default function QuickActionsSheet({
             Saved Routes
           </button>
         </div>
-      </div>
+        </div>
+      </motion.div>
     </>
   );
 }
