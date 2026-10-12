@@ -858,3 +858,45 @@ Copy this section for a newly assigned task:
   local/uncommitted notes for this task are superseded by this checkpoint.
 - Checks: Four navigation persistence tests, TypeScript, and whitespace checks
   passed. No unrelated untracked content is included. No push requested yet.
+
+## Follow-up: Align saved-list fade overlays — October 12, 2026
+
+- Implementer: Codex (Sol). File: `RecentRoutesPanel.tsx`.
+- Interpreted Antonio's screenshots as alignment of the pale top/bottom fades
+  within the scrolling list. Asked to distinguish fades from whole-panel
+  placement; no answer received before proceeding with this reversible change.
+- Fade overlays now sit inside the scroll viewport's own rounded, clipped
+  wrapper, with symmetric full-width anchoring rather than unequal left/right
+  offsets and separate corner radii. Panel position is unchanged.
+- Checks: TypeScript, scoped ESLint, and whitespace checks passed. Visual
+  confirmation still needed in the preview at both scroll positions.
+- Status: Local/uncommitted; ownership released for review.
+
+## Follow-up: Keep active green highlight clear
+
+- Antonio clarified that the fades were washing out the active green row.
+- Removed both pale fade overlays from `RecentRoutesPanel.tsx`. The active
+  highlight now stays uniform, including at the scrolling viewport's edges.
+  Rounded clipping and the scrollbar remain. This supersedes fade alignment.
+- Checks: Scoped ESLint and whitespace checks passed.
+- Status: Local/uncommitted; ownership released for review.
+
+## Follow-up: Continuous saved-route list corners
+
+- Antonio clarified row geometry: first row rounds only its top corners,
+  middle rows have straight edges, and final row rounds only bottom corners.
+- Updated `RecentRoutesPanel.tsx` highlight/hover surfaces by row position;
+  a single-row list retains all four rounded corners. Straight dividers stay
+  aligned with the adjoining straight row boundaries.
+- Checks: Scoped ESLint and whitespace checks passed.
+- Status: Local/uncommitted; ownership released for review.
+
+## Saved list styling checkpoint — October 12, 2026
+
+- Antonio requested saving and pushing the saved-list styling changes to
+  `fix/saved-route-navigation`.
+- The commit containing this entry removes the pale scroll fades, retains
+  rounded viewport clipping, and rounds row surfaces only at the list's outer
+  top/bottom edges. Earlier uncommitted notes for these changes are superseded.
+- Scoped ESLint and whitespace checks passed. Unrelated untracked content is
+  excluded; no merge or deployment is performed by this checkpoint.

@@ -261,6 +261,7 @@ export default function RecentRoutesPanel({
                           "p-2",
                         ].join(" ")}
                       >
+                        <div className="relative overflow-hidden rounded-xl">
                         <div
                           ref={scrollRef}
                           className="pointer-events-auto max-h-40 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 [touch-action:pan-y]"
@@ -281,7 +282,9 @@ export default function RecentRoutesPanel({
                               >
                                 <div
                                   className={[
-                                    "rounded-xl px-2 py-2 transition",
+                                    "px-2 py-2 transition",
+                                    index === 0 ? "rounded-t-xl" : "",
+                                    index === routes.length - 1 ? "rounded-b-xl" : "",
                                     isActive || isOpening
                                       ? "bg-emerald-100/80 dark:bg-emerald-900/40"
                                       : "bg-transparent hover:bg-white/70 dark:hover:bg-slate-700/60",
@@ -382,16 +385,9 @@ export default function RecentRoutesPanel({
                             );
                           })}
                         </div>
-                      </div>
 
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute left-2 right-3 top-2 h-5 rounded-t-2xl bg-gradient-to-b from-slate-50/95 dark:from-slate-800/95 via-slate-50/70 dark:via-slate-800/70 to-transparent"
-                      />
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute bottom-2 left-2 right-3 h-6 rounded-b-2xl bg-gradient-to-t from-slate-50/95 dark:from-slate-800/95 via-slate-50/70 dark:via-slate-800/70 to-transparent"
-                      />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
