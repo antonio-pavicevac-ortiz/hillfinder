@@ -9,7 +9,7 @@ const inputClass =
 
 export default function ProfileForm({ dbUser }: { dbUser: any }) {
   const [name, setName] = useState(dbUser?.name || "");
-  const [email, setEmail] = useState(dbUser?.email || "");
+  const email = dbUser?.email || "";
   const [username, setUsername] = useState(dbUser?.username || "");
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -167,9 +167,13 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
         <input
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
+          readOnly
+          aria-readonly="true"
+          className={`${inputClass} cursor-not-allowed opacity-70`}
         />
+        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+          Email can&apos;t be changed yet.
+        </p>
         {fieldErrors.email && (
           <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.email}</p>
         )}

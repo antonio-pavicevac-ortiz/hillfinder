@@ -6,6 +6,9 @@ import NextAuth from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import { clientIp, rateLimit } from "@/lib/security/rateLimit";
+
+const INVALID_CREDENTIALS = "Invalid email or password";
 
 export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -24,14 +27,30 @@ export const authOptions = {
         password: { label: "Password", type: "password" },
       },
 
-      async authorize(credentials) {
+      async authorize(credentials, req) {
+        const email = credentials?.email;
+        const password = credentials?.password;
+        if (typeof email !== "string" || typeof password !== "string") {
+          throw new Error(INVALID_CREDENTIALS);
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+        const windowMs = 15 * 60 * 1000;
+        if (
+          !rateLimit(`signin:ip:${clientIp(req?.headers)}`, 20, windowMs) ||
+          !rateLimit(`signin:email:${normalizedEmail}`, 10, windowMs)
+        ) {
+          throw new Error("Too many sign-in attempts. Try again in a few minutes.");
+        }
+
         await connectToDB();
 
-        const user = await User.findOne({ email: credentials?.email });
-        if (!user) throw new Error("No user found");
+        const user = await User.findOne({ email: normalizedEmail });
+        // Same message either way so sign-in doesn't reveal which emails have accounts
+        if (!user?.password) throw new Error(INVALID_CREDENTIALS);
 
-        const isValid = await bcrypt.compare(credentials!.password, user.password);
-        if (!isValid) throw new Error("Invalid password");
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) throw new Error(INVALID_CREDENTIALS);
 
         // 🔥 FIX: Return a serializable plain object (NOT the Mongoose document)
         return {

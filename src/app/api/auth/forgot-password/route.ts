@@ -1,12 +1,30 @@
 import { connectToDB } from "@/lib/mongodb";
+import { clientIp, rateLimit } from "@/lib/security/rateLimit";
 import User from "@/models/User";
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 
+const GENERIC_RESPONSE = { message: "If that email exists, we’ve sent a reset link." };
+
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
+    const { email: rawEmail } = await req.json();
+
+    // Reject non-string input so query operators like {"$ne": null} can't reach Mongo
+    if (typeof rawEmail !== "string" || !rawEmail.trim()) {
+      return NextResponse.json({ message: "Please enter your email address." }, { status: 400 });
+    }
+
+    const email = rawEmail.trim().toLowerCase();
+
+    if (
+      !rateLimit(`forgot:ip:${clientIp(req.headers)}`, 10, 60 * 60 * 1000) ||
+      !rateLimit(`forgot:email:${email}`, 3, 60 * 60 * 1000)
+    ) {
+      // Same response as success so the limit doesn't reveal whether the account exists
+      return NextResponse.json(GENERIC_RESPONSE, { status: 200 });
+    }
 
     // 🧩 1. Connect to MongoDB
     await connectToDB();
@@ -15,10 +33,7 @@ export async function POST(req: Request) {
     const user = await User.findOne({ email });
     if (!user) {
       // Don’t reveal that user doesn’t exist
-      return NextResponse.json(
-        { message: "If that email exists, we’ve sent a reset link." },
-        { status: 200 }
-      );
+      return NextResponse.json(GENERIC_RESPONSE, { status: 200 });
     }
 
     // 🧩 3. Generate reset token + expiry
@@ -26,15 +41,6 @@ export async function POST(req: Request) {
     const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = Date.now() + 1000 * 60 * 60; // 1 hour
-
-    // 🧠 Debug logging
-    console.log("Generated token (plain):", resetToken);
-    console.log("Generated token (hashed):", hashedToken);
-    console.log("Saving to user:", {
-      email: user.email,
-      resetPasswordToken: user.resetPasswordToken,
-      resetPasswordExpires: user.resetPasswordExpires,
-    });
 
     await user.save();
 
@@ -53,7 +59,7 @@ export async function POST(req: Request) {
 
     const mailOptions = {
       from: process.env.EMAIL_FROM,
-      to: email,
+      to: user.email,
       subject: "Reset your Hillfinder password",
       html: `
         <p>Hi there,</p>
@@ -67,10 +73,7 @@ export async function POST(req: Request) {
 
     await transporter.sendMail(mailOptions);
 
-    return NextResponse.json(
-      { message: "If that email exists, we’ve sent a reset link." },
-      { status: 200 }
-    );
+    return NextResponse.json(GENERIC_RESPONSE, { status: 200 });
   } catch (err) {
     console.error("Error sending reset email:", err);
     return NextResponse.json(

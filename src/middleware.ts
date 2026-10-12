@@ -3,15 +3,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // getToken can throw on a malformed Authorization header; treat that as signed out
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
-  });
+  }).catch(() => null);
 
   const pathname = request.nextUrl.pathname;
-
-  console.log("🔥 Middleware HIT:", pathname);
-  console.log("🔥 Token:", token ? "YES" : "NO");
 
   // Block auth pages for logged-in users
   if (token && pathname.startsWith("/auth")) {
