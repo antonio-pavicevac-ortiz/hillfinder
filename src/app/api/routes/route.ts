@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       segments,
       distanceMeters,
       durationSeconds,
+      navSteps,
     } = body;
 
     if (!from || !to || !difficulty || !coords?.length) {
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
       segments,
       distanceMeters,
       durationSeconds,
+      navSteps: navSteps ?? [],
     });
 
     return NextResponse.json({ route: savedRoute }, { status: 201 });

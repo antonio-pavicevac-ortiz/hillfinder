@@ -102,6 +102,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const [routeBusy, setRouteBusy] = useState(false);
   const [routePreparing, setRoutePreparing] = useState(false);
   const [loadingSavedRoute, setLoadingSavedRoute] = useState<SavedRouteRecord | null>(null);
+  const startSavedNavigationWhenPreparedRef = useRef(false);
   const loadingSavedRouteRef = useRef<SavedRouteRecord | null>(null);
 
   function endSavedRouteLoading() {
@@ -305,6 +306,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function clearRoute() {
+    startSavedNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
     setHasRoute(false);
     setVariantsReady(false);
@@ -375,6 +377,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRoutePrepared() {
+    if (startSavedNavigationWhenPreparedRef.current) {
+      startSavedNavigationWhenPreparedRef.current = false;
+      hasAutoStartedVoiceRef.current = true;
+      dispatchNavigation({ type: "START" });
+    }
     setRouteBusy(false);
     setRoutePreparing(false);
     setVariantsReady(true);
@@ -383,6 +390,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRouteFailed(message?: string) {
+    startSavedNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
     setRouteBusy(false);
     setRoutePreparing(false);
@@ -648,6 +656,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }, [isNavMuted]);
 
   useEffect(() => {
+    if (loadingSavedRoute) return;
     if (!voiceEnabled) return;
 
     if (isNavMuted) return;
@@ -682,14 +691,21 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         )
       : VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS;
 
-    window.setTimeout(() => {
+    let started = false;
+    const timer = window.setTimeout(() => {
+      started = true;
       dispatchNavigation({ type: "GO_TO_STEP", index: 0 });
 
       dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
 
       dispatchNavigation({ type: "START" });
     }, firstInstructionDelay);
+    return () => {
+      window.clearTimeout(timer);
+      if (!started) hasAutoStartedVoiceRef.current = false;
+    };
   }, [
+    loadingSavedRoute,
     voiceEnabled,
 
     isNavMuted,
@@ -971,8 +987,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           const route = loadingSavedRouteRef.current;
           if (route?._id !== routeId) return;
           endSavedRouteLoading();
+          hasAutoStartedVoiceRef.current = true;
+          dispatchNavigation({ type: "START" });
         }}
-        onSavedRouteNeedsRegeneration={() => {
+        onSavedRouteNeedsRegeneration={(reason) => {
+          startSavedNavigationWhenPreparedRef.current = true;
           endSavedRouteLoading();
           savedRouteVerificationRef.current?.controller.abort();
           savedRouteVerificationRef.current = null;
@@ -986,7 +1005,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           setRoutePreparing(true);
           setRouteBusy(true);
           clearDashboardSession();
-          toast.info("Finding a route without redundant detours…");
+          toast.info(reason === "missing-navigation"
+            ? "This older route needs directions. Rebuilding it…"
+            : "Finding a route without redundant detours…");
         }}
         theme={theme}
         destination={destination}
@@ -1128,7 +1149,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
                 setSelectedVariant(route.difficulty);
                 setHasRoute(true);
                 dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
-                dispatchNavigation({ type: "START" });
 
                 navStartLocationRef.current = {
                   lat: route.from.lat,

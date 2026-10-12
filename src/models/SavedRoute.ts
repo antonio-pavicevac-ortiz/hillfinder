@@ -47,6 +47,26 @@ const SavedRouteSchema = new Schema(
     },
     distanceMeters: { type: Number },
     durationSeconds: { type: Number },
+    navSteps: {
+      type: [new Schema({
+        index: { type: Number, required: true },
+        instruction: { type: String, required: true },
+        distance: { type: Number, required: true },
+        duration: { type: Number, required: true },
+        location: { type: [Number], required: true },
+        maneuver: { type: new Schema({
+          lng: { type: Number, required: true },
+          lat: { type: Number, required: true },
+          type: { type: String },
+          modifier: String,
+        }, { _id: false }), required: true },
+        spokenAdvance: { type: Boolean, default: false },
+        spokenFinal: { type: Boolean, default: false },
+        completed: { type: Boolean, default: false },
+        terrainHint: String,
+      }, { _id: false })],
+      default: [],
+    },
     shareEnabled: { type: Boolean, default: true },
   },
   {
@@ -54,4 +74,9 @@ const SavedRouteSchema = new Schema(
   }
 );
 
-export default models.SavedRoute || model("SavedRoute", SavedRouteSchema);
+const SavedRoute = models.SavedRoute || model("SavedRoute", SavedRouteSchema);
+// Next's hot reload can retain the older compiled model within this process.
+if (!SavedRoute.schema.path("navSteps")) {
+  SavedRoute.schema.add({ navSteps: SavedRouteSchema.obj.navSteps });
+}
+export default SavedRoute;

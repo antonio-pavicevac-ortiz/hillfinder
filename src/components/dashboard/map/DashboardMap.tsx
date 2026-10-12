@@ -113,7 +113,7 @@ export default function DashboardMap({
   onRouteBusyChange?: (busy: boolean) => void;
   onRouteReady?: (route: SaveRoutePayload) => void;
   savedRouteToLoad?: SavedRouteRecord | null;
-  onSavedRouteNeedsRegeneration?: () => void;
+  onSavedRouteNeedsRegeneration?: (reason: "redundant-detour" | "missing-navigation") => void;
   onSavedRouteLoaded?: (routeId: string) => void;
   canAcceptDestination?: (loc: { lat: number; lng: number }) => boolean;
   findDownhillNonce?: number;
@@ -547,10 +547,10 @@ export default function DashboardMap({
     // The restoration effect retries when terrain and style updates finish.
     if (!map.isStyleLoaded()) return;
 
-    if (hasRedundantDetour(savedRoute.coords)) {
+    if (hasRedundantDetour(savedRoute.coords) || !savedRoute.navSteps?.length) {
       // Saved and restored records bypass the candidate filter. Regenerate
       // using the real endpoints instead of drawing their redundant journey.
-      onSavedRouteNeedsRegeneration?.();
+      onSavedRouteNeedsRegeneration?.(hasRedundantDetour(savedRoute.coords) ? "redundant-detour" : "missing-navigation");
       const from = new mapboxgl.LngLat(savedRoute.from.lng, savedRoute.from.lat);
       const to = new mapboxgl.LngLat(savedRoute.to.lng, savedRoute.to.lat);
       ensureFromMarker(map, from);
