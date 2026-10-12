@@ -85,6 +85,7 @@ export default function DashboardMap({
   onRouteReady,
   savedRouteToLoad,
   onSavedRouteNeedsRegeneration,
+  onSavedRouteLoaded,
   canAcceptDestination,
   findDownhillNonce,
   onNavigationLocationChange,
@@ -113,6 +114,7 @@ export default function DashboardMap({
   onRouteReady?: (route: SaveRoutePayload) => void;
   savedRouteToLoad?: SavedRouteRecord | null;
   onSavedRouteNeedsRegeneration?: () => void;
+  onSavedRouteLoaded?: (routeId: string) => void;
   canAcceptDestination?: (loc: { lat: number; lng: number }) => boolean;
   findDownhillNonce?: number;
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
@@ -522,7 +524,7 @@ export default function DashboardMap({
     renderedRouteModeRef.current = nextMode;
   }
 
-  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant) {
+  function renderVariantForZoom(map: mapboxgl.Map, variant: Variant, onSettled?: () => void) {
     drawVariantLayers(map, variant);
 
     // Two rAFs let the browser finish painting the new route layers before
@@ -532,6 +534,10 @@ export default function DashboardMap({
         fitMapToRoute(map, variant.coords, {
           variant: selectedVariantRef.current ?? "easy",
         });
+        if (onSettled) {
+          if (map.isMoving()) map.once("moveend", onSettled);
+          else onSettled();
+        }
       });
     });
   }
@@ -556,6 +562,7 @@ export default function DashboardMap({
 
     abortRef.current?.abort();
     routeReqIdRef.current += 1;
+    const loadRequestId = routeReqIdRef.current;
     setRouteBusy(true);
 
     clearOverviewRoute(map);
@@ -612,7 +619,11 @@ export default function DashboardMap({
 
       if (!latestMap) return;
 
-      renderVariantForZoom(latestMap, variant);
+      renderVariantForZoom(latestMap, variant, () => {
+        if (loadRequestId === routeReqIdRef.current && mapRef.current === latestMap) {
+          onSavedRouteLoaded?.(savedRoute._id);
+        }
+      });
       syncDestinationMarkerToActiveRouteEndpoint(latestMap, variant);
       requestAnimationFrame(() => {
         onVariantsReady?.();

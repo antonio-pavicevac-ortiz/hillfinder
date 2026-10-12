@@ -283,7 +283,7 @@ export default function RecentRoutesPanel({
                                   className={[
                                     "rounded-xl px-2 py-2 transition",
                                     isActive || isOpening
-                                      ? "bg-emerald-50/90 dark:bg-emerald-900/30"
+                                      ? "bg-emerald-100/80 dark:bg-emerald-900/40"
                                       : "bg-transparent hover:bg-white/70 dark:hover:bg-slate-700/60",
                                   ].join(" ")}
                                 >
@@ -308,9 +308,9 @@ export default function RecentRoutesPanel({
                                         </p>
 
                                         {isOpening ? (
-                                          <div role="status" className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-600">
-                                            <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-                                            Opening route…
+                                          <div role="status" className="mt-1 flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                            Loading saved route…
                                           </div>
                                         ) : isActive && (
                                           <div className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-600">

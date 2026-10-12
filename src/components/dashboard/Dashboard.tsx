@@ -101,6 +101,14 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const hasShownUndoHintRef = useRef(false);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routePreparing, setRoutePreparing] = useState(false);
+  const [loadingSavedRoute, setLoadingSavedRoute] = useState<SavedRouteRecord | null>(null);
+  const loadingSavedRouteRef = useRef<SavedRouteRecord | null>(null);
+
+  function endSavedRouteLoading() {
+    loadingSavedRouteRef.current = null;
+    setLoadingSavedRoute(null);
+  }
+
 
   const [activeRouteToSave, setActiveRouteToSave] = useState<SaveRoutePayload | null>(null);
   const [selectedSavedRoute, setSelectedSavedRoute] = useState<SavedRouteRecord | null>(null);
@@ -297,6 +305,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function clearRoute() {
+    endSavedRouteLoading();
     setHasRoute(false);
     setVariantsReady(false);
     setSelectedVariant(null);
@@ -374,6 +383,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRouteFailed(message?: string) {
+    endSavedRouteLoading();
     setRouteBusy(false);
     setRoutePreparing(false);
 
@@ -407,12 +417,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     if (message) {
       toast.error(message);
     }
-  }
-
-  function shortAreaName(name?: string) {
-    if (!name) return "";
-    const parts = name.split(",").map((p) => p.trim());
-    return parts[1] || parts[0] || "";
   }
 
   async function handleQuickRoute() {
@@ -459,6 +463,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handlePlanRoute() {
+    endSavedRouteLoading();
     setQaOpen(false);
     setRoutesOpen(false);
     setVariantsReady(false);
@@ -962,7 +967,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         isActiveSavedRoute={activeRouteSource === "saved"}
       />
       <DashboardMap
+        onSavedRouteLoaded={(routeId) => {
+          const route = loadingSavedRouteRef.current;
+          if (route?._id !== routeId) return;
+          endSavedRouteLoading();
+        }}
         onSavedRouteNeedsRegeneration={() => {
+          endSavedRouteLoading();
           savedRouteVerificationRef.current?.controller.abort();
           savedRouteVerificationRef.current = null;
           setCheckingSavedRoute(null);
@@ -1069,17 +1080,19 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         </div>
       )}
 
-      {(routeBusy || routePreparing) && !hasRoute && !generatorOpen && (
+      {(loadingSavedRoute || ((routeBusy || routePreparing) && !hasRoute && !generatorOpen)) && (
         <LoadingOverlay
           text={
-            activeRouteSource === "saved"
+            loadingSavedRoute
+              ? "Loading saved route…"
+              : activeRouteSource === "saved"
               ? "Rendering route..."
               : routePreparing
                 ? "Preparing your route..."
                 : "Generating route..."
           }
           tone="dark"
-          showBackdrop={false}
+          showBackdrop={!!loadingSavedRoute}
         />
       )}
       <header
@@ -1105,6 +1118,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               onClose={() => setRoutesOpen(false)}
               refreshKey={refreshRoutesKey}
               onLoadRoute={(route) => {
+                loadingSavedRouteRef.current = route;
+                setLoadingSavedRoute(route);
                 setRouteBusy(false);
                 setSelectedSavedRoute(route);
                 setFromLocation(route.from);
@@ -1139,9 +1154,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
                   navSteps: route.navSteps ?? [],
                 });
 
-                toast.success(
-                  `Route loaded\n${shortAreaName(route.from.name)} → ${shortAreaName(route.to.name)}`
-                );
               }}
               activeRouteId={activeSavedRouteId}
               onDeletedRoute={handleDeletedRoute}
@@ -1151,6 +1163,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       )}
       <AnimatePresence>
         {showNavigationCard &&
+          !loadingSavedRoute &&
           hasRoute &&
           activeNavSteps.length > 0 &&
           currentNavStep?.instruction && (

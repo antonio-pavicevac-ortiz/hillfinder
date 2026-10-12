@@ -13,7 +13,9 @@ export default function LoadingOverlay({
   fixed = true,
   showBackdrop = false,
 }: LoadingOverlayProps) {
-  const wrapperClass = fixed ? "fixed inset-0 z-[16]" : "absolute inset-0 z-[1]";
+  const wrapperClass = fixed
+    ? showBackdrop ? "fixed inset-0 z-[160]" : "fixed inset-0 z-[16]"
+    : "absolute inset-0 z-[1]";
 
   const cardClass = [
     "border border-emerald-500/20",
@@ -29,7 +31,7 @@ export default function LoadingOverlay({
     >
       {showBackdrop && (
         <div
-          className="absolute inset-0 bg-black/28 [-webkit-backdrop-filter:blur(1px)] [backdrop-filter:blur(1px)]"
+          className="absolute inset-0 bg-black/20 [-webkit-backdrop-filter:blur(4px)] [backdrop-filter:blur(4px)]"
           aria-hidden="true"
         />
       )}
