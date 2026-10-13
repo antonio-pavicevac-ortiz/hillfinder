@@ -10,6 +10,8 @@ const inputClass =
 export default function ProfileForm({ dbUser }: { dbUser: any }) {
   const [name, setName] = useState(dbUser?.name || "");
   const email = dbUser?.email || "";
+  // Google accounts have no password, so there's nothing to change
+  const canChangePassword = dbUser?.hasPassword !== false;
   const [username, setUsername] = useState(dbUser?.username || "");
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -80,13 +82,16 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
       newFieldErrors.email = "Please enter a valid email address";
     }
 
-    const wantsPasswordChange = currentPassword || newPassword || confirmPassword;
+    const wantsPasswordChange =
+      canChangePassword && (currentPassword || newPassword || confirmPassword);
 
     if (wantsPasswordChange) {
-      if (!currentPassword) setPasswordError("Please enter your current password to change it.");
+      if (!currentPassword)
+        setPasswordError("Please enter your current password to change it.");
 
       if (newPassword.length < 12)
-        newFieldErrors.newPassword = "Password must be at least 12 characters long";
+        newFieldErrors.newPassword =
+          "Password must be at least 12 characters long";
 
       const strictRegex =
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{12,}$/;
@@ -101,14 +106,22 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
       ];
       if (
         forbidden.some(
-          (val) => val && newPassword.toLowerCase().includes(val.replace(/[^a-z0-9]/gi, ""))
+          (val) =>
+            val &&
+            newPassword.toLowerCase().includes(val.replace(/[^a-z0-9]/gi, "")),
         )
       )
-        newFieldErrors.newPassword = "Password cannot contain your name, username, or email";
+        newFieldErrors.newPassword =
+          "Password cannot contain your name, username, or email";
 
       const weakPatterns = ["password", "qwerty", "12345", "abc123", "letmein"];
-      if (weakPatterns.some((p) => newPassword.toLowerCase().includes(p.toLowerCase())))
-        newFieldErrors.newPassword = "Password contains a forbidden weak pattern";
+      if (
+        weakPatterns.some((p) =>
+          newPassword.toLowerCase().includes(p.toLowerCase()),
+        )
+      )
+        newFieldErrors.newPassword =
+          "Password contains a forbidden weak pattern";
 
       if (newPassword !== confirmPassword)
         newFieldErrors.confirmPassword = "New passwords do not match";
@@ -138,18 +151,26 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {message && (
-        <p className="text-sm text-emerald-600 dark:text-emerald-400 text-center">{message}</p>
+        <p className="text-sm text-emerald-600 dark:text-emerald-400 text-center">
+          {message}
+        </p>
       )}
       {profileError && (
-        <p className="text-sm text-red-600 dark:text-red-400 text-center">{profileError}</p>
+        <p className="text-sm text-red-600 dark:text-red-400 text-center">
+          {profileError}
+        </p>
       )}
       {passwordError && (
-        <p className="text-sm text-red-600 dark:text-red-400 text-center">{passwordError}</p>
+        <p className="text-sm text-red-600 dark:text-red-400 text-center">
+          {passwordError}
+        </p>
       )}
 
       {/* FULL NAME */}
       <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Full Name</label>
+        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">
+          Full Name
+        </label>
         <input
           type="text"
           value={name}
@@ -157,13 +178,17 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
           className={inputClass}
         />
         {fieldErrors.name && (
-          <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.name}</p>
+          <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+            {fieldErrors.name}
+          </p>
         )}
       </div>
 
       {/* EMAIL */}
       <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Email</label>
+        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">
+          Email
+        </label>
         <input
           type="email"
           value={email}
@@ -175,13 +200,17 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
           Email can&apos;t be changed yet.
         </p>
         {fieldErrors.email && (
-          <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.email}</p>
+          <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+            {fieldErrors.email}
+          </p>
         )}
       </div>
 
       {/* USERNAME */}
       <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Username</label>
+        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">
+          Username
+        </label>
         <input
           type="text"
           value={username}
@@ -191,45 +220,55 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
       </div>
 
       {/* CHANGE PASSWORD */}
-      <div className="pt-4 border-t border-gray-200 dark:border-slate-700 space-y-3">
-        <h3 className="font-semibold text-gray-800 dark:text-slate-100">Change Password</h3>
+      {canChangePassword ? (
+        <div className="pt-4 border-t border-gray-200 dark:border-slate-700 space-y-3">
+          <h3 className="font-semibold text-gray-800 dark:text-slate-100">
+            Change Password
+          </h3>
 
-        <input
-          type="password"
-          placeholder="Current password"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-          className={inputClass}
-        />
-
-        <div>
           <input
             type="password"
-            placeholder="New password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Current password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
             className={inputClass}
           />
-          {fieldErrors.newPassword && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.newPassword}</p>
-          )}
-        </div>
 
-        <div>
-          <input
-            type="password"
-            placeholder="Confirm new password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className={inputClass}
-          />
-          {fieldErrors.confirmPassword && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-              {fieldErrors.confirmPassword}
-            </p>
-          )}
+          <div>
+            <input
+              type="password"
+              placeholder="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className={inputClass}
+            />
+            {fieldErrors.newPassword && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                {fieldErrors.newPassword}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <input
+              type="password"
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className={inputClass}
+            />
+            {fieldErrors.confirmPassword && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                {fieldErrors.confirmPassword}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <p className="pt-4 border-t border-gray-200 dark:border-slate-700 text-sm text-gray-500 dark:text-slate-400">
+          You sign in with Google, so there&apos;s no password to change.
+        </p>
+      )}
 
       <button
         type="submit"

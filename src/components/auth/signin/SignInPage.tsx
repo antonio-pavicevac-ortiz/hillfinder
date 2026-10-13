@@ -11,8 +11,26 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-export function SignInPage({ providers }: { providers?: Record<string, any> | null }) {
-  const [error, setError] = useState("");
+// Shown when a sign-in redirects back here with ?error=
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  GoogleEmailInUse:
+    "An account with this email already exists. Sign in with your email and password instead.",
+  GoogleEmailUnverified:
+    "Your Google account's email isn't verified, so we can't sign you in with it.",
+};
+
+export function SignInPage({
+  providers,
+  authError,
+}: {
+  providers?: Record<string, any> | null;
+  authError?: string;
+}) {
+  const [error, setError] = useState(
+    authError
+      ? (AUTH_ERROR_MESSAGES[authError] ?? "Sign-in failed. Please try again.")
+      : "",
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authLocked, setAuthLocked] = useState(false);
@@ -64,9 +82,15 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
 
   return (
     <>
-      <h1 className="text-2xl font-bold mb-6 text-gray-800">Sign in to Hillfinder</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gray-800">
+        Sign in to Hillfinder
+      </h1>
 
-      <form suppressHydrationWarning onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form
+        suppressHydrationWarning
+        onSubmit={handleSubmit(onSubmit)}
+        className="space-y-4"
+      >
         {/* Email */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -81,11 +105,13 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
               "border rounded-md px-4 py-2 w-full text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 transition",
               errors.email
                 ? "border-red-500 focus:ring-red-500"
-                : "border-gray-300 focus:ring-green-600"
+                : "border-gray-300 focus:ring-green-600",
             )}
           />
           {errors.email && (
-            <p className="text-sm text-left text-red-600 mt-1">{errors.email.message}</p>
+            <p className="text-sm text-left text-red-600 mt-1">
+              {errors.email.message}
+            </p>
           )}
         </motion.div>
 
@@ -104,7 +130,7 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
               "border rounded-md px-4 py-2 w-full text-gray-900 placeholder-gray-400 pr-10 focus:outline-none focus:ring-2 transition",
               errors.password
                 ? "border-red-500 focus:ring-red-500"
-                : "border-gray-300 focus:ring-green-600"
+                : "border-gray-300 focus:ring-green-600",
             )}
           />
           <button
@@ -115,7 +141,9 @@ export function SignInPage({ providers }: { providers?: Record<string, any> | nu
             {showPassword ? "🙈" : "👁️"}
           </button>
           {errors.password && (
-            <p className="text-sm text-left text-red-600 mt-1">{errors.password.message}</p>
+            <p className="text-sm text-left text-red-600 mt-1">
+              {errors.password.message}
+            </p>
           )}
         </motion.div>
 

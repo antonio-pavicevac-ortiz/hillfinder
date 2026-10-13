@@ -1,22 +1,10 @@
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { connectToDB } from "@/lib/mongodb";
+import { uploadThingKey } from "@/lib/uploads/uploadThingFiles";
 import User from "@/models/User";
+import { createUTApi } from "@/lib/uploads/utapi";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-
-// Avatars must come from our UploadThing storage, not arbitrary hosts
-function isUploadThingUrl(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  try {
-    const { protocol, hostname } = new URL(value);
-    return (
-      protocol === "https:" &&
-      (hostname === "utfs.io" || hostname === "ufs.sh" || hostname.endsWith(".ufs.sh"))
-    );
-  } catch {
-    return false;
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -26,12 +14,48 @@ export async function POST(req: Request) {
     }
 
     const { url } = await req.json();
-    if (!isUploadThingUrl(url)) {
-      return NextResponse.json({ error: "Invalid avatar url" }, { status: 400 });
+    const key = uploadThingKey(url);
+    if (!key) {
+      return NextResponse.json(
+        { error: "Invalid avatar url" },
+        { status: 400 },
+      );
     }
 
     await connectToDB();
-    await User.findOneAndUpdate({ email: session.user.email }, { image: url });
+    const user = await User.findOne({ email: session.user.email });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Only accept files this user uploaded (recorded by the upload handler)
+    const ownedKeys: string[] = user.avatarKeys ?? [];
+    if (!ownedKeys.includes(key)) {
+      return NextResponse.json(
+        { error: "Invalid avatar url" },
+        { status: 400 },
+      );
+    }
+
+    user.image = url;
+    await user.save();
+
+    // Remove replaced avatars from storage. Any that fail stay in avatarKeys and are
+    // retried when the account is deleted.
+    const staleKeys = ownedKeys.filter((k) => k !== key);
+    if (staleKeys.length) {
+      try {
+        const result = await createUTApi().deleteFiles(staleKeys);
+        if (result.success) {
+          await User.updateOne(
+            { _id: user._id },
+            { $pull: { avatarKeys: { $in: staleKeys } } },
+          );
+        }
+      } catch (err) {
+        console.error("[AVATAR_CLEANUP_ERROR]", err);
+      }
+    }
 
     return NextResponse.json({ success: true, url });
   } catch (err) {

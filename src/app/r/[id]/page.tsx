@@ -1,7 +1,8 @@
+import { appBaseUrl } from "@/lib/env/appUrl";
+import { getSharedRoute } from "@/lib/routes/sharedRoute";
+
 type SharedRoutePageProps = {
-  params: {
-    id: string;
-  };
+  params: Promise<{ id: string }>;
 };
 
 type SharedRoute = {
@@ -32,8 +33,9 @@ function shortAreaName(name?: string) {
   return parts[1] || parts[0] || "";
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+export async function generateMetadata({ params }: SharedRoutePageProps) {
+  const { id } = await params;
+  const baseUrl = appBaseUrl();
 
   return {
     title: "Hillfinder Shared Route",
@@ -41,25 +43,22 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
     openGraph: {
       title: "Hillfinder Shared Route",
       description: "Check out this shared Hillfinder route.",
-      images: [`${baseUrl}/r/${params.id}/opengraph-image`],
+      images: [`${baseUrl}/r/${id}/opengraph-image`],
     },
     twitter: {
       card: "summary_large_image",
       title: "Hillfinder Shared Route",
       description: "Check out this shared Hillfinder route.",
-      images: [`${baseUrl}/r/${params.id}/opengraph-image`],
+      images: [`${baseUrl}/r/${id}/opengraph-image`],
     },
   };
 }
 
 export default async function SharedRoutePage({ params }: SharedRoutePageProps) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const { id } = await params;
+  const route: SharedRoute | null = await getSharedRoute(id);
 
-  const res = await fetch(`${baseUrl}/api/routes/${params.id}`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
+  if (!route) {
     return (
       <main className="min-h-screen bg-white">
         <div className="bg-hillfinder-gradient h-44" />
@@ -84,9 +83,6 @@ export default async function SharedRoutePage({ params }: SharedRoutePageProps) 
       </main>
     );
   }
-
-  const data: { route: SharedRoute } = await res.json();
-  const route = data.route;
 
   const title = `${shortAreaName(route.from?.name) || "From"} → ${shortAreaName(route.to?.name) || "Destination"}`;
 
@@ -146,7 +142,7 @@ export default async function SharedRoutePage({ params }: SharedRoutePageProps) 
               </a>
 
               <a
-                href={`/dashboard?sharedRoute=${params.id}`}
+                href={`/dashboard?sharedRoute=${id}`}
                 className="inline-flex rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 View in app

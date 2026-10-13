@@ -11,6 +11,7 @@ type ProfileData = {
   email: string;
   username: string;
   image: string | null;
+  hasPassword?: boolean;
 };
 
 export default function ProfilePanel({ onClose }: { onClose: () => void }) {
@@ -32,7 +33,7 @@ export default function ProfilePanel({ onClose }: { onClose: () => void }) {
 
   const avatar = profileData?.image ?? session?.user?.image ?? null;
   const fallbackUrl = `https://api.dicebear.com/7.x/thumbs/svg?seed=${
-    profileData?.username || profileData?.email || "guest"
+    profileData?.username || profileData?.id || "guest"
   }`;
   const src = avatar || fallbackUrl;
 

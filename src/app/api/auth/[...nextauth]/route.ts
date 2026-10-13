@@ -1,7 +1,9 @@
+import { findOrCreateGoogleUser } from "@/lib/auth/googleAccount";
 import { connectToDB } from "@/lib/mongodb";
+import AccountDeletion, { SESSION_MAX_AGE_SECONDS, hashEmail } from "@/models/AccountDeletion";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
-import type { Session } from "next-auth";
+import type { Account, Profile, Session } from "next-auth";
 import NextAuth from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -12,7 +14,7 @@ const INVALID_CREDENTIALS = "Invalid email or password";
 
 export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  session: { strategy: "jwt" as const },
+  session: { strategy: "jwt" as const, maxAge: SESSION_MAX_AGE_SECONDS },
 
   providers: [
     GoogleProvider({
@@ -69,11 +71,57 @@ export const authOptions = {
   },
 
   callbacks: {
-    async jwt({ token, user }: { token: JWT; user?: any }) {
+    // Every Google sign-in gets (or reuses) a local account, matched by Google account id
+    async signIn({ account, profile }: { account: Account | null; profile?: Profile }) {
+      if (account?.provider !== "google") return true;
+
+      await connectToDB();
+      const result = await findOrCreateGoogleUser({
+        googleId: account.providerAccountId,
+        email: profile?.email,
+        emailVerified: (profile as { email_verified?: boolean } | undefined)?.email_verified,
+        name: profile?.name,
+        image: (profile as { picture?: string } | undefined)?.picture,
+      });
+
+      return result.ok ? true : `/auth/signin?error=${result.error}`;
+    },
+
+    async jwt({ token, user, account }: { token: JWT; user?: any; account?: Account | null }) {
       if (user) {
         token.id = user.id;
         token.image = user.image ?? token.image;
+
+        // Google's user.id is its own account id; use the local account's id and email
+        if (account?.provider === "google") {
+          await connectToDB();
+          const local = await User.findOne({ googleId: account.providerAccountId })
+            .select("_id email image")
+            .lean<{ _id: unknown; email: string; image?: string | null }>();
+          if (!local) throw new Error("Google account has no local account");
+          token.id = String(local._id);
+          token.email = local.email;
+          token.image = local.image ?? token.image;
+        }
+
+        // `iat` is re-stamped on every refresh, so record when this sign-in happened
+        token.signedInAt = Date.now();
+        return token;
       }
+
+      // Reject tokens issued before the account was deleted, including ones on other devices.
+      // Throwing makes NextAuth clear the session cookie and return no session.
+      if (token.email) {
+        await connectToDB();
+        const deletion = await AccountDeletion.findOne({ emailHash: hashEmail(token.email) })
+          .select("deletedAt")
+          .lean<{ deletedAt: Date }>();
+        const signedInAt = typeof token.signedInAt === "number" ? token.signedInAt : 0;
+        if (deletion && signedInAt <= deletion.deletedAt.getTime()) {
+          throw new Error("Session revoked: account was deleted");
+        }
+      }
+
       return token;
     },
 

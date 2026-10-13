@@ -1,3 +1,4 @@
+import { getSharedRoute } from "@/lib/routes/sharedRoute";
 import { ImageResponse } from "next/og";
 
 export const size = {
@@ -75,19 +76,10 @@ function getStartEnd(points: string) {
 
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
   let route: SharedRoute | null = null;
 
   try {
-    const res = await fetch(`${baseUrl}/api/routes/${id}`, {
-      cache: "no-store",
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      route = data.route;
-    }
+    route = await getSharedRoute(id);
   } catch (err) {
     console.error("[opengraph-image]", err);
   }

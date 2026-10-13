@@ -1,3 +1,4 @@
+import { appBaseUrl } from "@/lib/env/appUrl";
 import { connectToDB } from "@/lib/mongodb";
 import { clientIp, rateLimit } from "@/lib/security/rateLimit";
 import User from "@/models/User";
@@ -31,7 +32,8 @@ export async function POST(req: Request) {
 
     // 🧩 2. Find user by email
     const user = await User.findOne({ email });
-    if (!user) {
+    // Google accounts have no password; don't let a reset email add one
+    if (!user || !user.password) {
       // Don’t reveal that user doesn’t exist
       return NextResponse.json(GENERIC_RESPONSE, { status: 200 });
     }
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
     await user.save();
 
     // 🧩 4. Create reset link with plain token (for email)
-    const resetLink = `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password?token=${resetToken}`;
+    const resetLink = `${appBaseUrl()}/auth/reset-password?token=${resetToken}`;
 
     // 🧩 5. Configure and send reset email
     const transporter = nodemailer.createTransport({

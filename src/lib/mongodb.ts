@@ -1,3 +1,4 @@
+import { assertNotProductionDatabase, mongoDbName } from "@/lib/env/resourceIsolation";
 import mongoose from "mongoose";
 
 const MONGODB_URI = process.env.MONGODB_URI!;
@@ -15,10 +16,13 @@ export const connectToDB = async () => {
     return;
   }
 
+  // Use the database named in MONGODB_URI (or MONGODB_DB) rather than a hardcoded
+  // default, so a development connection string can't silently land on production
+  const dbName = mongoDbName(MONGODB_URI);
+  assertNotProductionDatabase(dbName);
+
   try {
-    const db = await mongoose.connect(MONGODB_URI, {
-      dbName: process.env.MONGODB_DB || "hillfinder",
-    });
+    const db = await mongoose.connect(MONGODB_URI, { dbName });
 
     isConnected = !!db.connections[0].readyState;
     console.log("✅ MongoDB connected");

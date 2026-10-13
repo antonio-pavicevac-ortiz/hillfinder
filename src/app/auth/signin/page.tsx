@@ -10,7 +10,11 @@ export const metadata = {
     "Access your Hillfinder account and explore nearby downhill routes tailored to your location.",
 };
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const session = await getServerSession(authOptions);
 
   if (session) {
@@ -18,5 +22,6 @@ export default async function SignInPage() {
   }
 
   const providers = await getProviders();
-  return <SignInPageComponent providers={providers ?? {}} />;
+  const { error } = await searchParams;
+  return <SignInPageComponent providers={providers ?? {}} authError={error} />;
 }

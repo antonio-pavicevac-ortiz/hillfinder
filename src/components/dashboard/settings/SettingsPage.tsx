@@ -1,5 +1,6 @@
 "use client";
 
+import DeleteAccountSection from "@/components/user/DeleteAccountSection";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -114,6 +115,31 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
             value={terrainStyle}
             onChange={(v) => setTerrainStyle(v as TerrainVoiceStyle)}
           />
+        </div>
+
+        <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+          Account &amp; privacy
+        </h2>
+
+        <div className="mt-3 space-y-4">
+          <Link
+            href="/privacy"
+            className="flex items-center justify-between rounded-2xl border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-800/80 p-4 shadow-sm transition-colors hover:bg-white dark:hover:bg-slate-800"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-gray-900 dark:text-slate-100">
+                Privacy Policy
+              </span>
+              <span className="mt-1 block text-sm text-gray-500 dark:text-slate-400">
+                What we collect and how it&apos;s used
+              </span>
+            </span>
+            <span aria-hidden className="text-gray-400 dark:text-slate-500">
+              →
+            </span>
+          </Link>
+
+          <DeleteAccountSection />
         </div>
       </div>
     </main>
