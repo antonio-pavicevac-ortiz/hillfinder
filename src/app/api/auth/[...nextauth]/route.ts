@@ -1,14 +1,16 @@
 import { findOrCreateGoogleUser } from "@/lib/auth/googleAccount";
+import { GOOGLE_LINK_COOKIE, linkGoogleAccount, readGoogleLinkIntent } from "@/lib/auth/googleLink";
 import { connectToDB } from "@/lib/mongodb";
 import AccountDeletion, { SESSION_MAX_AGE_SECONDS, hashEmail } from "@/models/AccountDeletion";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import type { Account, Profile, Session } from "next-auth";
 import NextAuth from "next-auth";
-import type { JWT } from "next-auth/jwt";
+import { getToken, type JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { clientIp, rateLimit } from "@/lib/security/rateLimit";
+import { cookies } from "next/headers";
 
 const INVALID_CREDENTIALS = "Invalid email or password";
 
@@ -76,6 +78,27 @@ export const authOptions = {
       if (account?.provider !== "google") return true;
 
       await connectToDB();
+
+      // Connecting Google from Settings: link it to the signed-in user instead
+      const cookieStore = await cookies();
+      const linkCookie = cookieStore.get(GOOGLE_LINK_COOKIE)?.value;
+      if (linkCookie) {
+        cookieStore.delete({ name: GOOGLE_LINK_COOKIE, path: "/api/auth" });
+        const userId = readGoogleLinkIntent(linkCookie);
+        // The intent must belong to whoever is still signed in, so a leftover cookie on a
+        // shared device can't attach someone else's Google account
+        const current = await getToken({
+          req: { cookies: cookieStore, headers: {} } as unknown as Parameters<typeof getToken>[0]["req"],
+          secret: process.env.NEXTAUTH_SECRET,
+        }).catch(() => null);
+        if (!userId || current?.id !== userId) {
+          return "/dashboard/settings?google=GoogleLinkExpired";
+        }
+
+        const linked = await linkGoogleAccount(userId, account.providerAccountId);
+        return linked.ok ? true : `/dashboard/settings?google=${linked.error}`;
+      }
+
       const result = await findOrCreateGoogleUser({
         googleId: account.providerAccountId,
         email: profile?.email,
@@ -101,7 +124,8 @@ export const authOptions = {
           if (!local) throw new Error("Google account has no local account");
           token.id = String(local._id);
           token.email = local.email;
-          token.image = local.image ?? token.image;
+          // A connected Google account doesn't replace the profile photo the user chose
+          token.image = local.image ?? null;
         }
 
         // `iat` is re-stamped on every refresh, so record when this sign-in happened

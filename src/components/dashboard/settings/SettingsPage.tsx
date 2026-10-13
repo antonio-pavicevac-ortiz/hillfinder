@@ -1,6 +1,7 @@
 "use client";
 
 import DeleteAccountSection from "@/components/user/DeleteAccountSection";
+import GoogleConnectionSection from "@/components/user/GoogleConnectionSection";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -138,6 +139,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
               →
             </span>
           </Link>
+
+          <GoogleConnectionSection />
 
           <DeleteAccountSection />
         </div>
