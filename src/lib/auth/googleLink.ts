@@ -38,7 +38,8 @@ export function readGoogleLinkIntent(value: string | undefined): string | null {
 
 export async function linkGoogleAccount(
   userId: string,
-  googleId: string
+  googleId: string,
+  googleImage?: string | null
 ): Promise<{ ok: true } | { ok: false; error: GoogleLinkError }> {
   const owner = await User.findOne({ googleId }).select("_id").lean<{ _id: unknown }>();
   if (owner) {
@@ -52,7 +53,16 @@ export async function linkGoogleAccount(
       { _id: userId, $or: [{ googleId: { $exists: false } }, { googleId: null }] },
       { $set: { googleId } }
     );
-    if (matchedCount === 1) return { ok: true };
+    if (matchedCount === 1) {
+      // Use the Google photo as a default, but never replace one the user already has
+      if (googleImage) {
+        await User.updateOne(
+          { _id: userId, $or: [{ image: { $exists: false } }, { image: null }, { image: "" }] },
+          { $set: { image: googleImage } }
+        );
+      }
+      return { ok: true };
+    }
 
     const exists = await User.exists({ _id: userId });
     return { ok: false, error: exists ? "GoogleAlreadyConnected" : "GoogleLinkFailed" };
