@@ -14,7 +14,7 @@ import { toast } from "sonner";
 // Shown when a sign-in redirects back here with ?error=
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   GoogleEmailInUse:
-    "An account with this email already exists. Sign in with your email and password instead.",
+    "An account with this email already exists.\nSign in with your email and password, then connect Google in Settings.",
   GoogleEmailUnverified:
     "Your Google account's email isn't verified, so we can't sign you in with it.",
 };
@@ -180,7 +180,7 @@ export function SignInPage({
         {/* Error feedback + Create Account */}
         {error && (
           <div className="mt-3 text-center">
-            <p className="text-sm text-red-600 mb-2">{error}</p>
+            <p className="text-sm text-red-600 mb-2 whitespace-pre-line">{error}</p>
 
             {error.includes("sign up") && (
               <Link

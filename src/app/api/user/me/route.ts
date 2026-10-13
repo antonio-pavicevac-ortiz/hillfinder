@@ -37,6 +37,7 @@ export async function GET() {
         username: dbUser.username || "",
         image: dbUser.image || null,
         hasPassword: Boolean(dbUser.password),
+        googleConnected: Boolean(dbUser.googleId),
       },
     });
   } catch (err) {
