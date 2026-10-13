@@ -36,6 +36,7 @@ export async function GET() {
         email: dbUser.email || "",
         username: dbUser.username || "",
         image: dbUser.image || null,
+        hasPassword: Boolean(dbUser.password),
       },
     });
   } catch (err) {

@@ -1,4 +1,5 @@
 import { connectToDB } from "@/lib/mongodb";
+import AccountDeletion, { SESSION_MAX_AGE_SECONDS, hashEmail } from "@/models/AccountDeletion";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import type { Session } from "next-auth";
@@ -12,7 +13,7 @@ const INVALID_CREDENTIALS = "Invalid email or password";
 
 export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  session: { strategy: "jwt" as const },
+  session: { strategy: "jwt" as const, maxAge: SESSION_MAX_AGE_SECONDS },
 
   providers: [
     GoogleProvider({
@@ -73,7 +74,24 @@ export const authOptions = {
       if (user) {
         token.id = user.id;
         token.image = user.image ?? token.image;
+        // `iat` is re-stamped on every refresh, so record when this sign-in happened
+        token.signedInAt = Date.now();
+        return token;
       }
+
+      // Reject tokens issued before the account was deleted, including ones on other devices.
+      // Throwing makes NextAuth clear the session cookie and return no session.
+      if (token.email) {
+        await connectToDB();
+        const deletion = await AccountDeletion.findOne({ emailHash: hashEmail(token.email) })
+          .select("deletedAt")
+          .lean<{ deletedAt: Date }>();
+        const signedInAt = typeof token.signedInAt === "number" ? token.signedInAt : 0;
+        if (deletion && signedInAt <= deletion.deletedAt.getTime()) {
+          throw new Error("Session revoked: account was deleted");
+        }
+      }
+
       return token;
     },
 

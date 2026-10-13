@@ -68,7 +68,7 @@ export default async function ProfilePage() {
           <div className="h-36 w-36 md:h-40 md:w-40 rounded-full bg-gradient-to-br from-green-500 to-emerald-400 flex items-center justify-center overflow-hidden mb-6 md:mb-0">
             {(() => {
               const fallbackUrl = `https://api.dicebear.com/7.x/thumbs/svg?seed=${
-                safeUser?.username || safeUser?.email || "guest"
+                safeUser?.username || safeUser?.id || "guest"
               }`;
 
               const src = avatar || fallbackUrl;

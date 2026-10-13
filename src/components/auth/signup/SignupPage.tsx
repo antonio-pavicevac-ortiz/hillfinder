@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import clsx from "clsx";
 import { motion } from "framer-motion";
 import { signIn, useSession } from "next-auth/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -191,6 +192,14 @@ export function SignupPage() {
             {isSubmitting ? "Creating Account..." : "Sign Up"}
           </button>
         </motion.div>
+
+        <p className="text-xs text-center text-gray-600">
+          By creating an account, you agree to our{" "}
+          <Link href="/privacy" className="underline hover:text-gray-800">
+            Privacy Policy
+          </Link>
+          .
+        </p>
 
         {message && (
           <p

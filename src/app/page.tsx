@@ -90,6 +90,10 @@ export default async function HomePage() {
             Sign Up
           </Link>
         </div>
+
+        <Link href="/privacy" className="text-sm text-slate-600 underline-offset-4 hover:underline">
+          Privacy Policy
+        </Link>
       </div>
     </main>
   );
