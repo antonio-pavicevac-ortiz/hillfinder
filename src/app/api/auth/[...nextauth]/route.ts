@@ -95,7 +95,11 @@ export const authOptions = {
           return "/dashboard/settings?google=GoogleLinkExpired";
         }
 
-        const linked = await linkGoogleAccount(userId, account.providerAccountId);
+        const linked = await linkGoogleAccount(
+          userId,
+          account.providerAccountId,
+          (profile as { picture?: string } | undefined)?.picture
+        );
         return linked.ok ? true : `/dashboard/settings?google=${linked.error}`;
       }
 
@@ -124,7 +128,7 @@ export const authOptions = {
           if (!local) throw new Error("Google account has no local account");
           token.id = String(local._id);
           token.email = local.email;
-          // A connected Google account doesn't replace the profile photo the user chose
+          // The stored photo wins; connecting Google only fills it in when there was none
           token.image = local.image ?? null;
         }
 
