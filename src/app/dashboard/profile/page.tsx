@@ -37,6 +37,7 @@ export default async function ProfilePage() {
         email: dbUser.email || "",
         username: dbUser.username || "",
         image: dbUser.image || null,
+        hasPassword: Boolean(dbUser.password),
       }
     : null;
   const avatar = (dbUser && (dbUser as any).image) || (session.user.image as string | null) || null;

@@ -11,6 +11,7 @@ type ProfileData = {
   email: string;
   username: string;
   image: string | null;
+  hasPassword?: boolean;
 };
 
 export default function ProfilePanel({ onClose }: { onClose: () => void }) {

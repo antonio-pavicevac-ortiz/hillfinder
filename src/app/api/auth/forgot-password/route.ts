@@ -31,7 +31,8 @@ export async function POST(req: Request) {
 
     // 🧩 2. Find user by email
     const user = await User.findOne({ email });
-    if (!user) {
+    // Google accounts have no password; don't let a reset email add one
+    if (!user || !user.password) {
       // Don’t reveal that user doesn’t exist
       return NextResponse.json(GENERIC_RESPONSE, { status: 200 });
     }

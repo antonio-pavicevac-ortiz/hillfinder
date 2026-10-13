@@ -4,7 +4,10 @@ import mongoose, { Document, models } from "mongoose";
 export interface IUser extends Document {
   name: string;
   email: string;
-  password: string;
+  // Absent for Google accounts, which never get a password
+  password?: string;
+  authProvider?: "credentials" | "google";
+  googleId?: string;
   image?: string | null;
   avatarKeys?: string[];
   resetPasswordToken?: string | null;
@@ -18,7 +21,11 @@ const UserSchema = new mongoose.Schema({
   name: { type: String },
   email: { type: String, required: true, unique: true },
   username: { type: String },
-  password: { type: String, required: true },
+  // Credentials accounts always set one; Google accounts have none
+  password: { type: String },
+  authProvider: { type: String, enum: ["credentials", "google"], default: "credentials" },
+  // Google's stable account id ("sub"). Google sign-ins match on this, never on email.
+  googleId: { type: String, unique: true, sparse: true },
   image: { type: String, default: null },
   // Every UploadThing file this user uploaded, so all of them can be deleted with the account
   avatarKeys: { type: [String], default: [] },
