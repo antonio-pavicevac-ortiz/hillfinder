@@ -1,7 +1,8 @@
+import { appBaseUrl } from "@/lib/env/appUrl";
 import nodemailer from "nodemailer";
 
 export async function sendPasswordResetEmail(email: string, token: string) {
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password?token=${token}`;
+  const resetUrl = `${appBaseUrl()}/auth/reset-password?token=${token}`;
 
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_SERVER_HOST,

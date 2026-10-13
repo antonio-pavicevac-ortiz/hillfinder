@@ -1,12 +1,12 @@
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { connectToDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import { createUTApi } from "@/lib/uploads/utapi";
 import { getServerSession } from "next-auth";
 import {
   createUploadthing,
   UploadThingError,
   type FileRouter,
-  UTApi,
 } from "uploadthing/server";
 
 const f = createUploadthing();
@@ -49,7 +49,7 @@ export const uploadRouter = {
 
       // The account was deleted mid-upload: remove the file rather than orphan it
       if (matchedCount === 0) {
-        await new UTApi().deleteFiles(file.key);
+        await createUTApi().deleteFiles(file.key);
         throw new UploadThingError({
           code: "FORBIDDEN",
           message: "Account not found.",

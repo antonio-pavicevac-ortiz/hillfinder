@@ -2,9 +2,9 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { connectToDB } from "@/lib/mongodb";
 import { uploadThingKey } from "@/lib/uploads/uploadThingFiles";
 import User from "@/models/User";
+import { createUTApi } from "@/lib/uploads/utapi";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { UTApi } from "uploadthing/server";
 
 export async function POST(req: Request) {
   try {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     const staleKeys = ownedKeys.filter((k) => k !== key);
     if (staleKeys.length) {
       try {
-        const result = await new UTApi().deleteFiles(staleKeys);
+        const result = await createUTApi().deleteFiles(staleKeys);
         if (result.success) {
           await User.updateOne(
             { _id: user._id },

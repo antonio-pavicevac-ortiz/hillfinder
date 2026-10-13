@@ -7,9 +7,9 @@ import SavedRoute from "@/models/SavedRoute";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
+import { createUTApi } from "@/lib/uploads/utapi";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { UTApi } from "uploadthing/server";
 
 const DELETE_CONFIRMATION = "DELETE";
 const DELETION_INCOMPLETE = "Account deletion didn’t finish; please retry.";
@@ -72,7 +72,7 @@ export async function DELETE(req: Request) {
     if (fileKeys.length) {
       let deleted = false;
       try {
-        deleted = (await new UTApi().deleteFiles(fileKeys)).success;
+        deleted = (await createUTApi().deleteFiles(fileKeys)).success;
       } catch (err) {
         console.error("[DELETE_ACCOUNT_AVATAR_ERROR]", err);
       }
