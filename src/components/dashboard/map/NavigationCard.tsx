@@ -1,7 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Navigation as NavigationIcon, Volume2, VolumeX } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CornerDownLeft,
+  Navigation as NavigationIcon,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 
 type NavigationCardProps = {
   currentInstruction: string;
@@ -12,6 +20,10 @@ type NavigationCardProps = {
   isPreview?: boolean;
   onStart?: () => void;
   isOffRoute?: boolean;
+  isRejoinShown?: boolean;
+  canStartNewRoute?: boolean;
+  onBackToRoute?: () => void;
+  onNewRouteFromHere?: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
   onPreviousStep: () => void;
@@ -27,6 +39,10 @@ export default function NavigationCard({
   isPreview = false,
   onStart,
   isOffRoute = false,
+  isRejoinShown = false,
+  canStartNewRoute = true,
+  onBackToRoute,
+  onNewRouteFromHere,
   isMuted,
   onToggleMute,
   onPreviousStep,
@@ -91,6 +107,30 @@ export default function NavigationCard({
                 <div className="mt-3 text-[13px] text-slate-800 dark:text-slate-300">You’re on the final step.</div>
               )}
             </div>
+
+            {isOffRoute && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  onClick={onBackToRoute}
+                  disabled={isRejoinShown}
+                  aria-label={isRejoinShown ? "Way back to the route is shown on the map" : "Show the way back to the route"}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-blue-600/40 bg-blue-600 px-2 text-[13px] font-semibold text-white shadow-md transition hover:bg-blue-700 active:scale-95 active:bg-blue-800 disabled:cursor-default disabled:opacity-70 disabled:active:scale-100"
+                >
+                  <CornerDownLeft size={15} aria-hidden="true" />
+                  {isRejoinShown ? "Way shown" : "Back to route"}
+                </button>
+
+                <button
+                  onClick={onNewRouteFromHere}
+                  disabled={!canStartNewRoute}
+                  aria-label="New route from here"
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-white/50 dark:border-slate-600/50 bg-white/55 dark:bg-slate-800/55 px-2 text-[13px] font-semibold text-slate-800 dark:text-slate-200 shadow-md backdrop-blur-md transition hover:bg-white/65 dark:hover:bg-slate-800/70 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+                >
+                  <RefreshCw size={15} aria-hidden="true" />
+                  New route
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-black/5 dark:border-white/10 px-3 py-3">

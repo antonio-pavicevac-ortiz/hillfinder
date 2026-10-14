@@ -8,7 +8,9 @@ import { clearRouteLayers } from "@/lib/map/clearRouteLayers";
 import {
   DETAIL_ROUTE_ZOOM_THRESHOLD,
   clearOverviewRoute,
+  clearRejoinPath,
   drawOverviewRoute,
+  drawRejoinPath,
   drawSegments,
 } from "@/lib/map/drawRoute";
 import {
@@ -35,12 +37,17 @@ import { hasDuplicateCandidate, pickEasyAndHardVariants } from "@/lib/map/varian
 import type { DirectionsApiRoute, Variant, VariantKey } from "@/lib/map/variantTypes";
 import { resolveHeading } from "@/lib/navigation/heading";
 import { buildNavSteps } from "@/lib/navigation/progress";
-import { initialOffRouteState, nextOffRouteState } from "@/lib/navigation/offRoute";
-import { snapPointToRoute } from "@/lib/navigation/routeSnap";
+import {
+  BACK_ON_ROUTE_METERS,
+  initialOffRouteState,
+  nextOffRouteState,
+} from "@/lib/navigation/offRoute";
+import { findRejoinPoint, snapPointToRoute } from "@/lib/navigation/routeSnap";
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 if (MAPBOX_TOKEN) {
@@ -91,6 +98,7 @@ export default function DashboardMap({
   findDownhillNonce,
   onNavigationLocationChange,
   onOffRouteChange,
+  rejoinRouteNonce,
   isNavigating,
   onRoutePrepared,
   onVariantsCollapsed,
@@ -121,6 +129,7 @@ export default function DashboardMap({
   findDownhillNonce?: number;
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
   onOffRouteChange?: (isOffRoute: boolean) => void;
+  rejoinRouteNonce?: number;
   isNavigating?: boolean;
   onRoutePrepared?: () => void;
   onVariantsCollapsed?: (payload: { selected: VariantKey; message: string }) => void;
@@ -139,6 +148,16 @@ export default function DashboardMap({
     onOffRouteChangeRef.current = onOffRouteChange;
   }, [onOffRouteChange]);
   const offRouteStateRef = useRef(initialOffRouteState);
+  // How far along the route the rider last was while on it, so the way back targets the route
+  // ahead of that point rather than a stretch already ridden
+  const lastOnRouteSegmentIndexRef = useRef(0);
+  const rejoinAbortRef = useRef<AbortController | null>(null);
+
+  function clearRejoin(map: mapboxgl.Map) {
+    rejoinAbortRef.current?.abort();
+    rejoinAbortRef.current = null;
+    clearRejoinPath(map);
+  }
 
   const fromMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -1336,6 +1355,10 @@ export default function DashboardMap({
               snappedRouteBearing = snapped.bearing;
             }
 
+            if (snapped.distanceMeters <= BACK_ON_ROUTE_METERS) {
+              lastOnRouteSegmentIndexRef.current = snapped.segmentIndex;
+            }
+
             const prevOffRoute = offRouteStateRef.current;
             const nextOffRoute = nextOffRouteState(prevOffRoute, {
               distanceMeters: snapped.distanceMeters,
@@ -1344,6 +1367,7 @@ export default function DashboardMap({
             });
             offRouteStateRef.current = nextOffRoute;
             if (nextOffRoute.isOffRoute !== prevOffRoute.isOffRoute) {
+              if (!nextOffRoute.isOffRoute) clearRejoin(map);
               onOffRouteChangeRef.current?.(nextOffRoute.isOffRoute);
             }
           }
@@ -1598,6 +1622,7 @@ export default function DashboardMap({
 
     clearOverviewRoute(map);
     clearRouteLayers(map);
+    clearRejoin(map);
     sweepRef.current.clear(map);
 
     lastGoodDestRef.current = null;
@@ -1708,13 +1733,56 @@ export default function DashboardMap({
     const to = destMarkerRef.current?.getLngLat();
     if (!from || !to) return;
 
-    const destKey = `${to.lng.toFixed(5)},${to.lat.toFixed(5)}`;
-    const isRerun = lastAlternativesFromToRef.current === destKey;
-    lastAlternativesFromToRef.current = destKey;
+    // A rerun (same start and destination) asks for something different; a new start, such as
+    // a new route from where the rider is now, should get the best route instead
+    const fromToKey = `${from.lng.toFixed(4)},${from.lat.toFixed(4)}>${to.lng.toFixed(5)},${to.lat.toFixed(5)}`;
+    const isRerun = lastAlternativesFromToRef.current === fromToKey;
+    lastAlternativesFromToRef.current = fromToKey;
     if (!isRerun) shownRouteFingerprintsRef.current = new Set();
 
     void generateAlternativesBetweenPoints(map, from, to, { randomize: isRerun });
   }, [routeAlternativesNonce]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !rejoinRouteNonce) return;
+    if (!isNavigatingRef.current) return;
+
+    const here = latestDeviceLocationRef.current;
+    const coords = getActiveVariantCoords();
+    if (!here || !coords?.length) return;
+
+    const target = findRejoinPoint(here, coords, lastOnRouteSegmentIndexRef.current);
+    if (!target) return;
+
+    clearRejoin(map);
+    const controller = new AbortController();
+    rejoinAbortRef.current = controller;
+
+    const showError = () =>
+      toast.error("Couldn't find a way back to the route. Try a new route from here.");
+
+    fetchDirectionsRoute({
+      from: here,
+      to: new mapboxgl.LngLat(target[0], target[1]),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const path = getRoutesArray(data)[0]?.geometry?.coordinates as [number, number][] | undefined;
+        if (!path?.length) return showError();
+
+        // Directions end at the nearest road; finish the line on the route itself
+        drawRejoinPath(map, [[here.lng, here.lat], ...path, target]);
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        console.error("[DashboardMap] rejoin route failed:", err);
+        showError();
+      });
+
+    return () => controller.abort();
+  }, [rejoinRouteNonce]);
 
   useEffect(() => {
     if (typeof findDownhillNonce !== "number" || findDownhillNonce <= 0) return;
@@ -1922,8 +1990,10 @@ export default function DashboardMap({
     // Each navigation session judges off-route from scratch
     if (offRouteStateRef.current.isOffRoute) onOffRouteChangeRef.current?.(false);
     offRouteStateRef.current = initialOffRouteState;
+    lastOnRouteSegmentIndexRef.current = 0;
 
     const map = mapRef.current;
+    if (map) clearRejoin(map);
     if (!map) return;
 
     if (isNavigatingRef.current) {

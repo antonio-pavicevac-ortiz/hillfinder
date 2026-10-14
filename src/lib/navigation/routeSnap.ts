@@ -63,7 +63,7 @@ export function snapPointToSegment(
 
 export function snapPointToRoute(point: mapboxgl.LngLat, coords: [number, number][]) {
   if (coords.length === 0) {
-    return { point, distanceMeters: Infinity, bearing: null as number | null };
+    return { point, distanceMeters: Infinity, bearing: null as number | null, segmentIndex: 0 };
   }
 
   if (coords.length === 1) {
@@ -72,12 +72,15 @@ export function snapPointToRoute(point: mapboxgl.LngLat, coords: [number, number
       point: snapped,
       distanceMeters: point.distanceTo(snapped),
       bearing: null as number | null,
+      segmentIndex: 0,
     };
   }
 
   let bestPoint = point;
   let bestDistance = Infinity;
   let bestBearing: number | null = null;
+  // Index of the segment's start coordinate, i.e. how far along the route the point is
+  let bestSegmentIndex = 0;
 
   for (let i = 1; i < coords.length; i++) {
     const candidate = snapPointToSegment(point, coords[i - 1], coords[i]);
@@ -85,6 +88,7 @@ export function snapPointToRoute(point: mapboxgl.LngLat, coords: [number, number
       bestDistance = candidate.distanceMeters;
       bestPoint = candidate.point;
       bestBearing = candidate.bearing;
+      bestSegmentIndex = i - 1;
     }
   }
 
@@ -92,5 +96,28 @@ export function snapPointToRoute(point: mapboxgl.LngLat, coords: [number, number
     point: bestPoint,
     distanceMeters: bestDistance,
     bearing: bestBearing,
+    segmentIndex: bestSegmentIndex,
   };
+}
+
+// Where to rejoin after leaving the route: the closest route point past the last place the
+// rider was on it. Never behind it, so getting back doesn't mean redoing (or reversing) a
+// stretch they've already ridden.
+export function findRejoinPoint(
+  point: mapboxgl.LngLat,
+  coords: [number, number][],
+  lastOnRouteSegmentIndex: number
+): [number, number] | null {
+  let best: [number, number] | null = null;
+  let bestDistance = Infinity;
+
+  for (let i = Math.max(0, lastOnRouteSegmentIndex + 1); i < coords.length; i++) {
+    const distance = point.distanceTo(new mapboxgl.LngLat(coords[i][0], coords[i][1]));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = coords[i];
+    }
+  }
+
+  return best;
 }
