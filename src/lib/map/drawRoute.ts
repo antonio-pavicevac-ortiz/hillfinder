@@ -96,3 +96,42 @@ export function drawSegments(
     }, 120);
   }
 }
+
+const REJOIN_PATH_ID = "route-rejoin";
+
+export function clearRejoinPath(map: mapboxgl.Map) {
+  try {
+    if (map.getLayer(REJOIN_PATH_ID)) map.removeLayer(REJOIN_PATH_ID);
+  } catch {}
+  try {
+    if (map.getSource(REJOIN_PATH_ID)) map.removeSource(REJOIN_PATH_ID);
+  } catch {}
+}
+
+// The way back to the route after veering off: dashed, so it reads as a detour to the route
+// rather than part of it
+export function drawRejoinPath(map: mapboxgl.Map, coords: [number, number][]) {
+  clearRejoinPath(map);
+
+  map.addSource(REJOIN_PATH_ID, {
+    type: "geojson",
+    data: {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: coords },
+      properties: {},
+    },
+  });
+
+  map.addLayer({
+    id: REJOIN_PATH_ID,
+    type: "line",
+    source: REJOIN_PATH_ID,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": "#2563eb",
+      "line-width": 5,
+      "line-opacity": 0.9,
+      "line-dasharray": [0.6, 1.8],
+    },
+  } as any);
+}

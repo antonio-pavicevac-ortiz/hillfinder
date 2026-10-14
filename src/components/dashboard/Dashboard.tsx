@@ -147,6 +147,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const isNavigating = navigation.status === "navigating";
   const liveNavLocation = navigation.liveLocation;
   const [isOffRoute, setIsOffRoute] = useState(false);
+  const [rejoinRouteNonce, setRejoinRouteNonce] = useState(0);
+  const [rejoinRequested, setRejoinRequested] = useState(false);
+  // Set for a new route from where the rider is: they're mid-ride and asked for it, so it
+  // starts navigating as soon as it's ready instead of opening as a preview
+  const startNavigationWhenPreparedRef = useRef(false);
 
   const currentNavStep = activeNavSteps[currentStepIndex];
   const nextNavStep = activeNavSteps[currentStepIndex + 1];
@@ -303,6 +308,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function clearRoute() {
+    startNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
     setHasRoute(false);
     setVariantsReady(false);
@@ -371,6 +377,10 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRoutePrepared() {
+    if (startNavigationWhenPreparedRef.current) {
+      startNavigationWhenPreparedRef.current = false;
+      startNavigation();
+    }
     setRouteBusy(false);
     setRoutePreparing(false);
     setVariantsReady(true);
@@ -379,6 +389,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRouteFailed(message?: string) {
+    startNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
     setRouteBusy(false);
     setRoutePreparing(false);
@@ -415,7 +426,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     }
   }
 
-  async function handleQuickRoute() {
+  async function handleQuickRoute(opts?: { fromHereMidRide?: boolean }) {
+    const fromHereMidRide = opts?.fromHereMidRide ?? false;
+
     if (!isOnline) {
       toast.error("You're offline. Route generation needs a connection.", { id: "offline-action" });
       return;
@@ -440,12 +453,17 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     setRoutesOpen(false);
 
     if (voiceEnabled) {
-      speakSystemPrompt("Voice guidance on. Finding your route.");
+      speakSystemPrompt(
+        fromHereMidRide ? "Finding a new route from here." : "Voice guidance on. Finding your route."
+      );
     }
 
+    // Clearing also moves the start marker to the rider's current location
     clearRoute();
+    startNavigationWhenPreparedRef.current = fromHereMidRide;
     setVariantsReady(false);
-    setSelectedVariant("easy");
+    // Mid-ride, keep the difficulty the rider chose
+    if (!fromHereMidRide) setSelectedVariant("easy");
     setActiveRouteSource("generated");
 
     setRouteBusy(true);
@@ -724,6 +742,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     const wasOffRoute = wasOffRouteRef.current;
     wasOffRouteRef.current = isOffRoute;
     if (wasOffRoute === isOffRoute) return;
+    if (!isOffRoute) setRejoinRequested(false);
     if (!isNavigating || isNavMuted) return;
 
     if (isOffRoute) {
@@ -941,6 +960,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           dispatchNavigation({ type: "SET_LOCATION", location: loc });
         }}
         onOffRouteChange={setIsOffRoute}
+        rejoinRouteNonce={rejoinRouteNonce}
         onVariantsReady={() => {
           handleRoutePrepared();
         }}
@@ -1104,7 +1124,16 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               totalSteps={activeNavSteps.length}
               isPreview={navigation.status === "ready"}
               onStart={startNavigation}
-              isOffRoute={isOffRoute}
+              isOffRoute={isOffRoute && isNavigating}
+              isRejoinShown={rejoinRequested}
+              canStartNewRoute={isOnline && !routeBusy}
+              onBackToRoute={() => {
+                setRejoinRequested(true);
+                setRejoinRouteNonce((n) => n + 1);
+              }}
+              onNewRouteFromHere={() => {
+                void handleQuickRoute({ fromHereMidRide: true });
+              }}
               isMuted={isNavMuted}
               onToggleMute={() => {
                 const nextMuted = !isNavMuted;
