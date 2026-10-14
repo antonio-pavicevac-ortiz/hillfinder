@@ -19,12 +19,16 @@ export default function Loading() {
         }
       `}</style>
 
+      {/* A small WebP rather than favicon.svg (125 KB: a PNG wrapped in SVG), so the logo
+          arrives with the gradient instead of popping in seconds later. Unoptimized to skip
+          the image optimizer, which is itself slow on a cold start */}
       <Image
-        src="/favicon.svg"
+        src="/boot-logo.webp"
         alt=""
-        width={120}
+        width={116}
         height={120}
         priority
+        unoptimized
         className="hf-boot-float drop-shadow-[0_12px_24px_rgba(15,53,88,0.2)]"
         style={{ animation: "hf-boot-float 2.4s ease-in-out infinite" }}
       />
