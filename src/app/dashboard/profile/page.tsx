@@ -5,6 +5,7 @@ import { connectToDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
@@ -46,12 +47,12 @@ export default async function ProfilePage() {
     <section className="mx-auto max-w-3xl space-y-8 px-6 pt-4 pb-10 min-h-screen bg-[#f6f7f2] dark:bg-slate-900 transition-colors">
       {/* Page Header */}
       <div className="mt-6">
-        <a
+        <Link
           href="/dashboard"
           className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
         >
-          ← Back to dashboard
-        </a>
+          ← Back to map
+        </Link>
         <h1 className="mt-4 text-2xl font-semibold text-gray-800 dark:text-slate-100">Profile Settings</h1>
         <p className="text-gray-500 dark:text-slate-400 text-sm">
           Manage your personal details and your Hillfinder identity.
