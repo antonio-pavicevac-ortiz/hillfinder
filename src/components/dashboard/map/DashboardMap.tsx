@@ -35,6 +35,7 @@ import { hasDuplicateCandidate, pickEasyAndHardVariants } from "@/lib/map/varian
 import type { DirectionsApiRoute, Variant, VariantKey } from "@/lib/map/variantTypes";
 import { resolveHeading } from "@/lib/navigation/heading";
 import { buildNavSteps } from "@/lib/navigation/progress";
+import { initialOffRouteState, nextOffRouteState } from "@/lib/navigation/offRoute";
 import { snapPointToRoute } from "@/lib/navigation/routeSnap";
 import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
@@ -89,6 +90,7 @@ export default function DashboardMap({
   canAcceptDestination,
   findDownhillNonce,
   onNavigationLocationChange,
+  onOffRouteChange,
   isNavigating,
   onRoutePrepared,
   onVariantsCollapsed,
@@ -118,6 +120,7 @@ export default function DashboardMap({
   canAcceptDestination?: (loc: { lat: number; lng: number }) => boolean;
   findDownhillNonce?: number;
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
+  onOffRouteChange?: (isOffRoute: boolean) => void;
   isNavigating?: boolean;
   onRoutePrepared?: () => void;
   onVariantsCollapsed?: (payload: { selected: VariantKey; message: string }) => void;
@@ -130,6 +133,12 @@ export default function DashboardMap({
   useEffect(() => {
     onManualMapMoveRef.current = onManualMapMove;
   }, [onManualMapMove]);
+
+  const onOffRouteChangeRef = useRef(onOffRouteChange);
+  useEffect(() => {
+    onOffRouteChangeRef.current = onOffRouteChange;
+  }, [onOffRouteChange]);
+  const offRouteStateRef = useRef(initialOffRouteState);
 
   const fromMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -1326,6 +1335,17 @@ export default function DashboardMap({
               puckLngLat = snapped.point;
               snappedRouteBearing = snapped.bearing;
             }
+
+            const prevOffRoute = offRouteStateRef.current;
+            const nextOffRoute = nextOffRouteState(prevOffRoute, {
+              distanceMeters: snapped.distanceMeters,
+              accuracyMeters: pos.coords.accuracy,
+              now: Date.now(),
+            });
+            offRouteStateRef.current = nextOffRoute;
+            if (nextOffRoute.isOffRoute !== prevOffRoute.isOffRoute) {
+              onOffRouteChangeRef.current?.(nextOffRoute.isOffRoute);
+            }
           }
 
           const effectiveHeading = resolveHeading({
@@ -1898,6 +1918,10 @@ export default function DashboardMap({
 
   useEffect(() => {
     isNavigatingRef.current = !!isNavigating;
+
+    // Each navigation session judges off-route from scratch
+    if (offRouteStateRef.current.isOffRoute) onOffRouteChangeRef.current?.(false);
+    offRouteStateRef.current = initialOffRouteState;
 
     const map = mapRef.current;
     if (!map) return;

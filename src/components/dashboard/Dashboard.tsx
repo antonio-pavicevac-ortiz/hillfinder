@@ -146,6 +146,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const currentStepIndex = navigation.currentStepIndex;
   const isNavigating = navigation.status === "navigating";
   const liveNavLocation = navigation.liveLocation;
+  const [isOffRoute, setIsOffRoute] = useState(false);
 
   const currentNavStep = activeNavSteps[currentStepIndex];
   const nextNavStep = activeNavSteps[currentStepIndex + 1];
@@ -716,11 +717,29 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     }
   }, [isNavigating, liveNavLocation, destination, navigation.status, isNavMuted]);
 
+  // Off route: say so once. Back on route: repeat the current instruction, which the rider
+  // may have missed and which is the useful thing to hear
+  const wasOffRouteRef = useRef(false);
+  useEffect(() => {
+    const wasOffRoute = wasOffRouteRef.current;
+    wasOffRouteRef.current = isOffRoute;
+    if (wasOffRoute === isOffRoute) return;
+    if (!isNavigating || isNavMuted) return;
+
+    if (isOffRoute) {
+      speakSystemPrompt("You're off route.");
+    } else {
+      dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
+    }
+  }, [isOffRoute, isNavigating, isNavMuted]);
+
   // Terrain narration — fires when GPS updates during active navigation
   useEffect(() => {
     if (!isNavigating) return;
     if (!liveNavLocation) return;
     if (isNavMuted) return;
+    // Upcoming terrain is about the route, which the rider has left
+    if (isOffRoute) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
     const userCoord: [number, number] = [liveNavLocation.lng, liveNavLocation.lat];
@@ -747,7 +766,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     synth.cancel();
     synth.resume();
     synth.speak(utterance);
-  }, [isNavigating, liveNavLocation, isNavMuted]);
+  }, [isNavigating, liveNavLocation, isNavMuted, isOffRoute]);
 
   // Reset terrain narrations when the route is cleared
   useEffect(() => {
@@ -921,6 +940,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         onNavigationLocationChange={(loc) => {
           dispatchNavigation({ type: "SET_LOCATION", location: loc });
         }}
+        onOffRouteChange={setIsOffRoute}
         onVariantsReady={() => {
           handleRoutePrepared();
         }}
@@ -1084,6 +1104,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               totalSteps={activeNavSteps.length}
               isPreview={navigation.status === "ready"}
               onStart={startNavigation}
+              isOffRoute={isOffRoute}
               isMuted={isNavMuted}
               onToggleMute={() => {
                 const nextMuted = !isNavMuted;
