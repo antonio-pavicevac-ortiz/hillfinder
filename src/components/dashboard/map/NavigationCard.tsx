@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, ChevronRight, Navigation as NavigationIcon, Volume2, VolumeX } from "lucide-react";
 
 type NavigationCardProps = {
   currentInstruction: string;
@@ -9,6 +9,8 @@ type NavigationCardProps = {
   nextInstruction?: string;
   stepIndex: number;
   totalSteps: number;
+  isPreview?: boolean;
+  onStart?: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
   onPreviousStep: () => void;
@@ -21,6 +23,8 @@ export default function NavigationCard({
   nextInstruction,
   stepIndex,
   totalSteps,
+  isPreview = false,
+  onStart,
   isMuted,
   onToggleMute,
   onPreviousStep,
@@ -50,7 +54,7 @@ export default function NavigationCard({
           <div className="px-3.5 pt-3.5 pb-2.5">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-800/75 dark:text-slate-200/75">
-                Navigation
+                {isPreview ? "Route preview" : "Navigation"}
               </div>
 
               <div className="rounded-full border border-white/30 bg-white/28 dark:bg-slate-900/40 px-2.5 py-1 text-[11px] font-medium text-slate-800 dark:text-slate-200 backdrop-blur-md">
@@ -69,7 +73,7 @@ export default function NavigationCard({
                 <span>{nextInstruction}</span>
               </div>
             ) : (
-              <div className="mt-3 text-[13px] text-slate-800 dark:text-slate-300">You’re on the final step.</div>
+                <div className="mt-3 text-[13px] text-slate-800 dark:text-slate-300">You’re on the final step.</div>
             )}
           </div>
 
@@ -89,6 +93,15 @@ export default function NavigationCard({
               </span>
             </button>
 
+            {isPreview ? (
+              <button
+                onClick={onStart}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-emerald-600/40 bg-emerald-600 px-4 text-[14px] font-semibold text-white shadow-md transition hover:bg-emerald-700 active:scale-95 active:bg-emerald-800"
+              >
+                <NavigationIcon size={16} aria-hidden="true" />
+                Start
+              </button>
+            ) : (
             <div className="flex items-center gap-2">
               <button
                 onClick={onPreviousStep}
@@ -106,6 +119,7 @@ export default function NavigationCard({
                 <ChevronRight size={18} className="text-slate-700 dark:text-slate-300" />
               </button>
             </div>
+            )}
           </div>
         </div>
       </div>
