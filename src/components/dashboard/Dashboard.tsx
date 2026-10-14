@@ -100,7 +100,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const [routeBusy, setRouteBusy] = useState(false);
   const [routePreparing, setRoutePreparing] = useState(false);
   const [loadingSavedRoute, setLoadingSavedRoute] = useState<SavedRouteRecord | null>(null);
-  const startSavedNavigationWhenPreparedRef = useRef(false);
   const loadingSavedRouteRef = useRef<SavedRouteRecord | null>(null);
 
   function endSavedRouteLoading() {
@@ -134,8 +133,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const navCardTimerRef = useRef<number | null>(null);
   const routeReadySpeechTimerRef = useRef<number | null>(null);
   const navStartLocationRef = useRef<{ lat: number; lng: number } | null>(null);
-  const hasAutoStartedVoiceRef = useRef(false);
-  const lastSystemPromptSpokenAtRef = useRef<number | null>(null);
   const hasMovedSinceRouteLoadRef = useRef(false);
 
   const terrainNarrationsRef = useRef<TerrainNarration[]>([]);
@@ -223,9 +220,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const TOO_FAR_KM = 30;
   const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
   const STEP_ADVANCE_THRESHOLD_METERS = 18;
-  const VOICE_SYSTEM_PROMPT_GAP_MS = 3500;
 
-  const VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS = 150;
+  // Routes open as a preview; tracking, following and step guidance begin only when the rider
+  // taps Start. Voice is separate: it decides whether the steps are spoken
+  function startNavigation() {
+    dispatchNavigation({ type: "GO_TO_STEP", index: 0 });
+    dispatchNavigation({ type: "START" });
+  }
 
   function speakSystemPrompt(message: string) {
     if (!message) return;
@@ -243,8 +244,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     utterance.rate = 1;
 
     utterance.pitch = 1;
-
-    lastSystemPromptSpokenAtRef.current = Date.now();
 
     console.log("[Dashboard][TTS system] speak()", message);
 
@@ -303,7 +302,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function clearRoute() {
-    startSavedNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
     setHasRoute(false);
     setVariantsReady(false);
@@ -327,8 +325,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
       routeReadySpeechTimerRef.current = null;
     }
-
-    hasAutoStartedVoiceRef.current = false;
 
     setShowNavigationCard(false);
 
@@ -374,11 +370,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRoutePrepared() {
-    if (startSavedNavigationWhenPreparedRef.current) {
-      startSavedNavigationWhenPreparedRef.current = false;
-      hasAutoStartedVoiceRef.current = true;
-      dispatchNavigation({ type: "START" });
-    }
     setRouteBusy(false);
     setRoutePreparing(false);
     setVariantsReady(true);
@@ -387,7 +378,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function handleRouteFailed(message?: string) {
-    startSavedNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
     setRouteBusy(false);
     setRoutePreparing(false);
@@ -568,7 +558,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         setHasRoute(true);
 
         dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
-        dispatchNavigation({ type: "START" });
 
         navStartLocationRef.current = {
           lat: route.from.lat,
@@ -651,72 +640,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       window.speechSynthesis.cancel();
     }
   }, [isNavMuted]);
-
-  useEffect(() => {
-    if (loadingSavedRoute) return;
-    if (!voiceEnabled) return;
-
-    if (isNavMuted) return;
-
-    if (!showNavigationCard) return;
-
-    if (!hasRoute) return;
-
-    if (!currentNavStep?.instruction) return;
-
-    if (hasAutoStartedVoiceRef.current) return;
-
-    hasAutoStartedVoiceRef.current = true;
-
-    console.log("[Dashboard][voice auto-start effect]", {
-      instruction: currentNavStep.instruction,
-
-      currentStepIndex,
-
-      stepsLength: activeNavSteps.length,
-    });
-
-    const elapsedSinceSystemPrompt = lastSystemPromptSpokenAtRef.current
-      ? Date.now() - lastSystemPromptSpokenAtRef.current
-      : Infinity;
-
-    const firstInstructionDelay = Number.isFinite(elapsedSinceSystemPrompt)
-      ? Math.max(
-          VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS,
-
-          VOICE_SYSTEM_PROMPT_GAP_MS - elapsedSinceSystemPrompt
-        )
-      : VOICE_FIRST_INSTRUCTION_FALLBACK_DELAY_MS;
-
-    let started = false;
-    const timer = window.setTimeout(() => {
-      started = true;
-      dispatchNavigation({ type: "GO_TO_STEP", index: 0 });
-
-      dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
-
-      dispatchNavigation({ type: "START" });
-    }, firstInstructionDelay);
-    return () => {
-      window.clearTimeout(timer);
-      if (!started) hasAutoStartedVoiceRef.current = false;
-    };
-  }, [
-    loadingSavedRoute,
-    voiceEnabled,
-
-    isNavMuted,
-
-    showNavigationCard,
-
-    hasRoute,
-
-    currentNavStep?.instruction,
-
-    currentStepIndex,
-
-    activeNavSteps.length,
-  ]);
 
   useEffect(() => {
     if (!isNavigating) return;
@@ -962,11 +885,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           const route = loadingSavedRouteRef.current;
           if (route?._id !== routeId) return;
           endSavedRouteLoading();
-          hasAutoStartedVoiceRef.current = true;
-          dispatchNavigation({ type: "START" });
         }}
         onSavedRouteNeedsRegeneration={(reason) => {
-          startSavedNavigationWhenPreparedRef.current = true;
           endSavedRouteLoading();
           savedRouteVerificationRef.current?.controller.abort();
           savedRouteVerificationRef.current = null;
@@ -1020,8 +940,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           setPlannerTo(route.to.name ?? "");
 
           dispatchNavigation({ type: "LOAD_STEPS", steps: route.navSteps ?? [] });
-
-          hasAutoStartedVoiceRef.current = false;
 
           setIsNavMuted(!voiceEnabled);
 
@@ -1164,6 +1082,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               nextInstruction={nextNavStep?.instruction}
               stepIndex={currentStepIndex}
               totalSteps={activeNavSteps.length}
+              isPreview={navigation.status === "ready"}
+              onStart={startNavigation}
               isMuted={isNavMuted}
               onToggleMute={() => {
                 const nextMuted = !isNavMuted;
@@ -1174,14 +1094,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
                 setVoiceEnabled(nextVoiceEnabled);
 
-                if (!nextMuted) {
-                  dispatchNavigation({ type: "GO_TO_STEP", index: currentStepIndex });
-
+                // Voice only controls speech; Start is what begins navigation
+                if (nextMuted) {
+                  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                    window.speechSynthesis.cancel();
+                  }
+                } else if (isNavigating) {
                   dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
-
-                  dispatchNavigation({ type: "START" });
-                } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                  window.speechSynthesis.cancel();
                 }
               }}
               onPreviousStep={() => {
