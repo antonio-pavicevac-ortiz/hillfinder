@@ -1088,7 +1088,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
                 : "Generating route..."
           }
           tone="dark"
-          showBackdrop={!!loadingSavedRoute}
+          showBackdrop
         />
       )}
       <header
