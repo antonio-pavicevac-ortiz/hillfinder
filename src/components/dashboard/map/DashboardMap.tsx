@@ -948,6 +948,16 @@ export default function DashboardMap({
     sweepRef.current.clear(map);
     renderedRouteModeRef.current = null;
 
+    // Give up on a stuck generation instead of spinning forever. Not every step honors the
+    // abort signal, so also retire this reqId: the reqId checks below then drop late results.
+    const routeTimeoutId = setTimeout(() => {
+      if (reqId !== routeReqIdRef.current) return;
+      routeReqIdRef.current += 1;
+      controller.abort();
+      setRouteBusy(false, reqId);
+      onRouteFailed?.("Route is taking too long to generate. Try a different destination.");
+    }, 25_000);
+
     try {
       const baseData = await fetchDirectionsRoute({ from, to, signal: controller.signal });
       if (reqId !== routeReqIdRef.current) return;
@@ -987,6 +997,8 @@ export default function DashboardMap({
         candidates,
         baselineMeters,
       });
+
+      if (reqId !== routeReqIdRef.current) return;
 
       if (candidates.length === 0) {
         onRouteFailed?.("We couldn’t generate a route for that selection.");
@@ -1074,6 +1086,7 @@ export default function DashboardMap({
       console.error("generateAlternativesBetweenPoints error:", err);
       onRouteFailed?.("Something went wrong generating the route.");
     } finally {
+      clearTimeout(routeTimeoutId);
       setRouteBusy(false, reqId);
     }
   }
@@ -1899,7 +1912,10 @@ export default function DashboardMap({
           __setRotation?: (deg: number) => void;
         };
 
-        puckEl.__setRotation?.(0);
+        // Start from the last known heading (relative to the map, as the GPS watcher does)
+        // so the puck doesn't point north and then snap round on the first fix
+        const initialHeading = smoothedHeadingRef.current ?? lastResolvedHeadingRef.current ?? 0;
+        puckEl.__setRotation?.(initialHeading - map.getBearing());
       }
 
       fromMarkerRef.current?.getElement().style.removeProperty("display");
