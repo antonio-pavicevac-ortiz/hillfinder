@@ -1,5 +1,6 @@
 import InstallPrompt from "@/components/InstallPrompt";
 import RegisterServiceWorker from "@/components/RegisterServiceWorker";
+import { Analytics } from "@vercel/analytics/next";
 import type { Viewport } from "next";
 import type { ReactNode } from "react";
 import { Toaster } from "sonner";
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           }}
           style={{ zIndex: 9999 }}
         />
+        <Analytics />
       </body>
     </html>
   );
