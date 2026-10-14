@@ -68,7 +68,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
             href="/dashboard"
             className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
           >
-            ← Back to dashboard
+            ← Back to map
           </Link>
         )}
 

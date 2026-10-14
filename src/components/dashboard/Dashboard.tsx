@@ -10,8 +10,6 @@ import MapControls from "@/components/dashboard/map/MapControls";
 import NavigationCard from "@/components/dashboard/map/NavigationCard";
 
 import DashboardHeader from "@/components/dashboard/ui/DashboardHeader";
-import ProfilePanel from "@/components/dashboard/panels/ProfilePanel";
-import SettingsPanel from "@/components/dashboard/panels/SettingsPanel";
 import QuickActionsTrigger from "@/components/dashboard/ui/QuickActionsTrigger";
 
 import DownhillGenerator from "@/components/dashboard/modals/DownhillGenerator";
@@ -78,7 +76,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const [qaOpen, setQaOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [routesOpen, setRoutesOpen] = useState(false);
-  const [activePanel, setActivePanel] = useState<null | "settings" | "profile">(null);
 
   const [hasRoute, setHasRoute] = useState(false);
 
@@ -1099,11 +1096,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         style={{ height: HEADER_H }}
       >
         <div className={`h-full ${glassBar} pointer-events-auto`}>
-          <DashboardHeader
-            user={user}
-            onOpenSettings={() => setActivePanel("settings")}
-            onOpenProfile={() => setActivePanel("profile")}
-          />
+          <DashboardHeader user={user} />
         </div>
       </header>
       {routesOpen && (
@@ -1266,12 +1259,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         quickRouteEnabled={quickRouteEnabled}
         isOffline={!isOnline}
       />
-      {activePanel === "settings" && (
-        <SettingsPanel onClose={() => setActivePanel(null)} />
-      )}
-      {activePanel === "profile" && (
-        <ProfilePanel onClose={() => setActivePanel(null)} />
-      )}
       <DownhillGenerator
         open={generatorOpen}
         fromLabel={
