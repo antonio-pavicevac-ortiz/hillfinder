@@ -41,6 +41,7 @@ import type { SaveRoutePayload, SavedRouteRecord } from "@/types/saved-route";
 
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 if (MAPBOX_TOKEN) {
@@ -1039,17 +1040,6 @@ export default function DashboardMap({
 
       const sameRoute = isNearDuplicateRoute(easy.coords, hard.coords);
 
-      if (sameRoute) {
-        window.dispatchEvent(
-          new CustomEvent("hf-toast", {
-            detail: {
-              message:
-                "Only one meaningful route was found here. Try a different destination for more variety.",
-            },
-          })
-        );
-      }
-
       const initial = selectedVariant ?? "easy";
       selectedVariantRef.current = initial;
 
@@ -1850,15 +1840,11 @@ export default function DashboardMap({
           });
         });
 
-        window.dispatchEvent(
-          new CustomEvent("hf-toast", {
-            detail: {
-              message: limitedOptions
-                ? "This area has limited downhill-friendly options, so this is the best route we found nearby."
-                : "Found a downhill near you!",
-            },
-          })
-        );
+        if (limitedOptions) {
+          toast("This area has limited downhill-friendly options, so this is the best route we found nearby.");
+        } else {
+          toast.success("Found a downhill near you!");
+        }
       } catch (err: any) {
         if (err?.name === "AbortError") return;
 
