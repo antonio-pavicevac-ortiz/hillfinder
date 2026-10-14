@@ -11,6 +11,7 @@ const SHELL_ASSETS = [
   "/icons/maskable-512.png",
   "/icons/apple-touch-icon.png",
   "/favicon.svg",
+  "/boot-logo.webp",
 ];
 
 self.addEventListener("install", (event) => {

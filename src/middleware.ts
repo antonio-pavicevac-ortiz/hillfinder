@@ -11,8 +11,9 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Block auth pages for logged-in users
-  if (token && pathname.startsWith("/auth")) {
+  // Block auth pages for logged-in users, and send them past the landing page without
+  // waiting on a server render (the dashboard still verifies the session itself)
+  if (token && (pathname === "/" || pathname.startsWith("/auth"))) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -25,5 +26,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/auth/:path*"],
+  matcher: ["/", "/dashboard/:path*", "/auth/:path*"],
 };
