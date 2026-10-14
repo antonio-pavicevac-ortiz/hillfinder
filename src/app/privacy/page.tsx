@@ -39,8 +39,8 @@ export default function PrivacyPolicyPage() {
           Hillfinder helps you find downhill-friendly routes near you. This
           policy explains what information the app collects, how it&apos;s used,
           who it&apos;s shared with, and how you can delete it. We don&apos;t
-          sell your personal information, show ads, or use third-party analytics
-          or tracking.
+          sell your personal information, show ads, or track you across other
+          apps and websites.
         </p>
 
         <Section title="Information we collect">
@@ -72,6 +72,12 @@ export default function PrivacyPolicyPage() {
               current route so it survives a reload, and offline copies of app
               files are stored in your browser or device, not on our servers.
             </li>
+            <li>
+              <strong>Usage statistics.</strong> Which pages are visited, the
+              referring site, and your browser, operating system, device type,
+              and country. This is collected without cookies and isn&apos;t
+              linked to your account.
+            </li>
           </ul>
         </Section>
 
@@ -87,6 +93,7 @@ export default function PrivacyPolicyPage() {
               To protect the service, for example by limiting repeated sign-in
               attempts.
             </li>
+            <li>To understand how the app is used so we can improve it.</li>
           </ul>
         </Section>
 
@@ -96,6 +103,10 @@ export default function PrivacyPolicyPage() {
             of the app for us:
           </p>
           <ul className="mt-3 list-disc space-y-2 pl-5">
+            <li>
+              <strong>Vercel</strong> — hosts the app and provides the
+              cookie-free usage statistics described above.
+            </li>
             <li>
               <strong>Mapbox</strong> — maps, place search, and directions.
               Locations and search text you use for routing are sent to Mapbox
