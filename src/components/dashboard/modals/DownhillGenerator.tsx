@@ -560,7 +560,7 @@ export default function DownhillGenerator({
   }
 
   const baseBtn =
-    "relative w-full rounded-xl py-2.5 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
+    "relative w-full rounded-xl py-2 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
 
   const disabledClass =
     "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-slate-700/85 dark:text-slate-500 dark:border-slate-600/80";
@@ -696,7 +696,7 @@ export default function DownhillGenerator({
                   className="absolute left-[10px] top-[24px] bottom-[24px] w-px bg-slate-300/80"
                 />
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div
                       aria-hidden="true"
@@ -852,7 +852,7 @@ export default function DownhillGenerator({
                 </div>
               ) : (
                 <>
-                <div className="mt-3">
+                <div>
                   {(() => {
                     const showWaitingHint = waitingForVariants;
 
@@ -987,7 +987,7 @@ export default function DownhillGenerator({
                     style={{ touchAction: "manipulation" }}
                     onPointerDownCapture={(e) => e.stopPropagation()}
                     className={[
-                      "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
+                      "w-full rounded-2xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.99]",
                       canGenerate || isGenerated
                         ? [
                             "bg-emerald-500",
