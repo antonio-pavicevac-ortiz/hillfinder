@@ -99,6 +99,7 @@ export default function DashboardMap({
   onNavigationLocationChange,
   onOffRouteChange,
   rejoinRouteNonce,
+  routeOverviewNonce,
   isNavigating,
   onRoutePrepared,
   onVariantsCollapsed,
@@ -130,6 +131,7 @@ export default function DashboardMap({
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
   onOffRouteChange?: (isOffRoute: boolean) => void;
   rejoinRouteNonce?: number;
+  routeOverviewNonce?: number;
   isNavigating?: boolean;
   onRoutePrepared?: () => void;
   onVariantsCollapsed?: (payload: { selected: VariantKey; message: string }) => void;
@@ -478,7 +480,7 @@ export default function DashboardMap({
   function fitMapToRoute(
     map: mapboxgl.Map,
     coords: [number, number][],
-    opts?: { variant?: VariantKey }
+    opts?: { variant?: VariantKey; flatten?: boolean }
   ) {
     if (!coords?.length) return;
 
@@ -502,6 +504,8 @@ export default function DashboardMap({
       curve: 1.4,
       essential: true,
       maxZoom: opts?.variant === "hard" ? 16 : 15,
+      // Leaving the tilted, heading-up navigation camera for a flat, north-up overview
+      ...(opts?.flatten ? { bearing: 0, pitch: 0 } : {}),
     });
   }
 
@@ -1772,6 +1776,17 @@ export default function DashboardMap({
 
     return () => controller.abort();
   }, [rejoinRouteNonce]);
+
+  // Ending a ride returns from the follow camera to the whole route
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !routeOverviewNonce) return;
+
+    const coords = getActiveVariantCoords();
+    if (!coords?.length) return;
+
+    fitMapToRoute(map, coords, { variant: selectedVariantRef.current ?? "easy", flatten: true });
+  }, [routeOverviewNonce]);
 
   useEffect(() => {
     if (typeof findDownhillNonce !== "number" || findDownhillNonce <= 0) return;
