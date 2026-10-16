@@ -691,17 +691,18 @@ export default function DownhillGenerator({
               <ShimmerBar visible={loading || waitingForVariants} />
 
               <div className="relative mb-3">
+                {/* Solid dots in the map markers' colours: a key to the pins, not controls. Hollow
+                    rings read as radio buttons next to Easy and Hard */}
                 <div
                   aria-hidden="true"
-                  className="absolute left-[10px] top-[24px] bottom-[24px] w-px bg-slate-300/80"
+                  className="absolute left-[10px] top-[26px] bottom-[26px] w-px bg-slate-300/80 dark:bg-slate-600/80"
                 />
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <div
-                      aria-hidden="true"
-                      className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
-                    />
+                    <div aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center">
+                      <span className="h-3 w-3 rounded-full bg-[#16a34a] ring-2 ring-white shadow-[0_1px_3px_rgba(0,0,0,0.3)]" />
+                    </div>
                     <label
                       htmlFor="hf-plan-from"
                       className="w-11 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300"
@@ -764,10 +765,9 @@ export default function DownhillGenerator({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <div
-                      aria-hidden="true"
-                      className="h-5 w-5 shrink-0 rounded-full border-2 border-sky-600 bg-white shadow-sm"
-                    />
+                    <div aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center">
+                      <span className="h-3 w-3 rounded-full bg-[#2563eb] ring-2 ring-white shadow-[0_1px_3px_rgba(0,0,0,0.3)]" />
+                    </div>
                     <label
                       htmlFor="hf-plan-to"
                       className="w-11 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300"
