@@ -65,6 +65,11 @@ const QUICK_ACTIONS_HINT_STORAGE_KEY = "hf_quick_actions_hint_shown";
 // GPS wanders a few metres while standing still; only count movement past this
 const RIDE_MIN_MOVE_METERS = 8;
 
+// "350 ft" reads aloud as letters on some voices
+function spokenDistance(meters: number) {
+  return formatStepDistance(meters).replace(/ ft$/, " feet").replace(/ mi$/, " miles");
+}
+
 const glassBar =
   "relative bg-white/12 saturate-150 " +
   "border border-white/25 shadow-[0_8px_30px_rgba(0,0,0,0.12)] " +
@@ -167,6 +172,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     lastPoint: null,
   });
   const [rideSummary, setRideSummary] = useState<{ seconds: number; meters: number } | null>(null);
+  // Meters left while the rider rides to the start of the route; null once on it
+  const [metersToStart, setMetersToStart] = useState<number | null>(null);
+  const isHeadingToStart = isNavigating && metersToStart != null;
 
   const currentNavStep = activeNavSteps[currentStepIndex];
   const nextNavStep = activeNavSteps[currentStepIndex + 1];
@@ -670,6 +678,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   useEffect(() => {
     if (navigation.status !== "navigating") return;
     if (isNavMuted) return;
+    // The first step is spoken on reaching the start
+    if (isHeadingToStart) return;
 
     const step = navigation.steps[navigation.currentStepIndex];
     if (!step?.instruction) return;
@@ -702,6 +712,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     navigation.hasSpokenCurrentStep,
     navigation.steps,
     isNavMuted,
+    isHeadingToStart,
   ]);
 
   useEffect(() => {
@@ -712,6 +723,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
   useEffect(() => {
     if (!isNavigating) return;
+    if (isHeadingToStart) return;
     if (!liveNavLocation) return;
     if (!activeNavSteps.length) return;
 
@@ -748,6 +760,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     }
   }, [
     isNavigating,
+    isHeadingToStart,
     liveNavLocation,
     activeNavSteps,
     currentStepIndex,
@@ -757,6 +770,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
   useEffect(() => {
     if (!isNavigating) return;
+    if (isHeadingToStart) return;
     if (!liveNavLocation) return;
     if (!destination) return;
     if (navigation.status === "completed") return;
@@ -771,11 +785,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     if (distanceToDestination <= ARRIVAL_THRESHOLD_METERS) {
       dispatchNavigation({ type: "COMPLETE" });
     }
-  }, [isNavigating, liveNavLocation, destination, navigation.status]);
+  }, [isNavigating, isHeadingToStart, liveNavLocation, destination, navigation.status]);
 
-  // Distance ridden, for the arrival summary
+  // Distance ridden, for the arrival summary. The ride begins at the route's start
   useEffect(() => {
-    if (!isNavigating || !liveNavLocation) return;
+    if (!isNavigating || isHeadingToStart || !liveNavLocation) return;
 
     const ride = rideRef.current;
     if (!ride.lastPoint) {
@@ -791,7 +805,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
     ride.meters += moved;
     ride.lastPoint = liveNavLocation;
-  }, [isNavigating, liveNavLocation]);
+  }, [isNavigating, isHeadingToStart, liveNavLocation]);
 
   // Arrival can come from reaching the destination or from stepping onto the last step,
   // so react to the status rather than to either cause
@@ -809,6 +823,37 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
     if (!isNavMuted) speakSystemPrompt("You have arrived at your destination.");
   }, [navigation.status, isNavMuted]);
+
+  // Leaving navigation ends any ride to the start
+  useEffect(() => {
+    if (!isNavigating) setMetersToStart(null);
+  }, [isNavigating]);
+
+  // Starting away from the route: point the rider to its start. Reaching it: the ride (and its
+  // time and distance) begins there, and the first step is spoken
+  const wasHeadingToStartRef = useRef(false);
+  useEffect(() => {
+    const wasHeadingToStart = wasHeadingToStartRef.current;
+    wasHeadingToStartRef.current = isHeadingToStart;
+    if (wasHeadingToStart === isHeadingToStart) return;
+
+    if (isHeadingToStart) {
+      if (!isNavMuted && metersToStart != null) {
+        speakSystemPrompt(`Head to the start of your route, about ${spokenDistance(metersToStart)} away.`);
+      }
+      return;
+    }
+    if (!isNavigating) return;
+
+    rideRef.current = { startedAt: Date.now(), meters: 0, lastPoint: null };
+    if (liveNavLocation) {
+      navStartLocationRef.current = { lat: liveNavLocation.lat, lng: liveNavLocation.lng };
+      hasMovedSinceRouteLoadRef.current = false;
+    }
+    dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
+    // metersToStart and liveNavLocation are read at the transition, not tracked
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHeadingToStart, isNavigating, isNavMuted]);
 
   // Off route: say so once. Back on route: repeat the current instruction, which the rider
   // may have missed and which is the useful thing to hear
@@ -832,8 +877,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     if (!isNavigating) return;
     if (!liveNavLocation) return;
     if (isNavMuted) return;
-    // Upcoming terrain is about the route, which the rider has left
-    if (isOffRoute) return;
+    // Upcoming terrain is about the route, which the rider has left or not yet reached
+    if (isOffRoute || isHeadingToStart) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
     const userCoord: [number, number] = [liveNavLocation.lng, liveNavLocation.lat];
@@ -860,7 +905,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     synth.cancel();
     synth.resume();
     synth.speak(utterance);
-  }, [isNavigating, liveNavLocation, isNavMuted, isOffRoute]);
+  }, [isNavigating, liveNavLocation, isNavMuted, isOffRoute, isHeadingToStart]);
 
   // Reset terrain narrations when the route is cleared
   useEffect(() => {
@@ -1036,6 +1081,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           dispatchNavigation({ type: "SET_LOCATION", location: loc });
         }}
         onOffRouteChange={setIsOffRoute}
+        onHeadToStartChange={setMetersToStart}
         rejoinRouteNonce={rejoinRouteNonce}
         routeOverviewNonce={routeOverviewNonce}
         onVariantsReady={() => {
@@ -1202,6 +1248,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               totalSteps={activeNavSteps.length}
               isPreview={navigation.status === "ready"}
               onStart={startNavigation}
+              headToStartText={isHeadingToStart ? formatStepDistance(metersToStart) : undefined}
               isOffRoute={isOffRoute && isNavigating}
               isRejoinShown={rejoinRequested}
               canStartNewRoute={isOnline && !routeBusy}
