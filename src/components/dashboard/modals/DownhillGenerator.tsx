@@ -11,8 +11,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { LocateFixed } from "lucide-react";
+
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
-import StartPointField from "@/components/dashboard/modals/StartPointField";
+import PlaceResults from "@/components/dashboard/modals/PlaceResults";
+import { usePlaceSuggestions, type PlaceSuggestion } from "@/hooks/usePlaceSuggestions";
+import { useVisualViewport } from "@/hooks/useVisualViewport";
 
 function InlineDots({ className = "" }: { className?: string }) {
   return (
@@ -69,12 +73,7 @@ function ShimmerBar({ visible }: { visible: boolean }) {
   );
 }
 
-type Suggestion = {
-  id: string;
-  placeName: string;
-  lng: number;
-  lat: number;
-};
+type Suggestion = PlaceSuggestion;
 
 type Variant = "easy" | "hard";
 type BtnState = "disabled" | "ready" | "selected";
@@ -138,10 +137,17 @@ export default function DownhillGenerator({
   const [waitingForVariants, setWaitingForVariants] = useState(false);
 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [suggestOpen, setSuggestOpen] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const toInputRef = useRef<HTMLInputElement | null>(null);
+  const fromInputRef = useRef<HTMLInputElement | null>(null);
+
+  // While the rider types in From or To, the sheet shows only the fields and the matching
+  // places; difficulty and Generate return once a place is picked or the field is left
+  const [searchField, setSearchField] = useState<"from" | "to" | null>(null);
+  const [fromQuery, setFromQuery] = useState("");
+  const fromSuggestions = usePlaceSuggestions(fromQuery, searchField === "from");
+  const viewport = useVisualViewport(open);
   const suggestReqSeqRef = useRef(0);
 
   const waitTimerRef = useRef<number | null>(null);
@@ -156,7 +162,6 @@ export default function DownhillGenerator({
   const hasDifficulty = !!uiVariant;
 
   const controlsLocked = loading || waitingForVariants;
-  const showSuggest = !controlsLocked && suggestOpen && suggestions.length > 0;
   const hideSheet = loading || waitingForVariants;
 
   const activeKey = hasDestination && uiVariant ? `${trimmedTo}::${uiVariant}` : "";
@@ -284,7 +289,6 @@ export default function DownhillGenerator({
     }
 
     suppressOpenRef.current = true;
-    setSuggestOpen(false);
     setSuggestions([]);
     isFocusedRef.current = false;
     abortRef.current?.abort();
@@ -350,12 +354,13 @@ export default function DownhillGenerator({
 
   useEffect(() => {
     if (!open) {
+      setSearchField(null);
+      setFromQuery("");
       clearWaitTimer();
       setWaitingForVariants(false);
       setLoading(false);
       setRecoveryAction(null);
 
-      setSuggestOpen(false);
       setSuggestions([]);
       abortRef.current?.abort();
       abortRef.current = null;
@@ -406,7 +411,6 @@ export default function DownhillGenerator({
 
     if (!MAPBOX_TOKEN) {
       setSuggestions([]);
-      setSuggestOpen(false);
       return;
     }
 
@@ -416,7 +420,6 @@ export default function DownhillGenerator({
       abortRef.current?.abort();
       abortRef.current = null;
       setSuggestions([]);
-      setSuggestOpen(false);
       return;
     }
 
@@ -452,11 +455,9 @@ export default function DownhillGenerator({
           .filter((s: any) => Number.isFinite(s.lng) && Number.isFinite(s.lat));
 
         setSuggestions(items);
-        setSuggestOpen(items.length > 0);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         setSuggestions([]);
-        setSuggestOpen(false);
       }
     }, 220);
 
@@ -469,6 +470,66 @@ export default function DownhillGenerator({
     lastCommittedRef.current = null;
     setRecoveryAction(null);
     setMessage("");
+  }
+
+  // Focus can move straight from one field to the other, so check where it landed
+  function leaveSearchSoon() {
+    window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active === fromInputRef.current) setSearchField("from");
+      else if (active === toInputRef.current) setSearchField("to");
+      else setSearchField(null);
+    }, 120);
+  }
+
+  function finishFromSearch() {
+    setSearchField(null);
+    setFromQuery("");
+    fromInputRef.current?.blur();
+  }
+
+  function pickStart(s: Suggestion) {
+    finishFromSearch();
+    if (onStartSelected?.({ name: s.placeName, lat: s.lat, lng: s.lng }) === false) return;
+    forgetGeneratedRoute();
+  }
+
+  function useCurrentLocationAsStart() {
+    finishFromSearch();
+    onUseCurrentLocation?.();
+    forgetGeneratedRoute();
+  }
+
+  function pickDestination(s: Suggestion) {
+    if (controlsLocked) return;
+    suppressOpenRef.current = true;
+    abortRef.current?.abort();
+    abortRef.current = null;
+
+    setTo(s.placeName);
+    setMessage("");
+    onToChange?.(s.placeName);
+
+    setGeneratedKey("");
+    setWaitingForVariants(false);
+    clearWaitTimer();
+
+    setUiVariant(null);
+    onVariantSelected?.(null);
+
+    onDestinationSelected?.({
+      name: s.placeName,
+      lat: s.lat,
+      lng: s.lng,
+    });
+
+    isFocusedRef.current = false;
+    setSearchField(null);
+    toInputRef.current?.blur();
+
+    window.setTimeout(() => {
+      suppressOpenRef.current = false;
+    }, 200);
   }
 
   function stateFor(variant: Variant): BtnState {
@@ -485,7 +546,6 @@ export default function DownhillGenerator({
     setMessage("");
 
     suppressOpenRef.current = true;
-    setSuggestOpen(false);
     setSuggestions([]);
     isFocusedRef.current = false;
 
@@ -500,7 +560,7 @@ export default function DownhillGenerator({
   }
 
   const baseBtn =
-    "relative w-full rounded-xl py-2.5 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
+    "relative w-full rounded-xl py-2 px-10 transition active:scale-[0.99] border focus:outline-none focus-visible:ring-[1px] flex items-center justify-center";
 
   const disabledClass =
     "bg-slate-200/85 text-slate-500 border-slate-300/80 cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-slate-700/85 dark:text-slate-500 dark:border-slate-600/80";
@@ -534,7 +594,10 @@ export default function DownhillGenerator({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] pointer-events-none">
+    <div
+      className="fixed inset-x-0 top-0 h-full z-[100] pointer-events-none"
+      style={viewport ? { top: viewport.top, height: viewport.height } : undefined}
+    >
       <div
         className="absolute inset-0 bg-black/25 pointer-events-auto"
         onClick={() => {
@@ -581,10 +644,11 @@ export default function DownhillGenerator({
           style={{
             paddingLeft: 12,
             paddingRight: 12,
-            paddingBottom: "calc(env(safe-area-inset-bottom) + 50px)",
+            // Above the keyboard there's no footer to clear
+            paddingBottom: viewport?.keyboardOpen ? 8 : "calc(env(safe-area-inset-bottom) + 50px)",
           }}
         >
-          <div className="max-w-[42rem] mx-auto pb-3">
+          <div className={["max-w-[42rem] mx-auto", viewport?.keyboardOpen ? "" : "pb-3"].join(" ")}>
             <motion.div
               initial={{ y: 80, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -600,9 +664,13 @@ export default function DownhillGenerator({
                 "pointer-events-auto w-full",
                 "bg-white/85 dark:bg-slate-900/90 backdrop-blur-xl",
                 "rounded-2xl border border-white/30 dark:border-slate-700/50 shadow-xl px-4 pb-4 pt-12",
-                "relative isolate",
+                "relative isolate flex flex-col",
               ].join(" ")}
-              style={{ touchAction: "manipulation" }}
+              style={{
+                touchAction: "manipulation",
+                // Keep the header in view; the results list scrolls instead
+                maxHeight: viewport ? viewport.height - 16 : undefined,
+              }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
@@ -628,26 +696,71 @@ export default function DownhillGenerator({
                   className="absolute left-[10px] top-[24px] bottom-[24px] w-px bg-slate-300/80"
                 />
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
                     />
-                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300">From</label>
-                    <StartPointField
-                      label={fromLabel}
-                      isCurrentLocation={startIsCurrentLocation}
-                      disabled={controlsLocked}
-                      onStartSelected={(loc) => {
-                        if (onStartSelected?.(loc) === false) return;
-                        forgetGeneratedRoute();
-                      }}
-                      onUseCurrentLocation={() => {
-                        onUseCurrentLocation?.();
-                        forgetGeneratedRoute();
-                      }}
-                    />
+                    <label
+                      htmlFor="hf-plan-from"
+                      className="w-11 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300"
+                    >
+                      From
+                    </label>
+                    {/* Until this field became editable it was read-only, so it says so: a "Change"
+                        cue, and a location icon while the start follows the rider's GPS */}
+                    <div className="relative flex-1 min-w-0">
+                      {searchField !== "from" && !controlsLocked && startIsCurrentLocation && (
+                        <LocateFixed
+                          size={15}
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-400"
+                        />
+                      )}
+                      <input
+                        id="hf-plan-from"
+                        ref={fromInputRef}
+                        type="text"
+                        autoComplete="off"
+                        placeholder={searchField === "from" ? "Search for a starting point" : "Current location"}
+                        value={searchField === "from" ? fromQuery : fromLabel}
+                        disabled={controlsLocked}
+                        aria-disabled={controlsLocked}
+                        onFocus={(e) => {
+                          if (controlsLocked) return;
+                          setSearchField("from");
+                          // Start from a chosen start's name, selected so typing replaces it
+                          setFromQuery(startIsCurrentLocation ? "" : fromLabel);
+                          const el = e.currentTarget;
+                          requestAnimationFrame(() => el.select());
+                        }}
+                        onChange={(e) => setFromQuery(e.target.value)}
+                        onBlur={leaveSearchSoon}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") finishFromSearch();
+                        }}
+                        aria-describedby={searchField !== "from" ? "hf-plan-from-change" : undefined}
+                        className={[
+                          "w-full truncate py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500",
+                          searchField === "from" || controlsLocked
+                            ? "px-3"
+                            : [startIsCurrentLocation ? "pl-8" : "pl-3", "pr-[4.25rem]"].join(" "),
+                          controlsLocked
+                            ? "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed"
+                            : "bg-white dark:bg-slate-800",
+                        ].join(" ")}
+                      />
+                      {searchField !== "from" && !controlsLocked && (
+                        // Taps pass through to the field, which opens the search
+                        <span
+                          id="hf-plan-from-change"
+                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-emerald-700 dark:text-emerald-400"
+                        >
+                          Change
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -655,10 +768,17 @@ export default function DownhillGenerator({
                       aria-hidden="true"
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-sky-600 bg-white shadow-sm"
                     />
-                    <label className="w-7 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300">To</label>
-                    <div className="relative flex-1">
+                    <label
+                      htmlFor="hf-plan-to"
+                      className="w-11 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300"
+                    >
+                      To
+                    </label>
+                    <div className="relative flex-1 min-w-0">
                       <input
+                        id="hf-plan-to"
                         type="text"
+                        autoComplete="off"
                         placeholder="Search for a destination"
                         value={to}
                         ref={toInputRef}
@@ -682,24 +802,20 @@ export default function DownhillGenerator({
                           onVariantSelected?.(null);
 
                           suppressOpenRef.current = false;
-                          setSuggestOpen(isFocusedRef.current && next.trim().length >= 2);
                           setRecoveryAction(null);
                           setMessage("");
                         }}
                         onFocus={() => {
                           if (controlsLocked) return;
+                          setSearchField("to");
                           isFocusedRef.current = true;
-                          if (suggestions.length && !suppressOpenRef.current) setSuggestOpen(true);
                         }}
                         onBlur={() => {
                           isFocusedRef.current = false;
-                          window.setTimeout(() => {
-                            if (!isFocusedRef.current) setSuggestOpen(false);
-                          }, 120);
+                          leaveSearchSoon();
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Escape") {
-                            setSuggestOpen(false);
                             setMessage("");
                             (e.target as HTMLInputElement).blur();
                           }
@@ -712,315 +828,259 @@ export default function DownhillGenerator({
                         ].join(" ")}
                       />
 
-                      <AnimatePresence>
-                        {showSuggest && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -3, scale: 0.985 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -3, scale: 0.985 }}
-                            transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
-                            className={[
-                              "absolute left-0 right-0 top-[calc(100%+4px)] z-[999]",
-                              "rounded-xl overflow-hidden",
-                              "border border-white/70 dark:border-slate-700/70",
-                              "ring-1 ring-black/5 dark:ring-white/5",
-                              "shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
-                              "bg-white dark:bg-slate-800",
-                              "pointer-events-auto",
-                            ].join(" ")}
-                            style={{
-                              backdropFilter: "blur(20px)",
-                              WebkitBackdropFilter: "blur(20px)",
-                            }}
-                          >
-                            <div className="max-h-56 overflow-auto divide-y divide-slate-200/40">
-                              {suggestions.map((s) => (
-                                <button
-                                  key={s.id}
-                                  type="button"
-                                  disabled={controlsLocked}
-                                  aria-disabled={controlsLocked}
-                                  className={[
-                                    "w-full text-left px-3 py-3 text-sm font-medium transition",
-                                    controlsLocked
-                                      ? "text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                                      : "text-slate-900 dark:text-slate-100 hover:bg-slate-900/5 dark:hover:bg-white/8 active:bg-slate-900/10 dark:active:bg-white/12",
-                                  ].join(" ")}
-                                  onPointerDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                  }}
-                                  onClick={() => {
-                                    if (controlsLocked) return;
-                                    suppressOpenRef.current = true;
-                                    abortRef.current?.abort();
-                                    abortRef.current = null;
-
-                                    setTo(s.placeName);
-                                    setMessage("");
-                                    onToChange?.(s.placeName);
-
-                                    setSuggestOpen(false);
-                                    setGeneratedKey("");
-                                    setWaitingForVariants(false);
-                                    clearWaitTimer();
-
-                                    setUiVariant(null);
-                                    onVariantSelected?.(null);
-
-                                    onDestinationSelected?.({
-                                      name: s.placeName,
-                                      lat: s.lat,
-                                      lng: s.lng,
-                                    });
-
-                                    isFocusedRef.current = false;
-                                    toInputRef.current?.blur();
-
-                                    window.setTimeout(() => {
-                                      suppressOpenRef.current = false;
-                                    }, 200);
-                                  }}
-                                >
-                                  <div className="truncate">{s.placeName}</div>
-                                </button>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3">
-                {(() => {
-                  const showWaitingHint = waitingForVariants;
-
-                  const easyState = stateFor("easy");
-                  const hardState = stateFor("hard");
-
-                  const easyClass =
-                    easyState === "disabled"
-                      ? disabledClass
-                      : easyState === "selected"
-                        ? easySelectedClass
-                        : easyReady;
-
-                  const hardClass =
-                    hardState === "disabled"
-                      ? disabledClass
-                      : hardState === "selected"
-                        ? hardSelectedClass
-                        : hardReady;
-
-                  return (
-                    <>
-                      <div
-                        className={[
-                          "grid grid-cols-2 gap-2 rounded-2xl p-1.5",
-                          "bg-slate-200/45 dark:bg-slate-800/60 border border-slate-300/60 dark:border-slate-600/60 ring-1 ring-black/5 dark:ring-white/5",
-                          "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
-                          "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
-                        ].join(" ")}
-                      >
-                        {/* Easy / Hard buttons */}
-                        <button
-                          type="button"
-                          disabled={!canPickDifficulty}
-                          onClick={() => pickDifficulty("easy")}
-                          aria-pressed={uiVariant === "easy"}
-                          className={[baseBtn, easyClass].join(" ")}
-                          style={{ touchAction: "manipulation" }}
-                          onPointerDownCapture={(e) => e.stopPropagation()}
-                        >
-                          <span
-                            className={dotBase}
-                            style={{
-                              background:
-                                easyState === "disabled"
-                                  ? "rgba(156,163,175,0.85)"
-                                  : easyState === "selected"
-                                    ? "rgba(255,255,255,0.95)"
-                                    : "rgba(100,116,139,0.85)",
-                            }}
-                          />
-                          <span className="text-center">Easy</span>
-
-                          <span
-                            className={[
-                              checkBase,
-                              uiVariant === "easy" ? "opacity-100 scale-100" : "opacity-0 scale-95",
-                              "bg-white/18 ring-1 ring-white/35 text-white",
-                              "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
-                            ].join(" ")}
-                          >
-                            ✓
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={!canPickDifficulty}
-                          onClick={() => pickDifficulty("hard")}
-                          aria-pressed={uiVariant === "hard"}
-                          className={[baseBtn, hardClass].join(" ")}
-                          style={{ touchAction: "manipulation" }}
-                          onPointerDownCapture={(e) => e.stopPropagation()}
-                        >
-                          <span
-                            className={dotBase}
-                            style={{
-                              background:
-                                hardState === "disabled"
-                                  ? "rgba(156,163,175,0.85)"
-                                  : hardState === "selected"
-                                    ? "rgba(255,255,255,0.95)"
-                                    : "rgba(100,116,139,0.85)",
-                            }}
-                          />
-                          <span className="text-center">Hard</span>
-
-                          <span
-                            className={[
-                              checkBase,
-                              uiVariant === "hard" ? "opacity-100 scale-100" : "opacity-0 scale-95",
-                              "bg-white/18 ring-1 ring-white/35 text-white",
-                              "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
-                            ].join(" ")}
-                          >
-                            ✓
-                          </span>
-                        </button>
-                      </div>
-
-                      {showWaitingHint && (
-                        <motion.p
-                          initial={{ opacity: 0, y: -2 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -2 }}
-                          transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.8 }}
-                          className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400"
-                        >
-                          Finding downhill routes
-                          <InlineDots />
-                        </motion.p>
-                      )}
-
-                      {!showWaitingHint && hasDestination && uiVariant === "easy" && (
-                        <p className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400">
-                          If no route appears, try Hard for more options.
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (controlsLocked || !canGenerate) return;
-                    void handleGenerate();
-                  }}
-                  disabled={!canGenerate}
-                  style={{ touchAction: "manipulation" }}
-                  onPointerDownCapture={(e) => e.stopPropagation()}
-                  className={[
-                    "w-full rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99]",
-                    canGenerate || isGenerated
-                      ? [
-                          "bg-emerald-500",
-                          "text-white",
-                          "border border-emerald-500/60",
-                          "shadow-[0_12px_30px_rgba(16,185,129,0.35)]",
-                          isGenerated ? "cursor-default" : "hover:bg-emerald-600",
-                        ].join(" ")
-                      : [
-                          "bg-gray-200 dark:bg-slate-700",
-                          "text-gray-500 dark:text-slate-500",
-                          "border border-slate-300/70 dark:border-slate-600/70",
-                          "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
-                          "cursor-not-allowed",
-                        ].join(" "),
-                  ].join(" ")}
-                >
-                  {loading || waitingForVariants ? (
-                    <span className="inline-flex items-center justify-center">
-                      Finding
-                      <InlineDots className="ml-1" />
-                    </span>
-                  ) : isGenerated ? (
-                    "Route Generated"
+              {searchField ? (
+                <div className="-mx-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                  {searchField === "from" ? (
+                    <PlaceResults
+                      query={fromQuery}
+                      suggestions={fromSuggestions}
+                      onPick={pickStart}
+                      onUseCurrentLocation={useCurrentLocationAsStart}
+                    />
                   ) : (
-                    "Generate Route"
-                  )}
-                </button>
-
-                {blocked && (
-                  <p className="mt-2 text-center text-xs text-rose-600">
-                    This route is currently blocked. Try a closer destination.
-                  </p>
-                )}
-              </div>
-              {!controlsLocked && message && message !== "Finding downhill routes…" && (
-                <div className="mt-4 space-y-3">
-                  <p className="text-center text-sm text-gray-700 dark:text-slate-300 whitespace-pre-line">{message}</p>
-
-                  {recoveryAction && (
-                    <div className="flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (recoveryAction === "try_easy") {
-                            setUiVariant("easy");
-
-                            setRecoveryAction(null);
-
-                            setMessage("");
-
-                            onVariantSelected?.("easy");
-
-                            requestAnimationFrame(() => {
-                              void handleGenerate(trimmedTo);
-                            });
-
-                            return;
-                          }
-
-                          if (recoveryAction === "try_hard") {
-                            setUiVariant("hard");
-
-                            setRecoveryAction(null);
-
-                            setMessage("");
-
-                            onVariantSelected?.("hard");
-
-                            requestAnimationFrame(() => {
-                              void handleGenerate(trimmedTo);
-                            });
-
-                            return;
-                          }
-
-                          setRecoveryAction(null);
-
-                          toInputRef.current?.focus();
-                        }}
-                        className="rounded-xl border border-emerald-400/70 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] transition hover:bg-emerald-600 active:scale-[0.99]"
-                      >
-                        {recoveryAction === "try_easy"
-                          ? "Try Easy"
-                          : recoveryAction === "try_hard"
-                            ? "Try Hard"
-                            : "Choose Another Destination"}
-                      </button>
-                    </div>
+                    <PlaceResults
+                      query={to}
+                      suggestions={trimmedTo.length >= 2 ? suggestions : []}
+                      onPick={pickDestination}
+                    />
                   )}
                 </div>
+              ) : (
+                <>
+                <div>
+                  {(() => {
+                    const showWaitingHint = waitingForVariants;
+
+                    const easyState = stateFor("easy");
+                    const hardState = stateFor("hard");
+
+                    const easyClass =
+                      easyState === "disabled"
+                        ? disabledClass
+                        : easyState === "selected"
+                          ? easySelectedClass
+                          : easyReady;
+
+                    const hardClass =
+                      hardState === "disabled"
+                        ? disabledClass
+                        : hardState === "selected"
+                          ? hardSelectedClass
+                          : hardReady;
+
+                    return (
+                      <>
+                        <div
+                          className={[
+                            "grid grid-cols-2 gap-2 rounded-2xl p-1.5",
+                            "bg-slate-200/45 dark:bg-slate-800/60 border border-slate-300/60 dark:border-slate-600/60 ring-1 ring-black/5 dark:ring-white/5",
+                            "shadow-[inset_0_1px_0_rgba(0,0,0,0.04)]",
+                            "[-webkit-backdrop-filter:blur(20px)] [backdrop-filter:blur(20px)]",
+                          ].join(" ")}
+                        >
+                          {/* Easy / Hard buttons */}
+                          <button
+                            type="button"
+                            disabled={!canPickDifficulty}
+                            onClick={() => pickDifficulty("easy")}
+                            aria-pressed={uiVariant === "easy"}
+                            className={[baseBtn, easyClass].join(" ")}
+                            style={{ touchAction: "manipulation" }}
+                            onPointerDownCapture={(e) => e.stopPropagation()}
+                          >
+                            <span
+                              className={dotBase}
+                              style={{
+                                background:
+                                  easyState === "disabled"
+                                    ? "rgba(156,163,175,0.85)"
+                                    : easyState === "selected"
+                                      ? "rgba(255,255,255,0.95)"
+                                      : "rgba(100,116,139,0.85)",
+                              }}
+                            />
+                            <span className="text-center">Easy</span>
+
+                            <span
+                              className={[
+                                checkBase,
+                                uiVariant === "easy" ? "opacity-100 scale-100" : "opacity-0 scale-95",
+                                "bg-white/18 ring-1 ring-white/35 text-white",
+                                "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
+                              ].join(" ")}
+                            >
+                              ✓
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!canPickDifficulty}
+                            onClick={() => pickDifficulty("hard")}
+                            aria-pressed={uiVariant === "hard"}
+                            className={[baseBtn, hardClass].join(" ")}
+                            style={{ touchAction: "manipulation" }}
+                            onPointerDownCapture={(e) => e.stopPropagation()}
+                          >
+                            <span
+                              className={dotBase}
+                              style={{
+                                background:
+                                  hardState === "disabled"
+                                    ? "rgba(156,163,175,0.85)"
+                                    : hardState === "selected"
+                                      ? "rgba(255,255,255,0.95)"
+                                      : "rgba(100,116,139,0.85)",
+                              }}
+                            />
+                            <span className="text-center">Hard</span>
+
+                            <span
+                              className={[
+                                checkBase,
+                                uiVariant === "hard" ? "opacity-100 scale-100" : "opacity-0 scale-95",
+                                "bg-white/18 ring-1 ring-white/35 text-white",
+                                "shadow-[0_10px_22px_rgba(0,0,0,0.18)]",
+                              ].join(" ")}
+                            >
+                              ✓
+                            </span>
+                          </button>
+                        </div>
+
+                        {showWaitingHint && (
+                          <motion.p
+                            initial={{ opacity: 0, y: -2 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -2 }}
+                            transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.8 }}
+                            className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400"
+                          >
+                            Finding downhill routes
+                            <InlineDots />
+                          </motion.p>
+                        )}
+
+                        {!showWaitingHint && hasDestination && uiVariant === "easy" && (
+                          <p className="mt-2 text-center text-xs text-slate-600 dark:text-slate-400">
+                            If no route appears, try Hard for more options.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (controlsLocked || !canGenerate) return;
+                      void handleGenerate();
+                    }}
+                    disabled={!canGenerate}
+                    style={{ touchAction: "manipulation" }}
+                    onPointerDownCapture={(e) => e.stopPropagation()}
+                    className={[
+                      "w-full rounded-2xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.99]",
+                      canGenerate || isGenerated
+                        ? [
+                            "bg-emerald-500",
+                            "text-white",
+                            "border border-emerald-500/60",
+                            "shadow-[0_12px_30px_rgba(16,185,129,0.35)]",
+                            isGenerated ? "cursor-default" : "hover:bg-emerald-600",
+                          ].join(" ")
+                        : [
+                            "bg-gray-200 dark:bg-slate-700",
+                            "text-gray-500 dark:text-slate-500",
+                            "border border-slate-300/70 dark:border-slate-600/70",
+                            "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
+                            "cursor-not-allowed",
+                          ].join(" "),
+                    ].join(" ")}
+                  >
+                    {loading || waitingForVariants ? (
+                      <span className="inline-flex items-center justify-center">
+                        Finding
+                        <InlineDots className="ml-1" />
+                      </span>
+                    ) : isGenerated ? (
+                      "Route Generated"
+                    ) : (
+                      "Generate Route"
+                    )}
+                  </button>
+
+                  {blocked && (
+                    <p className="mt-2 text-center text-xs text-rose-600">
+                      This route is currently blocked. Try a closer destination.
+                    </p>
+                  )}
+                </div>
+                {!controlsLocked && message && message !== "Finding downhill routes…" && (
+                  <div className="mt-4 space-y-3">
+                    <p className="text-center text-sm text-gray-700 dark:text-slate-300 whitespace-pre-line">{message}</p>
+
+                    {recoveryAction && (
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (recoveryAction === "try_easy") {
+                              setUiVariant("easy");
+
+                              setRecoveryAction(null);
+
+                              setMessage("");
+
+                              onVariantSelected?.("easy");
+
+                              requestAnimationFrame(() => {
+                                void handleGenerate(trimmedTo);
+                              });
+
+                              return;
+                            }
+
+                            if (recoveryAction === "try_hard") {
+                              setUiVariant("hard");
+
+                              setRecoveryAction(null);
+
+                              setMessage("");
+
+                              onVariantSelected?.("hard");
+
+                              requestAnimationFrame(() => {
+                                void handleGenerate(trimmedTo);
+                              });
+
+                              return;
+                            }
+
+                            setRecoveryAction(null);
+
+                            toInputRef.current?.focus();
+                          }}
+                          className="rounded-xl border border-emerald-400/70 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] transition hover:bg-emerald-600 active:scale-[0.99]"
+                        >
+                          {recoveryAction === "try_easy"
+                            ? "Try Easy"
+                            : recoveryAction === "try_hard"
+                              ? "Try Hard"
+                              : "Choose Another Destination"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                </>
               )}
 
               {!MAPBOX_TOKEN && (
