@@ -167,9 +167,9 @@ body {
   filter: saturate(0) brightness(0.15);
 }
 
-/* Touch-first phones/tablets need portrait guidance; desktop windows do not. */
+/* Rendered only on touch devices held in landscape; PortraitOrientationOverlay decides. */
 .hf-orientation-overlay {
-  display: none;
+  display: flex;
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -180,12 +180,6 @@ body {
   background: rgb(0 0 0 / 80%);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
-}
-
-@media (pointer: coarse) and (hover: none) and (orientation: landscape) {
-  .hf-orientation-overlay {
-    display: flex;
-  }
 }
 
 /* -----------------------------
