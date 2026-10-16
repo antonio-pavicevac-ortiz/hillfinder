@@ -11,6 +11,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { LocateFixed } from "lucide-react";
+
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
 import PlaceResults from "@/components/dashboard/modals/PlaceResults";
 import { usePlaceSuggestions, type PlaceSuggestion } from "@/hooks/usePlaceSuggestions";
@@ -706,35 +708,59 @@ export default function DownhillGenerator({
                     >
                       From
                     </label>
-                    <input
-                      id="hf-plan-from"
-                      ref={fromInputRef}
-                      type="text"
-                      autoComplete="off"
-                      placeholder={searchField === "from" ? "Search for a starting point" : "Current location"}
-                      value={searchField === "from" ? fromQuery : fromLabel}
-                      disabled={controlsLocked}
-                      aria-disabled={controlsLocked}
-                      onFocus={(e) => {
-                        if (controlsLocked) return;
-                        setSearchField("from");
-                        // Start from a chosen start's name, selected so typing replaces it
-                        setFromQuery(startIsCurrentLocation ? "" : fromLabel);
-                        const el = e.currentTarget;
-                        requestAnimationFrame(() => el.select());
-                      }}
-                      onChange={(e) => setFromQuery(e.target.value)}
-                      onBlur={leaveSearchSoon}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") finishFromSearch();
-                      }}
-                      className={[
-                        "flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500",
-                        controlsLocked
-                          ? "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed"
-                          : "bg-white dark:bg-slate-800",
-                      ].join(" ")}
-                    />
+                    {/* Until this field became editable it was read-only, so it says so: a "Change"
+                        cue, and a location icon while the start follows the rider's GPS */}
+                    <div className="relative flex-1 min-w-0">
+                      {searchField !== "from" && !controlsLocked && startIsCurrentLocation && (
+                        <LocateFixed
+                          size={15}
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-400"
+                        />
+                      )}
+                      <input
+                        id="hf-plan-from"
+                        ref={fromInputRef}
+                        type="text"
+                        autoComplete="off"
+                        placeholder={searchField === "from" ? "Search for a starting point" : "Current location"}
+                        value={searchField === "from" ? fromQuery : fromLabel}
+                        disabled={controlsLocked}
+                        aria-disabled={controlsLocked}
+                        onFocus={(e) => {
+                          if (controlsLocked) return;
+                          setSearchField("from");
+                          // Start from a chosen start's name, selected so typing replaces it
+                          setFromQuery(startIsCurrentLocation ? "" : fromLabel);
+                          const el = e.currentTarget;
+                          requestAnimationFrame(() => el.select());
+                        }}
+                        onChange={(e) => setFromQuery(e.target.value)}
+                        onBlur={leaveSearchSoon}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") finishFromSearch();
+                        }}
+                        aria-describedby={searchField !== "from" ? "hf-plan-from-change" : undefined}
+                        className={[
+                          "w-full truncate py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-[1px] focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500",
+                          searchField === "from" || controlsLocked
+                            ? "px-3"
+                            : [startIsCurrentLocation ? "pl-8" : "pl-3", "pr-[4.25rem]"].join(" "),
+                          controlsLocked
+                            ? "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 cursor-not-allowed"
+                            : "bg-white dark:bg-slate-800",
+                        ].join(" ")}
+                      />
+                      {searchField !== "from" && !controlsLocked && (
+                        // Taps pass through to the field, which opens the search
+                        <span
+                          id="hf-plan-from-change"
+                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-emerald-700 dark:text-emerald-400"
+                        >
+                          Change
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
