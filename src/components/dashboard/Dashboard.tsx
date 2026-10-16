@@ -86,6 +86,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const [hasRoute, setHasRoute] = useState(false);
 
   const [fromLocation, setFromLocation] = useState<FromLocation | null>(null);
+  // True once the rider picks a start in Plan Your Route; until then the start follows GPS
+  const [startPinned, setStartPinned] = useState(false);
   const [destination, setDestination] = useState<Destination | null>(null);
 
   const [plannerTo, setPlannerTo] = useState("");
@@ -334,6 +336,24 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     return true;
   }
 
+  function handleStartSelected(next: FromLocation) {
+    if (destination) {
+      const km = haversineMeters([next.lng, next.lat], [destination.lng, destination.lat]) / 1000;
+      if (km > TOO_FAR_KM) {
+        toast.error("That start is too far from your destination. Try something closer.", {
+          id: "start-too-far",
+        });
+        return false;
+      }
+    }
+
+    setStartPinned(true);
+    setFromLocation(next);
+    // The route on the map began somewhere else
+    if (hasRoute) clearRoute();
+    return true;
+  }
+
   function clearRoute() {
     startNavigationWhenPreparedRef.current = false;
     endSavedRouteLoading();
@@ -485,7 +505,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       );
     }
 
-    // Clearing also moves the start marker to the rider's current location
+    // Quick Route starts where the rider is. Clearing moves the start marker there, once
+    // unpinned (the map reads the pin during render, before the clear runs)
+    setStartPinned(false);
     clearRoute();
     startNavigationWhenPreparedRef.current = fromHereMidRide;
     setVariantsReady(false);
@@ -597,6 +619,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         if (cancelled) return;
 
         setSelectedSavedRoute(route);
+        setStartPinned(false);
         setFromLocation(route.from);
         setDestination(route.to);
         setPlannerTo(route.to.name ?? "");
@@ -997,6 +1020,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         theme={theme}
         destination={destination}
         fromLocation={fromLocation}
+        startPinned={startPinned}
         recenterNonce={recenterNonce}
         onManualMapMove={() => setRecenterActive(false)}
         clearRouteNonce={clearRouteNonce}
@@ -1125,6 +1149,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
                 setLoadingSavedRoute(route);
                 setRouteBusy(false);
                 setSelectedSavedRoute(route);
+                setStartPinned(false);
                 setFromLocation(route.from);
                 setDestination(route.to);
                 setPlannerTo(route.to.name ?? "");
@@ -1266,6 +1291,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           }
           setQaOpen(false);
           setRoutesOpen(false);
+          // A downhill near you starts from you
+          setStartPinned(false);
           clearRoute();
           setDestination(null);
           setPlannerTo("");
@@ -1298,6 +1325,12 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         fromLabel={
           fromLocation?.name ?? (fromLocation ? "Current location" : "Tap map to set start")
         }
+        startIsCurrentLocation={!startPinned}
+        onStartSelected={handleStartSelected}
+        onUseCurrentLocation={() => {
+          setStartPinned(false);
+          if (hasRoute) clearRoute();
+        }}
         initialTo={plannerTo}
         onToChange={(next) => {
           setPlannerTo(next);
