@@ -50,6 +50,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+// Tapping Start farther than this from the route's start guides the rider there first
+const HEAD_TO_START_METERS = 100;
+// Close enough to the start to begin the route's own guidance
+const REACHED_START_METERS = 25;
+
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 } else if (!mapboxgl.accessToken) {
@@ -99,6 +104,7 @@ export default function DashboardMap({
   findDownhillNonce,
   onNavigationLocationChange,
   onOffRouteChange,
+  onHeadToStartChange,
   rejoinRouteNonce,
   routeOverviewNonce,
   isNavigating,
@@ -133,6 +139,8 @@ export default function DashboardMap({
   findDownhillNonce?: number;
   onNavigationLocationChange?: (loc: { lat: number; lng: number }) => void;
   onOffRouteChange?: (isOffRoute: boolean) => void;
+  // Meters left to the start of the route while the rider rides there; null once they reach it
+  onHeadToStartChange?: (metersToStart: number | null) => void;
   rejoinRouteNonce?: number;
   routeOverviewNonce?: number;
   isNavigating?: boolean;
@@ -157,11 +165,49 @@ export default function DashboardMap({
   // ahead of that point rather than a stretch already ridden
   const lastOnRouteSegmentIndexRef = useRef(0);
   const rejoinAbortRef = useRef<AbortController | null>(null);
+  const onHeadToStartChangeRef = useRef(onHeadToStartChange);
+  useEffect(() => {
+    onHeadToStartChangeRef.current = onHeadToStartChange;
+  }, [onHeadToStartChange]);
+  // Start was tapped away from the route's start, so the rider is riding there first. Off-route
+  // and step guidance wait until they arrive
+  const headingToStartRef = useRef(false);
 
   function clearRejoin(map: mapboxgl.Map) {
     rejoinAbortRef.current?.abort();
     rejoinAbortRef.current = null;
     clearRejoinPath(map);
+  }
+
+  // Dashed directions from the rider to a point on the route
+  function showWayToRoute(
+    map: mapboxgl.Map,
+    here: mapboxgl.LngLat,
+    target: [number, number],
+    onFailed: () => void
+  ) {
+    clearRejoin(map);
+    const controller = new AbortController();
+    rejoinAbortRef.current = controller;
+
+    fetchDirectionsRoute({
+      from: here,
+      to: new mapboxgl.LngLat(target[0], target[1]),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const path = getRoutesArray(data)[0]?.geometry?.coordinates as [number, number][] | undefined;
+        if (!path?.length) return onFailed();
+
+        // Directions end at the nearest road; finish the line on the route itself
+        drawRejoinPath(map, [[here.lng, here.lat], ...path, target]);
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        console.error("[DashboardMap] way to route failed:", err);
+        onFailed();
+      });
   }
 
   const fromMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -1380,6 +1426,17 @@ export default function DashboardMap({
 
           const activeRouteCoords = getActiveVariantCoords();
 
+          if (isNavigatingRef.current && headingToStartRef.current && activeRouteCoords?.length) {
+            const metersToStart = ll.distanceTo(new mapboxgl.LngLat(...activeRouteCoords[0]));
+            if (metersToStart <= REACHED_START_METERS) {
+              headingToStartRef.current = false;
+              clearRejoin(map);
+              onHeadToStartChangeRef.current?.(null);
+            } else {
+              onHeadToStartChangeRef.current?.(metersToStart);
+            }
+          }
+
           if (isNavigatingRef.current && activeRouteCoords?.length) {
             const snapped = snapPointToRoute(ll, activeRouteCoords);
 
@@ -1392,8 +1449,9 @@ export default function DashboardMap({
               lastOnRouteSegmentIndexRef.current = snapped.segmentIndex;
             }
 
+            // Not on the route yet, so not off it either
             const prevOffRoute = offRouteStateRef.current;
-            const nextOffRoute = nextOffRouteState(prevOffRoute, {
+            const nextOffRoute = headingToStartRef.current ? prevOffRoute : nextOffRouteState(prevOffRoute, {
               distanceMeters: snapped.distanceMeters,
               accuracyMeters: pos.coords.accuracy,
               now: Date.now(),
@@ -1795,33 +1853,9 @@ export default function DashboardMap({
     const target = findRejoinPoint(here, coords, lastOnRouteSegmentIndexRef.current);
     if (!target) return;
 
-    clearRejoin(map);
-    const controller = new AbortController();
-    rejoinAbortRef.current = controller;
-
-    const showError = () =>
-      toast.error("Couldn't find a way back to the route. Try a new route from here.");
-
-    fetchDirectionsRoute({
-      from: here,
-      to: new mapboxgl.LngLat(target[0], target[1]),
-      signal: controller.signal,
-    })
-      .then((data) => {
-        if (controller.signal.aborted) return;
-        const path = getRoutesArray(data)[0]?.geometry?.coordinates as [number, number][] | undefined;
-        if (!path?.length) return showError();
-
-        // Directions end at the nearest road; finish the line on the route itself
-        drawRejoinPath(map, [[here.lng, here.lat], ...path, target]);
-      })
-      .catch((err) => {
-        if (err?.name === "AbortError") return;
-        console.error("[DashboardMap] rejoin route failed:", err);
-        showError();
-      });
-
-    return () => controller.abort();
+    showWayToRoute(map, here, target, () =>
+      toast.error("Couldn't find a way back to the route. Try a new route from here.")
+    );
   }, [rejoinRouteNonce]);
 
   // Ending a ride returns from the follow camera to the whole route
@@ -2038,12 +2072,26 @@ export default function DashboardMap({
     if (offRouteStateRef.current.isOffRoute) onOffRouteChangeRef.current?.(false);
     offRouteStateRef.current = initialOffRouteState;
     lastOnRouteSegmentIndexRef.current = 0;
+    headingToStartRef.current = false;
 
     const map = mapRef.current;
     if (map) clearRejoin(map);
     if (!map) return;
 
     if (isNavigatingRef.current) {
+      const here = latestDeviceLocationRef.current;
+      const routeStart = getActiveVariantCoords()?.[0];
+      const metersToStart = here && routeStart ? here.distanceTo(new mapboxgl.LngLat(...routeStart)) : 0;
+
+      if (here && routeStart && metersToStart > HEAD_TO_START_METERS) {
+        headingToStartRef.current = true;
+        onHeadToStartChangeRef.current?.(metersToStart);
+        // Without directions, a straight dashed line still points the way
+        showWayToRoute(map, here, routeStart, () =>
+          drawRejoinPath(map, [[here.lng, here.lat], routeStart])
+        );
+      }
+
       const latest = latestDeviceLocationRef.current ?? fromMarkerRef.current?.getLngLat();
 
       if (latest) {

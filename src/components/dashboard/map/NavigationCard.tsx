@@ -22,6 +22,8 @@ type NavigationCardProps = {
   totalSteps: number;
   isPreview?: boolean;
   onStart?: () => void;
+  // Distance to the route's start while the rider rides there before the route begins
+  headToStartText?: string;
   isOffRoute?: boolean;
   isRejoinShown?: boolean;
   canStartNewRoute?: boolean;
@@ -47,6 +49,7 @@ export default function NavigationCard({
   totalSteps,
   isPreview = false,
   onStart,
+  headToStartText,
   isOffRoute = false,
   isRejoinShown = false,
   canStartNewRoute = true,
@@ -100,17 +103,23 @@ export default function NavigationCard({
     );
   }
 
+  const isHeadingToStart = !isPreview && !!headToStartText;
+
   return (
     <CardShell>
       <div className="px-3.5 pt-3.5 pb-2.5">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-800/75 dark:text-slate-200/75">
-            {isPreview ? "Route preview" : "Navigation"}
+            {isPreview ? "Route preview" : isHeadingToStart ? "To the start" : "Navigation"}
           </div>
 
           {/* The distance to the next turn means nothing once the rider has left the route */}
           <div role="status" aria-live="polite">
-            {isOffRoute ? (
+            {isHeadingToStart ? (
+              <div className="rounded-full border border-blue-500/40 bg-blue-600/85 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+                {headToStartText} away
+              </div>
+            ) : isOffRoute ? (
               <div className="rounded-full border border-amber-400/60 bg-amber-300/80 dark:border-amber-500/50 dark:bg-amber-500/30 px-2.5 py-1 text-[11px] font-semibold text-amber-950 dark:text-amber-200 backdrop-blur-md">
                 Off route
               </div>
@@ -127,21 +136,37 @@ export default function NavigationCard({
         <div
           className={`transition-opacity duration-300 motion-reduce:transition-none ${isOffRoute ? "opacity-45" : ""}`}
         >
-          <div className="text-[0.95rem] font-semibold leading-5 text-slate-900 dark:text-white">
-            {currentInstruction}
-          </div>
-
-          {nextInstruction ? (
-            <div className="mt-3 text-[0.95rem] leading-5 text-slate-900 dark:text-slate-100">
-              <span className="font-semibold mr-1">Then:</span>
-              <span>{nextInstruction}</span>
-            </div>
+          {/* The route's first step still shows, so the rider knows what comes after the start */}
+          {isHeadingToStart ? (
+            <>
+              <div className="text-[0.95rem] font-semibold leading-5 text-slate-900 dark:text-white">
+                Head to the start of your route
+              </div>
+              <div className="mt-1 text-[13px] text-slate-800 dark:text-slate-300">Follow the dashed line.</div>
+              <div className="mt-3 text-[0.95rem] leading-5 text-slate-900 dark:text-slate-100">
+                <span className="font-semibold mr-1">Then:</span>
+                <span>{currentInstruction}</span>
+              </div>
+            </>
           ) : (
-            <div className="mt-3 text-[13px] text-slate-800 dark:text-slate-300">You’re on the final step.</div>
+            <>
+              <div className="text-[0.95rem] font-semibold leading-5 text-slate-900 dark:text-white">
+                {currentInstruction}
+              </div>
+
+              {nextInstruction ? (
+                <div className="mt-3 text-[0.95rem] leading-5 text-slate-900 dark:text-slate-100">
+                  <span className="font-semibold mr-1">Then:</span>
+                  <span>{nextInstruction}</span>
+                </div>
+              ) : (
+                <div className="mt-3 text-[13px] text-slate-800 dark:text-slate-300">You’re on the final step.</div>
+              )}
+            </>
           )}
         </div>
 
-        {isOffRoute && (
+        {isOffRoute && !isHeadingToStart && (
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               onClick={onBackToRoute}
@@ -202,21 +227,26 @@ export default function NavigationCard({
               <Square size={13} fill="currentColor" aria-hidden="true" />
             </button>
 
-            <button
-              onClick={onPreviousStep}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/50 dark:border-slate-600/50 bg-white/55 dark:bg-slate-800/55 shadow-md backdrop-blur-md transition hover:bg-white/65 dark:hover:bg-slate-800/70 active:scale-95 active:bg-white/75 dark:active:bg-slate-800/80"
-              aria-label="Previous step"
-            >
-              <ChevronLeft size={18} className="text-slate-700 dark:text-slate-300" />
-            </button>
+            {/* Steps can't be stepped through before the route begins */}
+            {!isHeadingToStart && (
+              <>
+                <button
+                  onClick={onPreviousStep}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/50 dark:border-slate-600/50 bg-white/55 dark:bg-slate-800/55 shadow-md backdrop-blur-md transition hover:bg-white/65 dark:hover:bg-slate-800/70 active:scale-95 active:bg-white/75 dark:active:bg-slate-800/80"
+                  aria-label="Previous step"
+                >
+                  <ChevronLeft size={18} className="text-slate-700 dark:text-slate-300" />
+                </button>
 
-            <button
-              onClick={onNextStep}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/50 dark:border-slate-600/50 bg-white/55 dark:bg-slate-800/55 shadow-md backdrop-blur-md transition hover:bg-white/65 dark:hover:bg-slate-800/70 active:scale-95 active:bg-white/75 dark:active:bg-slate-800/80"
-              aria-label="Next step"
-            >
-              <ChevronRight size={18} className="text-slate-700 dark:text-slate-300" />
-            </button>
+                <button
+                  onClick={onNextStep}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/50 dark:border-slate-600/50 bg-white/55 dark:bg-slate-800/55 shadow-md backdrop-blur-md transition hover:bg-white/65 dark:hover:bg-slate-800/70 active:scale-95 active:bg-white/75 dark:active:bg-slate-800/80"
+                  aria-label="Next step"
+                >
+                  <ChevronRight size={18} className="text-slate-700 dark:text-slate-300" />
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
