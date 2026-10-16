@@ -32,8 +32,12 @@ import {
   savedRouteExists,
 } from "@/lib/session/dashboardSession";
 import { haversineMeters } from "@/lib/geo/distance";
-import { formatStepDistance } from "@/lib/navigation/format";
-import { initialNavigationState, navigationReducer } from "@/lib/navigation/navigationState";
+import { formatDuration, formatStepDistance } from "@/lib/navigation/format";
+import {
+  initialNavigationState,
+  navigationReducer,
+  type LiveNavLocation,
+} from "@/lib/navigation/navigationState";
 import { shouldAdvanceStep } from "@/lib/navigation/progress";
 import {
   buildTerrainNarrations,
@@ -58,6 +62,8 @@ const FOOTER_H = 56;
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const QUICK_ACTIONS_HINT_STORAGE_KEY = "hf_quick_actions_hint_shown";
+// GPS wanders a few metres while standing still; only count movement past this
+const RIDE_MIN_MOVE_METERS = 8;
 
 const glassBar =
   "relative bg-white/12 saturate-150 " +
@@ -152,6 +158,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   // Set for a new route from where the rider is: they're mid-ride and asked for it, so it
   // starts navigating as soon as it's ready instead of opening as a preview
   const startNavigationWhenPreparedRef = useRef(false);
+  const [routeOverviewNonce, setRouteOverviewNonce] = useState(0);
+  const rideRef = useRef<{ startedAt: number; meters: number; lastPoint: LiveNavLocation | null }>({
+    startedAt: 0,
+    meters: 0,
+    lastPoint: null,
+  });
+  const [rideSummary, setRideSummary] = useState<{ seconds: number; meters: number } | null>(null);
 
   const currentNavStep = activeNavSteps[currentStepIndex];
   const nextNavStep = activeNavSteps[currentStepIndex + 1];
@@ -230,8 +243,22 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   // Routes open as a preview; tracking, following and step guidance begin only when the rider
   // taps Start. Voice is separate: it decides whether the steps are spoken
   function startNavigation() {
+    rideRef.current = { startedAt: Date.now(), meters: 0, lastPoint: null };
+    setRideSummary(null);
     dispatchNavigation({ type: "GO_TO_STEP", index: 0 });
     dispatchNavigation({ type: "START" });
+  }
+
+  // End (mid-ride) and Done (after arriving) both go back to the preview of the same route,
+  // so the rider can look it over or tap Start again
+  function endNavigation() {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setRideSummary(null);
+    setRejoinRequested(false);
+    dispatchNavigation({ type: "STOP" });
+    setRouteOverviewNonce((n) => n + 1);
   }
 
   function speakSystemPrompt(message: string) {
@@ -719,21 +746,46 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     const ARRIVAL_THRESHOLD_METERS = 18;
 
     if (distanceToDestination <= ARRIVAL_THRESHOLD_METERS) {
-      if (!isNavMuted && typeof window !== "undefined" && "speechSynthesis" in window) {
-        const synth = window.speechSynthesis;
-        synth.cancel();
-        synth.resume();
-
-        const utterance = new SpeechSynthesisUtterance("You have arrived at your destination");
-        utterance.rate = 1;
-        utterance.pitch = 1;
-
-        synth.speak(utterance);
-      }
-
       dispatchNavigation({ type: "COMPLETE" });
     }
-  }, [isNavigating, liveNavLocation, destination, navigation.status, isNavMuted]);
+  }, [isNavigating, liveNavLocation, destination, navigation.status]);
+
+  // Distance ridden, for the arrival summary
+  useEffect(() => {
+    if (!isNavigating || !liveNavLocation) return;
+
+    const ride = rideRef.current;
+    if (!ride.lastPoint) {
+      ride.lastPoint = liveNavLocation;
+      return;
+    }
+
+    const moved = haversineMeters(
+      [ride.lastPoint.lng, ride.lastPoint.lat],
+      [liveNavLocation.lng, liveNavLocation.lat]
+    );
+    if (moved < RIDE_MIN_MOVE_METERS) return;
+
+    ride.meters += moved;
+    ride.lastPoint = liveNavLocation;
+  }, [isNavigating, liveNavLocation]);
+
+  // Arrival can come from reaching the destination or from stepping onto the last step,
+  // so react to the status rather than to either cause
+  const prevNavigationStatusRef = useRef(navigation.status);
+  useEffect(() => {
+    const prevStatus = prevNavigationStatusRef.current;
+    prevNavigationStatusRef.current = navigation.status;
+    if (navigation.status !== "completed" || prevStatus !== "navigating") return;
+
+    const ride = rideRef.current;
+    setRideSummary({
+      seconds: ride.startedAt ? (Date.now() - ride.startedAt) / 1000 : 0,
+      meters: ride.meters,
+    });
+
+    if (!isNavMuted) speakSystemPrompt("You have arrived at your destination.");
+  }, [navigation.status, isNavMuted]);
 
   // Off route: say so once. Back on route: repeat the current instruction, which the rider
   // may have missed and which is the useful thing to hear
@@ -961,6 +1013,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         }}
         onOffRouteChange={setIsOffRoute}
         rejoinRouteNonce={rejoinRouteNonce}
+        routeOverviewNonce={routeOverviewNonce}
         onVariantsReady={() => {
           handleRoutePrepared();
         }}
@@ -1134,6 +1187,18 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               onNewRouteFromHere={() => {
                 void handleQuickRoute({ fromHereMidRide: true });
               }}
+              onEnd={endNavigation}
+              isArrived={navigation.status === "completed"}
+              destinationName={destination?.name}
+              rideTimeText={
+                rideSummary
+                  ? rideSummary.seconds < 60
+                    ? "Under 1 min"
+                    : formatDuration(rideSummary.seconds)
+                  : undefined
+              }
+              rideDistanceText={rideSummary ? formatStepDistance(rideSummary.meters) : undefined}
+              onDone={endNavigation}
               isMuted={isNavMuted}
               onToggleMute={() => {
                 const nextMuted = !isNavMuted;
