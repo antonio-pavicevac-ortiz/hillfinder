@@ -82,6 +82,7 @@ export default function DashboardMap({
   routeActive,
   onFromPicked,
   fromLocation,
+  startPinned = false,
   recenterNonce,
   onManualMapMove,
   routeAlternativesNonce,
@@ -114,6 +115,8 @@ export default function DashboardMap({
   routeActive?: boolean;
   onFromPicked?: (loc: { name: string; lat: number; lng: number }) => void;
   fromLocation?: { lat: number; lng: number; name?: string } | null;
+  // The rider chose a start (in Plan Your Route), so GPS updates and route resets leave it alone
+  startPinned?: boolean;
   recenterNonce?: number;
   onManualMapMove?: () => void;
   routeAlternativesNonce?: number;
@@ -191,6 +194,9 @@ export default function DashboardMap({
   const lastDownhillOriginKeyRef = useRef<string>("");
   const routeActiveRef = useRef(false);
   const isNavigatingRef = useRef(false);
+  // Assigned during render so effects in the same commit (such as clearing the route) see it
+  const startPinnedRef = useRef(startPinned);
+  startPinnedRef.current = startPinned;
   const followCameraPausedUntilRef = useRef(0);
   const previousDeviceLocationRef = useRef<mapboxgl.LngLat | null>(null);
 
@@ -335,6 +341,14 @@ export default function DashboardMap({
   }
 
   function restoreFromToCurrentLocation(map: mapboxgl.Map) {
+    if (startPinnedRef.current) {
+      fromMarkerRef.current?.getElement().style.removeProperty("display");
+      fromMarkerRef.current?.getElement().style.removeProperty("opacity");
+      fromMarkerRef.current?.setDraggable(true);
+      navigationPuckRef.current?.getElement().style.setProperty("display", "none");
+      return;
+    }
+
     const latest = latestDeviceLocationRef.current;
     if (!latest) return;
 
@@ -1164,7 +1178,33 @@ export default function DashboardMap({
 
     const ll = new mapboxgl.LngLat(fromLocation.lng, fromLocation.lat);
     ensureFromMarker(map, ll);
+
+    // A start typed into Plan Your Route may be off screen; show it with the destination
+    if (startPinnedRef.current && !variantsRef.current) {
+      const to = destMarkerRef.current?.getLngLat();
+      if (to) {
+        fitMapToRoute(map, [
+          [ll.lng, ll.lat],
+          [to.lng, to.lat],
+        ]);
+      } else {
+        map.flyTo({ center: ll, zoom: 15, essential: true });
+      }
+    }
   }, [fromLocation]);
+
+  // Back to the current location: put the start on the rider unless a route is showing,
+  // which keeps its start until the next route replaces it
+  const wasStartPinnedRef = useRef(startPinned);
+  useEffect(() => {
+    const wasPinned = wasStartPinnedRef.current;
+    wasStartPinnedRef.current = startPinned;
+    if (!wasPinned || startPinned) return;
+
+    const map = mapRef.current;
+    if (!map || variantsRef.current || isNavigatingRef.current) return;
+    restoreFromToCurrentLocation(map);
+  }, [startPinned]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -1314,12 +1354,12 @@ export default function DashboardMap({
             // Use puck immediately instead of showing raw GPS marker
             const puck = ensureNavigationPuck(map, ll);
             puck.getElement().style.removeProperty("display");
-          } else if (!variantsRef.current && !savedRouteToLoadRef.current) {
+          } else if (!variantsRef.current && !savedRouteToLoadRef.current && !startPinnedRef.current) {
             ensureFromMarker(map, ll);
             void notifyFromPicked(ll, { immediateName: "Current location" });
           }
 
-          if (!variantsRef.current && !savedRouteToLoadRef.current) {
+          if (!variantsRef.current && !savedRouteToLoadRef.current && !startPinnedRef.current) {
             map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
           }
         },
@@ -1415,7 +1455,9 @@ export default function DashboardMap({
           } else {
             // GPS updates only move the green marker when no route is present.
             // Otherwise it remains the fixed start, even when guidance is paused.
-            if (!variantsRef.current && !savedRouteToLoadRef.current) ensureFromMarker(map, ll);
+            if (!variantsRef.current && !savedRouteToLoadRef.current && !startPinnedRef.current) {
+              ensureFromMarker(map, ll);
+            }
             fromMarkerRef.current?.getElement().style.removeProperty("display");
 
             // Hide puck when not navigating
@@ -1656,7 +1698,12 @@ export default function DashboardMap({
     if (!recenterNonce) return;
 
     const recenterAt = (ll: mapboxgl.LngLat) => {
-      if (!isNavigatingRef.current && !variantsRef.current && !savedRouteToLoadRef.current) {
+      if (
+        !isNavigatingRef.current &&
+        !variantsRef.current &&
+        !savedRouteToLoadRef.current &&
+        !startPinnedRef.current
+      ) {
         const existing = fromMarkerRef.current?.getLngLat();
 
         if (
@@ -2019,7 +2066,7 @@ export default function DashboardMap({
     }
 
     const latest = latestDeviceLocationRef.current;
-    if (latest && !variantsRef.current && !savedRouteToLoadRef.current) {
+    if (latest && !variantsRef.current && !savedRouteToLoadRef.current && !startPinnedRef.current) {
       ensureFromMarker(map, latest);
     }
 

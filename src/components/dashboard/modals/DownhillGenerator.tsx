@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
+import StartPointField from "@/components/dashboard/modals/StartPointField";
 
 function InlineDots({ className = "" }: { className?: string }) {
   return (
@@ -82,6 +83,9 @@ type RecoveryAction = "try_easy" | "try_hard" | "pick_destination";
 
 export default function DownhillGenerator({
   fromLabel,
+  startIsCurrentLocation = true,
+  onStartSelected,
+  onUseCurrentLocation,
   blocked = false,
   open,
   initialTo = "",
@@ -97,6 +101,10 @@ export default function DownhillGenerator({
   onToast,
 }: {
   fromLabel: string;
+  startIsCurrentLocation?: boolean;
+  // Returns false when the start was refused, such as being too far from the destination
+  onStartSelected?: (loc: { name: string; lat: number; lng: number }) => boolean;
+  onUseCurrentLocation?: () => void;
   blocked?: boolean;
   open: boolean;
   initialTo?: string;
@@ -455,6 +463,14 @@ export default function DownhillGenerator({
     return () => window.clearTimeout(t);
   }, [trimmedTo, open, MAPBOX_TOKEN, controlsLocked]);
 
+  // A new start makes any route generated so far stale; the chosen difficulty still applies
+  function forgetGeneratedRoute() {
+    setGeneratedKey("");
+    lastCommittedRef.current = null;
+    setRecoveryAction(null);
+    setMessage("");
+  }
+
   function stateFor(variant: Variant): BtnState {
     if (!canPickDifficulty) return "disabled";
     if (uiVariant === variant) return "selected";
@@ -619,12 +635,18 @@ export default function DownhillGenerator({
                       className="h-5 w-5 shrink-0 rounded-full border-2 border-emerald-600 bg-white shadow-sm"
                     />
                     <label className="w-7 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-300">From</label>
-                    <input
-                      type="text"
-                      placeholder="Current location"
-                      value={fromLabel}
-                      readOnly
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 cursor-default"
+                    <StartPointField
+                      label={fromLabel}
+                      isCurrentLocation={startIsCurrentLocation}
+                      disabled={controlsLocked}
+                      onStartSelected={(loc) => {
+                        if (onStartSelected?.(loc) === false) return;
+                        forgetGeneratedRoute();
+                      }}
+                      onUseCurrentLocation={() => {
+                        onUseCurrentLocation?.();
+                        forgetGeneratedRoute();
+                      }}
                     />
                   </div>
 
