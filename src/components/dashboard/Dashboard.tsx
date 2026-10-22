@@ -91,8 +91,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const [hasRoute, setHasRoute] = useState(false);
 
   const [fromLocation, setFromLocation] = useState<FromLocation | null>(null);
-  // True once the rider picks a start in Plan Your Route; until then the start follows GPS
+  // True once the rider picks a start in Plan Your Route or drags the start marker; until then
+  // the start follows GPS
   const [startPinned, setStartPinned] = useState(false);
+  // The device only knows roughly where it is (a desktop without Location Services can be a
+  // town away), so the start can't simply be "where you are"
+  const [locationApproximate, setLocationApproximate] = useState(false);
+  const startIsApproximate = locationApproximate && !startPinned;
   const [destination, setDestination] = useState<Destination | null>(null);
 
   const [plannerTo, setPlannerTo] = useState("");
@@ -294,7 +299,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }
 
   function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
-    if (fromLocation) {
+    // A guessed start says nothing about how far the destination really is
+    if (fromLocation && !startIsApproximate) {
       const km = haversineMeters([fromLocation.lng, fromLocation.lat], [next.lng, next.lat]) / 1000;
       if (km > TOO_FAR_KM) {
         setBlocked(true);
@@ -342,6 +348,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     }
 
     return true;
+  }
+
+  function showApproximateStartError() {
+    toast.error("Your location is approximate. Choose a starting point first.", {
+      id: "approximate-start",
+    });
+    setGeneratorOpen(true);
   }
 
   function handleStartSelected(next: FromLocation) {
@@ -497,6 +510,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       return;
     }
 
+    if (startIsApproximate) {
+      showApproximateStartError();
+      return;
+    }
+
     if (!destination) {
       toast.error("Pick a destination first");
 
@@ -514,8 +532,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     }
 
     // Quick Route starts where the rider is. Clearing moves the start marker there, once
-    // unpinned (the map reads the pin during render, before the clear runs)
-    setStartPinned(false);
+    // unpinned (the map reads the pin during render, before the clear runs). Where the rider is
+    // isn't known when the location is approximate, so the start they chose stays
+    if (!locationApproximate) setStartPinned(false);
     clearRoute();
     startNavigationWhenPreparedRef.current = fromHereMidRide;
     setVariantsReady(false);
@@ -933,6 +952,18 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   }, [activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource, activeSavedRouteId, checkingSavedRoute]);
 
   useEffect(() => {
+    if (startIsApproximate) {
+      toast("Your location is approximate. Type a starting point in From, or drag the green marker.", {
+        id: "approximate-location",
+        duration: Infinity,
+        action: { label: "Set start", onClick: () => setGeneratorOpen(true) },
+      });
+    } else {
+      toast.dismiss("approximate-location");
+    }
+  }, [startIsApproximate]);
+
+  useEffect(() => {
     if (!isOnline) {
       toast("You're offline. Map and route generation features need a connection.", {
         id: "offline-status",
@@ -1082,6 +1113,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         }}
         onOffRouteChange={setIsOffRoute}
         onHeadToStartChange={setMetersToStart}
+        onLocationApproximateChange={setLocationApproximate}
+        onStartDragged={() => setStartPinned(true)}
         rejoinRouteNonce={rejoinRouteNonce}
         routeOverviewNonce={routeOverviewNonce}
         onVariantsReady={() => {
@@ -1333,13 +1366,17 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
             return;
           }
+          if (startIsApproximate) {
+            showApproximateStartError();
+            return;
+          }
           if (voiceEnabled) {
             speakSystemPrompt("Voice guidance on. Finding a downhill nearby.");
           }
           setQaOpen(false);
           setRoutesOpen(false);
-          // A downhill near you starts from you
-          setStartPinned(false);
+          // A downhill near you starts from you, or from the start chosen in place of a guess
+          if (!locationApproximate) setStartPinned(false);
           clearRoute();
           setDestination(null);
           setPlannerTo("");
@@ -1370,7 +1407,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       <DownhillGenerator
         open={generatorOpen}
         fromLabel={
-          fromLocation?.name ?? (fromLocation ? "Current location" : "Tap map to set start")
+          startIsApproximate
+            ? "Approximate location"
+            : fromLocation?.name ?? (fromLocation ? "Current location" : "Tap map to set start")
         }
         startIsCurrentLocation={!startPinned}
         onStartSelected={handleStartSelected}
@@ -1406,6 +1445,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           }
 
           if (routeBusy) return;
+
+          if (startIsApproximate) {
+            showApproximateStartError();
+            return;
+          }
 
           if (voiceEnabled) {
             speakSystemPrompt("Voice guidance on. Finding your route.");

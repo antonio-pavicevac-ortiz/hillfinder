@@ -54,6 +54,11 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const HEAD_TO_START_METERS = 100;
 // Close enough to the start to begin the route's own guidance
 const REACHED_START_METERS = 25;
+// Coarser than this, the reading is a guess from the network (desktops without Location
+// Services can be a town away), not the rider's position
+const APPROXIMATE_LOCATION_METERS = 1000;
+// Before a route exists, a newer reading this far from the start moves the start to it
+const START_REFRESH_METERS = 50;
 
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -105,6 +110,8 @@ export default function DashboardMap({
   onNavigationLocationChange,
   onOffRouteChange,
   onHeadToStartChange,
+  onLocationApproximateChange,
+  onStartDragged,
   rejoinRouteNonce,
   routeOverviewNonce,
   isNavigating,
@@ -141,6 +148,9 @@ export default function DashboardMap({
   onOffRouteChange?: (isOffRoute: boolean) => void;
   // Meters left to the start of the route while the rider rides there; null once they reach it
   onHeadToStartChange?: (metersToStart: number | null) => void;
+  onLocationApproximateChange?: (isApproximate: boolean) => void;
+  // The rider dragged the start marker, choosing the start themselves
+  onStartDragged?: () => void;
   rejoinRouteNonce?: number;
   routeOverviewNonce?: number;
   isNavigating?: boolean;
@@ -172,6 +182,20 @@ export default function DashboardMap({
   // Start was tapped away from the route's start, so the rider is riding there first. Off-route
   // and step guidance wait until they arrive
   const headingToStartRef = useRef(false);
+  const onLocationApproximateChangeRef = useRef(onLocationApproximateChange);
+  const onStartDraggedRef = useRef(onStartDragged);
+  useEffect(() => {
+    onLocationApproximateChangeRef.current = onLocationApproximateChange;
+    onStartDraggedRef.current = onStartDragged;
+  }, [onLocationApproximateChange, onStartDragged]);
+  const locationApproximateRef = useRef(false);
+
+  function reportLocationAccuracy(accuracyMeters: number) {
+    const isApproximate = Number.isFinite(accuracyMeters) && accuracyMeters > APPROXIMATE_LOCATION_METERS;
+    if (isApproximate === locationApproximateRef.current) return;
+    locationApproximateRef.current = isApproximate;
+    onLocationApproximateChangeRef.current?.(isApproximate);
+  }
 
   function clearRejoin(map: mapboxgl.Map) {
     rejoinAbortRef.current?.abort();
@@ -329,6 +353,7 @@ export default function DashboardMap({
 
     marker.on("dragend", () => {
       invalidateRouteNow();
+      onStartDraggedRef.current?.();
 
       const from = marker.getLngLat();
       void notifyFromPicked(from);
@@ -1395,6 +1420,7 @@ export default function DashboardMap({
           latestDeviceLocationRef.current = ll;
 
           previousDeviceLocationRef.current = ll;
+          reportLocationAccuracy(pos.coords.accuracy);
 
           if (isNavigatingRef.current) {
             // Use puck immediately instead of showing raw GPS marker
@@ -1406,7 +1432,9 @@ export default function DashboardMap({
           }
 
           if (!variantsRef.current && !savedRouteToLoadRef.current && !startPinnedRef.current) {
-            map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true });
+            // A rough guess shows the area around it rather than a street that's likely wrong
+            const zoom = locationApproximateRef.current ? 12 : 15;
+            map.flyTo({ center: [longitude, latitude], zoom, essential: true });
           }
         },
         () => {},
@@ -1420,6 +1448,8 @@ export default function DashboardMap({
           const ll = new mapboxgl.LngLat(longitude, latitude);
 
           latestDeviceLocationRef.current = ll;
+          const wasApproximate = locationApproximateRef.current;
+          reportLocationAccuracy(pos.coords.accuracy);
 
           let puckLngLat = ll;
           let snappedRouteBearing: number | null = null;
@@ -1514,7 +1544,17 @@ export default function DashboardMap({
             // GPS updates only move the green marker when no route is present.
             // Otherwise it remains the fixed start, even when guidance is paused.
             if (!variantsRef.current && !savedRouteToLoadRef.current && !startPinnedRef.current) {
+              const previousStart = fromMarkerRef.current?.getLngLat();
               ensureFromMarker(map, ll);
+
+              // The first reading is often the roughest. Let a better one become the start,
+              // not just move the marker, and bring it into view if the first was a guess
+              if (!previousStart || previousStart.distanceTo(ll) > START_REFRESH_METERS) {
+                void notifyFromPicked(ll, { immediateName: "Current location" });
+              }
+              if (wasApproximate && !locationApproximateRef.current) {
+                map.flyTo({ center: ll, zoom: 15, essential: true });
+              }
             }
             fromMarkerRef.current?.getElement().style.removeProperty("display");
 
