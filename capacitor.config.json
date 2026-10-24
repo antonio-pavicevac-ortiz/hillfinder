@@ -1,0 +1,12 @@
+{
+  "appId": "io.hillfinder",
+  "appName": "Hillfinder",
+  "webDir": "capacitor-www",
+  "server": {
+    "url": "https://hillfinder.io",
+    "errorPath": "index.html"
+  },
+  "ios": {
+    "backgroundColor": "#020617"
+  }
+}

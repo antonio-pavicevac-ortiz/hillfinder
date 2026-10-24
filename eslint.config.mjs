@@ -19,6 +19,9 @@ export default [
       // standalone Capacitor spike with its own tooling and generated native projects
       "mobile-spike/**",
 
+      // generated iPhone app project
+      "ios/**",
+
       // type definition / env files
       "*.d.ts",
       "next-env.d.ts",
