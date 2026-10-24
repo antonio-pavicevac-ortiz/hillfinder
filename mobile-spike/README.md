@@ -57,6 +57,25 @@ Repeat on one iPhone and one Android phone:
 If either platform goes silent or stops updating while locked, the decision tips toward
 React Native/Expo (see APP_STORE_READINESS.md).
 
+## Results
+
+**iPhone, 2026-10-24: pass.** A 29-minute walk with the phone locked from start to finish.
+
+- GPS: 1,686 updates while locked, about one per second. Longest gap 17 s; no other gap
+  over 10 s.
+- Speech: 56 prompts while locked, about every 30 seconds from the first minute to the
+  last. Longest gap 44 s.
+- No errors. The geolocation plugin built and ran on Capacitor 8 without changes.
+- The JS timer kept ticking while locked, unlike the expectation above. The open audio
+  session is the likely reason. Guidance should still be driven by GPS callbacks rather
+  than relying on that.
+- The log does not show whether the call, other-audio and standing-still steps were done.
+  No gaps appear at any point, so none of them interrupted tracking or speech.
+
+**Android: not tested.** There was no Android phone available. Hillfinder is going iOS-only
+for now. Before any Android release, repeat the test plan on a real phone, ideally a
+Samsung, since its battery saving is among the most aggressive.
+
 ## Known limits
 
 - The geolocation plugin documents support through Capacitor 7; this spike uses
