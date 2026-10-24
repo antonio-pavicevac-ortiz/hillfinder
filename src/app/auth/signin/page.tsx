@@ -13,15 +13,20 @@ export const metadata = {
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
+  const { error, next } = await searchParams;
+  // Only pages inside the dashboard, so the link can't send anyone off the site
+  const afterSignIn = next?.startsWith("/dashboard/") ? next : "/dashboard";
+
   const session = await getServerSession(authOptions);
 
   if (session) {
-    redirect("/dashboard");
+    redirect(afterSignIn);
   }
 
   const providers = await getProviders();
-  const { error } = await searchParams;
-  return <SignInPageComponent providers={providers ?? {}} authError={error} />;
+  return (
+    <SignInPageComponent providers={providers ?? {}} authError={error} afterSignIn={afterSignIn} />
+  );
 }

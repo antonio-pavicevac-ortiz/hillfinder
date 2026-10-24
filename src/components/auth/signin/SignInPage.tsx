@@ -23,9 +23,11 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 export function SignInPage({
   providers,
   authError,
+  afterSignIn = "/dashboard",
 }: {
   providers?: Record<string, any> | null;
   authError?: string;
+  afterSignIn?: string;
 }) {
   const [error, setError] = useState(
     authError
@@ -44,9 +46,9 @@ export function SignInPage({
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/dashboard");
+      router.replace(afterSignIn);
     }
-  }, [status, router]);
+  }, [status, router, afterSignIn]);
 
   const {
     register,
@@ -80,7 +82,7 @@ export function SignInPage({
 
       // 🔒 stay locked until redirect
 
-      setTimeout(() => router.push("/dashboard"), 1200);
+      setTimeout(() => router.push(afterSignIn), 1200);
     }
   }
 
@@ -224,7 +226,7 @@ export function SignInPage({
               setGoogleLoading(true);
 
               try {
-                await signIn("google", { callbackUrl: "/dashboard" });
+                await signIn("google", { callbackUrl: afterSignIn });
               } catch {
                 setAuthLocked(false);
 
@@ -240,8 +242,17 @@ export function SignInPage({
 
       {isNativeApp && providers?.google && (
         <p className="mt-4 text-center text-sm text-gray-500">
-          Signed up with Google? Add a password under Profile at hillfinder.io, then sign in
-          here with your email.
+          Already have an account through Google?{" "}
+          {/* A new window opens in the phone's browser, where Google sign-in works */}
+          <a
+            href="/dashboard/profile"
+            target="_blank"
+            rel="noopener"
+            className="text-green-700 underline underline-offset-2"
+          >
+            Add a password in your browser
+          </a>
+          , then sign in here with your email.
         </p>
       )}
     </>

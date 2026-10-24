@@ -17,9 +17,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // Block dashboard for logged-out users
+  // Block dashboard for logged-out users, and bring them back to the page they asked for
   if (!token && pathname.startsWith("/dashboard")) {
-    return NextResponse.redirect(new URL("/auth/signin", request.url));
+    const signIn = new URL("/auth/signin", request.url);
+    if (pathname !== "/dashboard") signIn.searchParams.set("next", pathname);
+    return NextResponse.redirect(signIn);
   }
 
   return NextResponse.next();
