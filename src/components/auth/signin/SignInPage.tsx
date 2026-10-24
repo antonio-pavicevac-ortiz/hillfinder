@@ -237,6 +237,13 @@ export function SignInPage({
           </button>
         </motion.div>
       )}
+
+      {isNativeApp && providers?.google && (
+        <p className="mt-4 text-center text-sm text-gray-500">
+          Signed up with Google? Add a password under Profile at hillfinder.io, then sign in
+          here with your email.
+        </p>
+      )}
     </>
   );
 }
