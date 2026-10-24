@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Hillfinder Spike</title>
+    <style>
+      :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
+      body { margin: 0; padding: max(16px, env(safe-area-inset-top)) 16px 32px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      p.hint { margin: 0 0 16px; opacity: 0.7; font-size: 14px; }
+      .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+      button { font-size: 16px; padding: 12px 16px; border-radius: 10px; border: 0; background: #2563eb; color: white; }
+      button.secondary { background: #6b7280; }
+      button:disabled { opacity: 0.4; }
+      dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 16px; font-size: 15px; }
+      dt { opacity: 0.7; }
+      dd { margin: 0; font-variant-numeric: tabular-nums; }
+      pre { font-size: 11px; white-space: pre-wrap; background: rgba(127,127,127,0.12); padding: 8px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Locked-screen spike</h1>
+    <p class="hint">Start, lock the phone, walk 20 minutes, then unlock and Share log.</p>
+    <div class="buttons">
+      <button id="start">Start</button>
+      <button id="stop" class="secondary" disabled>Stop</button>
+      <button id="share" class="secondary">Share log</button>
+      <button id="clear" class="secondary">Clear log</button>
+    </div>
+    <dl>
+      <dt>Status</dt><dd id="status">Stopped</dd>
+      <dt>GPS updates</dt><dd id="updates">0</dd>
+      <dt>Longest GPS gap</dt><dd id="gap">–</dd>
+      <dt>Spoken</dt><dd id="spoken">0</dd>
+      <dt>Timer ticks</dt><dd id="ticks">0</dd>
+    </dl>
+    <pre id="log"></pre>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

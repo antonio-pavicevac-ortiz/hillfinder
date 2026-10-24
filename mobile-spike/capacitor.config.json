@@ -1,0 +1,8 @@
+{
+  "appId": "com.hillfinder.spike",
+  "appName": "Hillfinder Spike",
+  "webDir": "dist",
+  "android": {
+    "useLegacyBridge": true
+  }
+}
