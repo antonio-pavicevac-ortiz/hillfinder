@@ -44,7 +44,7 @@ export default async function ProfilePage() {
   const avatar = (dbUser && (dbUser as any).image) || (session.user.image as string | null) || null;
 
   return (
-    <section className="mx-auto max-w-3xl space-y-8 px-6 pt-4 pb-10 min-h-screen bg-[#f6f7f2] dark:bg-slate-900 transition-colors">
+    <section className="mx-auto max-w-3xl space-y-8 px-6 pt-[calc(env(safe-area-inset-top)+1rem)] pb-10 min-h-screen bg-[#f6f7f2] dark:bg-slate-900 transition-colors">
       {/* Page Header */}
       <div className="mt-6">
         <Link

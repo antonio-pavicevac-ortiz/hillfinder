@@ -55,8 +55,6 @@ body {
   [data-sonner-toast].hf-toast {
     @apply max-w-sm w-fit rounded-2xl px-4 py-3 text-center text-sm font-medium leading-snug
       shadow-[0_10px_34px_rgba(0,0,0,0.14)] backdrop-blur-md;
-
-    margin-top: calc(env(safe-area-inset-top) + 5rem);
   }
 
   /* ✅ Neutral */
@@ -79,8 +77,8 @@ body {
     @apply !border-rose-700/60 !bg-rose-950/90 !text-rose-300;
   }
 
-  .hf-toast--drop {
-    animation: hf-toast-drop 0.18s ease-out;
+  .hf-toast--rise {
+    animation: hf-toast-rise 0.18s ease-out;
   }
 }
 
@@ -132,9 +130,9 @@ body {
   animation: fadeIn 0.12s ease-out;
 }
 
-@keyframes hf-toast-drop {
+@keyframes hf-toast-rise {
   from {
-    transform: translateY(-22px) scale(0.97);
+    transform: translateY(22px) scale(0.97);
     opacity: 0;
   }
   to {

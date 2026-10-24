@@ -24,8 +24,10 @@ export default function DashboardHeader({ user, onOpenSettings, onOpenProfile }:
   return (
     <div className="relative h-[64px] w-full">
       <div className="relative z-10 h-full px-6 flex items-center justify-between pointer-events-none">
-        <h1 className="text-lg font-semibold text-[var(--hf-text,#111827)] select-none">
-          Welcome back, {resolvedUser?.name ?? "Explorer"} 👋
+        <h1 className="text-lg font-semibold leading-tight text-[var(--hf-text,#111827)] select-none">
+          Welcome back,
+          <br />
+          {resolvedUser?.name ?? "Explorer"} 👋
         </h1>
 
         <UserMenu user={resolvedUser} onOpenSettings={onOpenSettings} onOpenProfile={onOpenProfile} />

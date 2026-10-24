@@ -7,8 +7,15 @@ import { Toaster } from "sonner";
 import "../globals.css";
 import Providers from "./providers";
 
+// Toasts rise from the bottom, clear of the dashboard's bottom bar and home indicator, so
+// they don't cover the route card at the top
+const TOAST_OFFSET = { bottom: "calc(env(safe-area-inset-bottom) + 72px)" };
+
 export const viewport: Viewport = {
   themeColor: "#22c55e",
+  // Draw under the iPhone status bar and home indicator; pages whose content starts at the
+  // top pad themselves with env(safe-area-inset-top) so nothing ends up behind it
+  viewportFit: "cover",
 };
 
 export const metadata = {
@@ -35,9 +42,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </Providers>
 
         <Toaster
-          position="top-center"
+          position="bottom-center"
+          offset={TOAST_OFFSET}
+          mobileOffset={TOAST_OFFSET}
           toastOptions={{
-            className: "hf-toast hf-toast--drop hf-toast-centered",
+            className: "hf-toast hf-toast--rise hf-toast-centered",
           }}
           style={{ zIndex: 9999 }}
         />

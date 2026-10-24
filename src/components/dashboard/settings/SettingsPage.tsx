@@ -53,7 +53,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   if (!hydrated) return null;
 
   return (
-    <main className="min-h-screen bg-[#f6f7f2] dark:bg-slate-900 px-5 py-6 transition-colors">
+    <main className="min-h-screen bg-[#f6f7f2] dark:bg-slate-900 px-5 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-6 transition-colors">
       <div className="mx-auto max-w-xl mt-6">
         {onBack ? (
           <button

@@ -13,9 +13,13 @@
     "dev:fresh": "npm run dev:clean",
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
     "dev:cloudflare": "node scripts/dev-cloudflare.mjs",
-    "dev:ngrok": "node scripts/dev-ngrok.mjs"
+    "dev:ngrok": "node scripts/dev-ngrok.mjs",
+    "ios:sync": "cap sync ios",
+    "ios:open": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
     "@chakra-ui/color-mode": "^2.2.0",
     "@chakra-ui/react": "^3.29.0",
     "@emotion/react": "^11.14.0",
@@ -45,6 +49,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@eslint/eslintrc": "^3",
     "@next/eslint-plugin-next": "^16.0.1",
     "@tailwindcss/postcss": "^4.1.13",

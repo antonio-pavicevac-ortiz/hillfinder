@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- The app loads https://hillfinder.io; this page only shows when it can't be reached -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Hillfinder</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0 24px;
+        text-align: center;
+        background: #020617;
+        color: #fff;
+        font-family: -apple-system, system-ui, sans-serif;
+      }
+      h1 { font-size: 24px; margin: 24px 0 8px; }
+      p { color: #94a3b8; font-size: 14px; max-width: 20rem; margin: 0 0 32px; }
+      a {
+        border-radius: 9999px;
+        background: #22c55e;
+        color: #fff;
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+      <path d="M4 52 L20 24 L32 40 L42 28 L60 52 Z" fill="#22c55e" opacity="0.9" />
+      <circle cx="50" cy="20" r="8" fill="none" stroke="#94a3b8" stroke-width="2.5" />
+      <line x1="56" y1="14" x2="44" y2="26" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" />
+    </svg>
+    <h1>You&rsquo;re offline</h1>
+    <p>Hillfinder needs a connection to find new routes. Check your signal and try again.</p>
+    <a href="https://hillfinder.io">Try again</a>
+  </body>
+</html>
