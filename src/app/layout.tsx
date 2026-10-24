@@ -9,6 +9,9 @@ import Providers from "./providers";
 
 export const viewport: Viewport = {
   themeColor: "#22c55e",
+  // Draw under the iPhone status bar and home indicator; pages pad themselves with the
+  // safe-area insets so nothing ends up behind them
+  viewportFit: "cover",
 };
 
 export const metadata = {
@@ -31,7 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <RegisterServiceWorker />
         <InstallPrompt />
         <Providers>
-          <main className="min-h-screen bg-hillfinder-gradient">{children}</main>
+          <main className="min-h-screen bg-hillfinder-gradient pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">{children}</main>
         </Providers>
 
         <Toaster

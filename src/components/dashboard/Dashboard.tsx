@@ -1207,9 +1207,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       )}
       <header
         className="fixed top-0 left-0 right-0 z-[80] pointer-events-none"
-        style={{ height: HEADER_H }}
+        style={{ height: `calc(${HEADER_H}px + env(safe-area-inset-top))` }}
       >
-        <div className={`h-full ${glassBar} pointer-events-auto`}>
+        <div className={`h-full pt-[env(safe-area-inset-top)] ${glassBar} pointer-events-auto`}>
           <DashboardHeader user={user} />
         </div>
       </header>
