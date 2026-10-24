@@ -22,6 +22,7 @@ import {
   getRoutesArray,
 } from "@/lib/map/directionsApi";
 import { findDownhillNearby } from "@/lib/map/findDownhillNearby";
+import { getLocationOnce, setBackgroundLocation, watchLocation } from "@/lib/native/location";
 import { createCircleEl, reverseGeocodeName } from "@/lib/map/markerElements";
 import { computeRouteStats, scoreEasy, scoreHard } from "@/lib/map/routeDifficulty";
 import {
@@ -1285,7 +1286,7 @@ export default function DashboardMap({
     const prevBodyOverflow = document.body.style.overflow;
     const prevBodyHeight = document.body.style.height;
     const prevBodyOverscroll = (document.body.style as any).overscrollBehavior;
-    let watchId: number | null = null;
+    let stopWatchingLocation: (() => void) | null = null;
 
     // Lock the page scroll so iOS rubber-band overscroll can't visually pull
     // the full-screen map away from the viewport edges.
@@ -1411,7 +1412,7 @@ export default function DashboardMap({
         map.setTerrain({ source: "mapbox-dem", exaggeration: 1 });
       } catch {}
 
-      navigator.geolocation.getCurrentPosition(
+      getLocationOnce(
         (pos) => {
           const { latitude, longitude } = pos.coords;
 
@@ -1437,11 +1438,10 @@ export default function DashboardMap({
             map.flyTo({ center: [longitude, latitude], zoom, essential: true });
           }
         },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        () => {}
       );
 
-      watchId = navigator.geolocation.watchPosition(
+      stopWatchingLocation = watchLocation(
         (pos) => {
           const { latitude, longitude, heading, speed } = pos.coords;
 
@@ -1604,11 +1604,7 @@ export default function DashboardMap({
 
           previousDeviceLocationRef.current = ll;
         },
-        () => {},
-        {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-        }
+        () => {}
       );
 
 
@@ -1650,9 +1646,7 @@ export default function DashboardMap({
       } catch {}
       mapRef.current = null;
 
-      if (watchId != null) {
-        navigator.geolocation.clearWatch(watchId);
-      }
+      stopWatchingLocation?.();
 
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
@@ -1831,17 +1825,14 @@ export default function DashboardMap({
       return;
     }
 
-    let cancelled = false;
-    navigator.geolocation.getCurrentPosition(
+    return getLocationOnce(
       (pos) => {
-        if (cancelled) return;
         const { latitude, longitude } = pos.coords;
         const ll = new mapboxgl.LngLat(longitude, latitude);
         latestDeviceLocationRef.current = ll;
         recenterAt(ll);
       },
       () => {
-        if (cancelled) return;
         const markerLL = fromMarkerRef.current?.getLngLat();
         const lng = fromLocation?.lng ?? markerLL?.lng;
         const lat = fromLocation?.lat ?? markerLL?.lat;
@@ -1854,12 +1845,8 @@ export default function DashboardMap({
           duration: 550,
           essential: true,
         });
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      }
     );
-    return () => {
-      cancelled = true;
-    };
   }, [recenterNonce]);
 
   useEffect(() => {
@@ -2104,6 +2091,13 @@ export default function DashboardMap({
   useEffect(() => {
     routeActiveRef.current = !!routeActive;
   }, [routeActive]);
+
+  // Guidance keeps coming while the phone is locked during a ride, in the iPhone app
+  useEffect(() => {
+    setBackgroundLocation(!!isNavigating);
+  }, [isNavigating]);
+
+  useEffect(() => () => setBackgroundLocation(false), []);
 
   useEffect(() => {
     isNavigatingRef.current = !!isNavigating;
