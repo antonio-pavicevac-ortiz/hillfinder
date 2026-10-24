@@ -20,7 +20,7 @@ export default function PrivacyPolicyPage() {
 
   return (
     <div className="min-h-screen bg-[#f6f7f2] dark:bg-slate-900 transition-colors">
-      <article className="mx-auto max-w-2xl px-5 py-10 text-slate-700 dark:text-slate-300">
+      <article className="mx-auto max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+2.5rem)] pb-10 text-slate-700 dark:text-slate-300">
         <Link
           href="/"
           className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
