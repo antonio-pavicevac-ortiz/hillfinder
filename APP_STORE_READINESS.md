@@ -76,18 +76,61 @@ hands the session back to the app, plus Sign in with Apple.
 
 ### 4. App Store requirements
 
-- Apple Developer Program membership ($99/year). The free account's installs expire after
-  7 days and can't use TestFlight or the App Store.
-- Account deletion in the app (guideline 5.1.1(v)). Settings already has Delete account.
-- Privacy policy URL: `https://hillfinder.io/privacy`. Check that it covers background
-  location.
-- App Privacy answers in App Store Connect: precise location, email, name, photos
-  (profile images via UploadThing), and Vercel Analytics.
-- `PrivacyInfo.xcprivacy` privacy manifest for the APIs the app and plugins use.
-- Review notes: a demo account, and an explanation of why the app uses location in the
-  background (turn-by-turn guidance while the phone is locked).
-- Minimum functionality (guideline 4.2): locked-screen guidance is native behavior a
-  website can't offer. Make it obvious in the screenshots and review notes.
+Done in code:
+
+- `ios/App/App/PrivacyInfo.xcprivacy`: no tracking, no required-reason APIs, and the data
+  types listed under App Privacy below.
+- Info.plist: `ITSAppUsesNonExemptEncryption` is false (standard HTTPS only), so uploads
+  skip the export-compliance question; the app requires arm64.
+- The privacy policy says location continues while the phone is locked, only during a
+  ride the rider started.
+- Release builds fail unless the app loads `https://hillfinder.io` (a "Check release
+  server" build phase), so a dev-server URL can't ship.
+- Account deletion in the app (guideline 5.1.1(v)) already exists in Settings.
+
+Needs the Apple Developer Program membership ($99/year; the free account's installs
+expire after 7 days and can't use TestFlight or the App Store):
+
+1. In the Apple Developer site, register the bundle ID `io.hillfinder`.
+2. In Xcode, choose the paid team for the Release configuration (Signing & Capabilities).
+3. In App Store Connect, create the app: name Hillfinder, bundle ID `io.hillfinder`,
+   primary category Navigation, secondary Sports.
+4. Fill in App Privacy as below, the privacy policy URL `https://hillfinder.io/privacy`,
+   screenshots, and the review notes.
+
+App Privacy answers (they match the privacy manifest). No data is used for tracking.
+
+| Data type | Linked to the user | Purpose |
+| --- | --- | --- |
+| Name | Yes | App functionality |
+| Email address | Yes | App functionality |
+| User ID | Yes | App functionality |
+| Photos (profile photo) | Yes | App functionality |
+| Precise location | Yes (saved routes) | App functionality |
+| Other user content (saved routes) | Yes | App functionality |
+| Product interaction (Vercel Analytics) | No | Analytics |
+
+Review notes draft:
+
+> Hillfinder plans downhill-friendly routes for cyclists and skaters and gives spoken
+> turn-by-turn directions. Demo account: <email> / <password>.
+>
+> Background location and audio: after the rider taps Start on a route, the app keeps
+> receiving location and speaking directions while the phone is locked, so riders don't
+> have to hold or look at the phone. Background location stops when the ride ends.
+>
+> To try it: sign in, tap the speaker button or turn on Voice Guidance in Settings,
+> build a route, tap Start, and lock the phone.
+
+Minimum functionality (guideline 4.2): locked-screen spoken guidance is native behavior a
+website can't offer. Show it in the screenshots too.
+
+Releasing a build:
+
+1. `npm run ios:sync` with no `CAP_SERVER_URL`, so the app loads hillfinder.io.
+2. In Xcode, raise the build number (and the version for a new release), choose
+   Any iOS Device, then Product → Archive.
+3. Distribute the archive to App Store Connect and add it to TestFlight.
 
 ### 5. TestFlight and a locked-screen ride
 

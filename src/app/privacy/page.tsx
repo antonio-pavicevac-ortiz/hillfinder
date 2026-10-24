@@ -7,7 +7,7 @@ export const metadata = {
     "What Hillfinder collects, why, who it's shared with, and how to delete it.",
 };
 
-const EFFECTIVE_DATE = "October 13, 2026";
+const EFFECTIVE_DATE = "October 24, 2026";
 
 // SUPPORT_EMAIL wins; otherwise use the address our reset emails are sent from.
 function contactEmail() {
@@ -58,8 +58,11 @@ export default function PrivacyPolicyPage() {
             <li>
               <strong>Location.</strong> With your permission, the app uses your
               device&apos;s location to show where you are, plan routes from
-              your position, and give turn-by-turn guidance. We don&apos;t keep
-              a history of your location on our servers.
+              your position, and give turn-by-turn guidance. In the iPhone app,
+              location keeps updating while your phone is locked, but only during
+              a ride you&apos;ve started, so spoken directions continue; it stops
+              when the ride ends. We don&apos;t keep a history of your location
+              on our servers.
             </li>
             <li>
               <strong>Saved routes.</strong> When you save a route, we store its
