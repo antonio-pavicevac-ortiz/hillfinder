@@ -10,8 +10,9 @@ const inputClass =
 export default function ProfileForm({ dbUser }: { dbUser: any }) {
   const [name, setName] = useState(dbUser?.name || "");
   const email = dbUser?.email || "";
-  // Google accounts have no password, so there's nothing to change
-  const canChangePassword = dbUser?.hasPassword !== false;
+  // Google accounts start without a password; adding one lets them sign in with email too,
+  // which the iPhone app needs because Google sign-in doesn't work there
+  const [hasPassword, setHasPassword] = useState(dbUser?.hasPassword !== false);
   const [username, setUsername] = useState(dbUser?.username || "");
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -82,11 +83,10 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
       newFieldErrors.email = "Please enter a valid email address";
     }
 
-    const wantsPasswordChange =
-      canChangePassword && (currentPassword || newPassword || confirmPassword);
+    const wantsPasswordChange = currentPassword || newPassword || confirmPassword;
 
     if (wantsPasswordChange) {
-      if (!currentPassword)
+      if (hasPassword && !currentPassword)
         setPasswordError("Please enter your current password to change it.");
 
       if (newPassword.length < 12)
@@ -136,6 +136,7 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
     const profileOK = await saveProfile();
     let passwordOK = true;
     if (wantsPasswordChange) passwordOK = await updatePassword();
+    if (wantsPasswordChange && passwordOK) setHasPassword(true);
 
     if (profileOK && passwordOK) {
       toast.success("Settings updated successfully!");
@@ -219,13 +220,13 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
         />
       </div>
 
-      {/* CHANGE PASSWORD */}
-      {canChangePassword ? (
-        <div className="pt-4 border-t border-gray-200 dark:border-slate-700 space-y-3">
-          <h3 className="font-semibold text-gray-800 dark:text-slate-100">
-            Change Password
-          </h3>
+      {/* CHANGE OR ADD PASSWORD */}
+      <div className="pt-4 border-t border-gray-200 dark:border-slate-700 space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-slate-100">
+          {hasPassword ? "Change Password" : "Add a Password"}
+        </h3>
 
+        {hasPassword ? (
           <input
             type="password"
             placeholder="Current password"
@@ -233,42 +234,43 @@ export default function ProfileForm({ dbUser }: { dbUser: any }) {
             onChange={(e) => setCurrentPassword(e.target.value)}
             className={inputClass}
           />
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-slate-400">
+            You sign in with Google. Add a password to also sign in with your email, which
+            the Hillfinder iPhone app needs.
+          </p>
+        )}
 
-          <div>
-            <input
-              type="password"
-              placeholder="New password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className={inputClass}
-            />
-            {fieldErrors.newPassword && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                {fieldErrors.newPassword}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <input
-              type="password"
-              placeholder="Confirm new password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className={inputClass}
-            />
-            {fieldErrors.confirmPassword && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                {fieldErrors.confirmPassword}
-              </p>
-            )}
-          </div>
+        <div>
+          <input
+            type="password"
+            placeholder="New password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            className={inputClass}
+          />
+          {fieldErrors.newPassword && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {fieldErrors.newPassword}
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="pt-4 border-t border-gray-200 dark:border-slate-700 text-sm text-gray-500 dark:text-slate-400">
-          You sign in with Google, so there&apos;s no password to change.
-        </p>
-      )}
+
+        <div>
+          <input
+            type="password"
+            placeholder="Confirm new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className={inputClass}
+          />
+          {fieldErrors.confirmPassword && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {fieldErrors.confirmPassword}
+            </p>
+          )}
+        </div>
+      </div>
 
       <button
         type="submit"

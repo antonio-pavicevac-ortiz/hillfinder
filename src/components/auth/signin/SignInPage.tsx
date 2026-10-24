@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsNativeApp } from "@/lib/native/useIsNativeApp";
 import { signinSchema, type SigninData } from "@/lib/validation/authSchemas";
 import { zodResolver } from "@hookform/resolvers/zod";
 import clsx from "clsx";
@@ -35,6 +36,9 @@ export function SignInPage({
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authLocked, setAuthLocked] = useState(false);
   const router = useRouter();
+  const isNativeApp = useIsNativeApp();
+  // Google blocks its sign-in page inside the iPhone app
+  const showGoogle = Boolean(providers?.google) && !isNativeApp;
 
   const { status } = useSession();
 
@@ -195,14 +199,16 @@ export function SignInPage({
       </form>
 
       {/* Divider */}
-      <div className="flex items-center my-4">
-        <div className="flex-grow h-px bg-gray-200"></div>
-        <span className="px-2 text-gray-500 text-sm">or</span>
-        <div className="flex-grow h-px bg-gray-200"></div>
-      </div>
+      {showGoogle && (
+        <div className="flex items-center my-4">
+          <div className="flex-grow h-px bg-gray-200"></div>
+          <span className="px-2 text-gray-500 text-sm">or</span>
+          <div className="flex-grow h-px bg-gray-200"></div>
+        </div>
+      )}
 
       {/* Google Sign In */}
-      {providers?.google && (
+      {showGoogle && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -230,6 +236,13 @@ export function SignInPage({
             {googleLoading ? "Redirecting..." : "Continue with Google"}
           </button>
         </motion.div>
+      )}
+
+      {isNativeApp && providers?.google && (
+        <p className="mt-4 text-center text-sm text-gray-500">
+          Signed up with Google? Add a password under Profile at hillfinder.io, then sign in
+          here with your email.
+        </p>
       )}
     </>
   );

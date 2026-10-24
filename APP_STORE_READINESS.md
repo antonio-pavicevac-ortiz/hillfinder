@@ -67,8 +67,9 @@ when an app offers Google sign-in.
 
 For the first release, hide "Continue with Google" (`SignInPage.tsx`) and the Google
 connection settings (`GoogleConnectionSection.tsx`) inside the app. Email and password
-work as they are. Riders who signed up with Google can set a password through
-Forgot password.
+work as they are. Riders who signed up with Google add a password under Profile on the
+website, where they're signed in with Google. Forgot password deliberately skips accounts
+without a password, so it can't do this.
 
 Later, if Google sign-in is wanted in the app, it needs a system-browser sign-in flow that
 hands the session back to the app, plus Sign in with Apple.

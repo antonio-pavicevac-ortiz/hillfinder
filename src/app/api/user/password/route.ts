@@ -102,24 +102,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (!user.password) {
-      return NextResponse.json(
-        { error: "This account signs in with Google and doesn't have a password." },
-        { status: 400 }
-      );
-    }
+    // A Google account adds its first password here; being signed in is the proof of
+    // ownership, since there's no current password to check
+    if (user.password) {
+      const isValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isValid) {
+        return NextResponse.json({ error: "Incorrect current password" }, { status: 400 });
+      }
 
-    const isValid = await bcrypt.compare(currentPassword, user.password);
-    if (!isValid) {
-      return NextResponse.json({ error: "Incorrect current password" }, { status: 400 });
-    }
-
-    const isSame = await bcrypt.compare(newPassword, user.password);
-    if (isSame) {
-      return NextResponse.json(
-        { error: "New password cannot be the same as the old password" },
-        { status: 400 }
-      );
+      const isSame = await bcrypt.compare(newPassword, user.password);
+      if (isSame) {
+        return NextResponse.json(
+          { error: "New password cannot be the same as the old password" },
+          { status: 400 }
+        );
+      }
     }
 
     const hashed = await bcrypt.hash(newPassword, 12);

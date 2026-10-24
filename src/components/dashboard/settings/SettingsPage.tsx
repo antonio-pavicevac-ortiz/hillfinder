@@ -2,6 +2,7 @@
 
 import DeleteAccountSection from "@/components/user/DeleteAccountSection";
 import GoogleConnectionSection from "@/components/user/GoogleConnectionSection";
+import { useIsNativeApp } from "@/lib/native/useIsNativeApp";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import {
 
 export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const isNativeApp = useIsNativeApp();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lockPortrait, setLockPortrait] = useState(true);
   const [terrainStyle, setTerrainStyle] = useState<TerrainVoiceStyle>(DEFAULT_TERRAIN_VOICE_STYLE);
@@ -140,7 +142,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
             </span>
           </Link>
 
-          <GoogleConnectionSection />
+          {/* Google blocks its sign-in page inside the iPhone app */}
+          {!isNativeApp && <GoogleConnectionSection />}
 
           <DeleteAccountSection />
         </div>
