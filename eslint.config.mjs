@@ -16,6 +16,9 @@ export default [
       // dependencies
       "node_modules/**",
 
+      // standalone Capacitor spike with its own tooling and generated native projects
+      "mobile-spike/**",
+
       // type definition / env files
       "*.d.ts",
       "next-env.d.ts",
