@@ -32,6 +32,7 @@ import {
   savedRouteExists,
 } from "@/lib/session/dashboardSession";
 import { haversineMeters } from "@/lib/geo/distance";
+import { canSpeak, isSpeaking, speak, stopSpeaking } from "@/lib/native/speech";
 import { formatDuration, formatStepDistance } from "@/lib/navigation/format";
 import {
   initialNavigationState,
@@ -267,9 +268,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   // End (mid-ride) and Done (after arriving) both go back to the preview of the same route,
   // so the rider can look it over or tap Start again
   function endNavigation() {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
+    stopSpeaking();
     setRideSummary(null);
     setRejoinRequested(false);
     dispatchNavigation({ type: "STOP" });
@@ -279,23 +278,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   function speakSystemPrompt(message: string) {
     if (!message) return;
 
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-    const synth = window.speechSynthesis;
-
-    synth.cancel();
-
-    synth.resume();
-
-    const utterance = new SpeechSynthesisUtterance(message);
-
-    utterance.rate = 1;
-
-    utterance.pitch = 1;
-
     console.log("[Dashboard][TTS system] speak()", message);
 
-    synth.speak(utterance);
+    speak(message);
   }
 
   function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
@@ -703,23 +688,15 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     const step = navigation.steps[navigation.currentStepIndex];
     if (!step?.instruction) return;
     if (navigation.hasSpokenCurrentStep) return;
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (!canSpeak()) return;
 
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    synth.resume();
+    stopSpeaking();
     const spokenInstruction = step.instruction;
 
-    const utterance = new SpeechSynthesisUtterance(spokenInstruction);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-
-    utterance.onstart = () => {
-      dispatchNavigation({ type: "MARK_STEP_SPOKEN" });
-    };
-
     const speakTimer = window.setTimeout(() => {
-      synth.speak(utterance);
+      speak(spokenInstruction, {
+        onStart: () => dispatchNavigation({ type: "MARK_STEP_SPOKEN" }),
+      });
     }, 120);
 
     return () => {
@@ -735,9 +712,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   ]);
 
   useEffect(() => {
-    if (isNavMuted && typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
+    if (isNavMuted) stopSpeaking();
   }, [isNavMuted]);
 
   useEffect(() => {
@@ -898,7 +873,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     if (isNavMuted) return;
     // Upcoming terrain is about the route, which the rider has left or not yet reached
     if (isOffRoute || isHeadingToStart) return;
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (!canSpeak()) return;
 
     const userCoord: [number, number] = [liveNavLocation.lng, liveNavLocation.lat];
     const result = findUpcomingTerrainNarration(
@@ -910,20 +885,14 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
     if (!result) return;
 
-    const synth = window.speechSynthesis;
-    if (synth.speaking) return; // don't interrupt an active turn instruction
+    if (isSpeaking()) return; // don't interrupt an active turn instruction
 
     spokenTerrainIndicesRef.current.add(result.index);
     lastTerrainSpokenAtRef.current = Date.now();
 
-    const utterance = new SpeechSynthesisUtterance(result.narration.phrase);
     const terrainStyle = (localStorage.getItem(TERRAIN_STYLE_STORAGE_KEY) as TerrainVoiceStyle) ?? DEFAULT_TERRAIN_VOICE_STYLE;
     const ttsSetting = STYLE_TTS[terrainStyle];
-    utterance.rate = ttsSetting.rate;
-    utterance.pitch = ttsSetting.pitch;
-    synth.cancel();
-    synth.resume();
-    synth.speak(utterance);
+    speak(result.narration.phrase, { rate: ttsSetting.rate, pitch: ttsSetting.pitch });
   }, [isNavigating, liveNavLocation, isNavMuted, isOffRoute, isHeadingToStart]);
 
   // Reset terrain narrations when the route is cleared
@@ -1316,9 +1285,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
 
                 // Voice only controls speech; Start is what begins navigation
                 if (nextMuted) {
-                  if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                    window.speechSynthesis.cancel();
-                  }
+                  stopSpeaking();
                 } else if (isNavigating) {
                   dispatchNavigation({ type: "RESET_STEP_SPOKEN" });
                 }
@@ -1389,9 +1356,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
           setActiveRouteSource("generated");
 
           setIsNavMuted(!voiceEnabled);
-          if (typeof window !== "undefined" && "speechSynthesis" in window) {
-            window.speechSynthesis.cancel();
-          }
+          stopSpeaking();
 
           setShowNavigationCard(false);
           dispatchNavigation({ type: "LOAD_STEPS", steps: [] });
