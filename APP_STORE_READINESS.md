@@ -30,7 +30,8 @@ Consequences:
 - Add Capacitor to the root project with the iOS project in `ios/`. The root Next.js build
   is unaffected.
 - `capacitor.config`: `server.url` set to `https://hillfinder.io`, bundle ID
-  `io.hillfinder.app`, app name Hillfinder.
+  `io.hillfinder` (hillfinder.io reversed; it can't be changed after the first upload),
+  app name Hillfinder.
 - Info.plist: background modes for location and audio, and location permission text
   (reuse the wording from the spike).
 - App icon and launch screen from `public/hillfinder-app-icon.png`.
@@ -98,5 +99,4 @@ locked.
 
 - Should the app keep the screen on while navigating, as most navigation apps do, or rely
   on locked-screen guidance?
-- App Store name and subtitle, and whether `io.hillfinder.app` is the bundle ID to keep.
-  The bundle ID can't be changed after the first upload.
+- App Store name and subtitle.
