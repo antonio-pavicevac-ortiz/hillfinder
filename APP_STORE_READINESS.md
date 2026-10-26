@@ -89,10 +89,14 @@ Done in code:
 - Account deletion in the app (guideline 5.1.1(v)) already exists in Settings.
 
 Needs the Apple Developer Program membership ($99/year; the free account's installs
-expire after 7 days and can't use TestFlight or the App Store):
+expire after 7 days and can't use TestFlight or the App Store). Done 2026-10-26, and
+version 1.0 (1) was submitted for review:
 
 1. In the Apple Developer site, register the bundle ID `io.hillfinder`.
-2. In Xcode, choose the paid team for the Release configuration (Signing & Capabilities).
+2. Release is signed by the paid team (`DEVELOPMENT_TEAM = J3Q58D95W3`, the same ID the
+   free account had). If Xcode still calls it "Personal Team" after enrolling, uploads fail
+   with "not enrolled in the Apple Developer Program"; quit and reopen Xcode, then archive
+   again.
 3. In App Store Connect, create the app: name Hillfinder, bundle ID `io.hillfinder`,
    primary category Navigation, secondary Sports.
 4. Fill in App Privacy as below, the privacy policy URL `https://hillfinder.io/privacy`,
