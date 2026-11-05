@@ -3,7 +3,7 @@
 import SheetDragHandle from "@/components/dashboard/ui/SheetDragHandle";
 
 import type { SavedRouteRecord } from "@/types/saved-route";
-import { AnimatePresence, motion, useDragControls, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion, useDragControls, useReducedMotion, type PanInfo } from "framer-motion";
 import { Loader2, Share2, Trash2 } from "lucide-react";
 import {
   useEffect,
@@ -41,6 +41,7 @@ export default function RecentRoutesPanel({
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const dragControls = useDragControls();
+  const reducedMotion = useReducedMotion();
 
   function handleOpenRoute(route: SavedRouteRecord) {
     if (openingTimerRef.current || deletingRouteId) return;
@@ -177,7 +178,17 @@ export default function RecentRoutesPanel({
 
       <AnimatePresence>
         <div className="absolute left-0 right-0 bottom-0 pointer-events-none">
-          <div
+          {/* Slide only: iOS WebKit flashes blurred cards whose opacity animates */}
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: openingRouteId ? "100%" : 0 }}
+            transition={
+              reducedMotion
+                ? { duration: 0 }
+                : openingRouteId
+                  ? { duration: 0.22, ease: "easeOut" }
+                  : { type: "spring", stiffness: 520, damping: 40, mass: 0.9 }
+            }
             className="pointer-events-auto"
             onPointerDown={(e) => e.stopPropagation()}
             style={{
@@ -188,10 +199,6 @@ export default function RecentRoutesPanel({
           >
             <div className="mx-auto max-w-[42rem] pb-3">
               <motion.div
-                initial={{ y: 80, opacity: 0 }}
-                animate={openingRouteId ? { y: 40, opacity: 0 } : { y: 0, opacity: 1 }}
-                exit={{ y: 80, opacity: 0 }}
-                transition={openingRouteId ? { duration: 0.22, ease: "easeOut" } : { type: "spring", stiffness: 520, damping: 40, mass: 0.9 }}
                 drag="y"
                 dragControls={dragControls}
                 dragListener={false}
@@ -388,7 +395,7 @@ export default function RecentRoutesPanel({
                 </div>
               </motion.div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </AnimatePresence>
     </div>,
