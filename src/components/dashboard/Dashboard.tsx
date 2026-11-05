@@ -197,7 +197,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   // Runs once on mount. Reads persisted session from localStorage and
   // rehydrates Dashboard state without triggering new API/route requests.
   useEffect(() => {
-    const session = loadDashboardSession();
+    const session = loadDashboardSession(user?.id);
     if (!session?.routePayload) return;
 
     const payload = session.routePayload;
@@ -241,7 +241,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         if (savedRouteVerificationRef.current?.controller === controller) savedRouteVerificationRef.current = null;
       });
     return () => controller.abort();
-  }, []);
+  }, [user?.id]);
 
   let distanceToNextStepMeters: number | null = null;
 
@@ -909,8 +909,10 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   // Short-lived loading states are never in activeRouteToSave, so we never
   // persist partial in-flight state.
   useEffect(() => {
-    if (!activeRouteToSave || checkingSavedRoute === activeRouteToSave) return;
+    const userId = user?.id;
+    if (!userId || !activeRouteToSave || checkingSavedRoute === activeRouteToSave) return;
     saveDashboardSession({
+      userId,
       fromLocation,
       destination,
       selectedVariant,
@@ -918,7 +920,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       routePayload: activeRouteToSave,
       savedRouteId: activeSavedRouteId,
     });
-  }, [activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource, activeSavedRouteId, checkingSavedRoute]);
+  }, [user?.id, activeRouteToSave, fromLocation, destination, selectedVariant, activeRouteSource, activeSavedRouteId, checkingSavedRoute]);
 
   useEffect(() => {
     if (startIsApproximate) {

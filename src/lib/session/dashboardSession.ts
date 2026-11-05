@@ -7,6 +7,8 @@ const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // discard sessions older than 2
 
 export type DashboardSession = {
   savedAt: number;
+  // Sessions live in device storage, which outlasts sign-out
+  userId: string;
   fromLocation: { lat: number; lng: number; name?: string } | null;
   destination: { lat: number; lng: number; name?: string } | null;
   selectedVariant: "easy" | "hard" | null;
@@ -28,14 +30,19 @@ export function saveDashboardSession(
   }
 }
 
-export function loadDashboardSession(): DashboardSession | null {
+export function loadDashboardSession(userId: string | null | undefined): DashboardSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
     const session = JSON.parse(raw) as DashboardSession;
 
-    if (!session.savedAt || Date.now() - session.savedAt > SESSION_MAX_AGE_MS) {
+    if (
+      !session.savedAt ||
+      Date.now() - session.savedAt > SESSION_MAX_AGE_MS ||
+      !userId ||
+      session.userId !== userId
+    ) {
       clearDashboardSession();
       return null;
     }
