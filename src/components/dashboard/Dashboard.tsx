@@ -1310,7 +1310,10 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
             />
           )}
       </AnimatePresence>
-      <footer className="fixed left-0 right-0 bottom-0 z-20 pointer-events-none">
+      {/* The planner covers the footer's job, and the footer would sit between it and the keyboard */}
+      <footer
+        className={`fixed left-0 right-0 bottom-0 z-20 pointer-events-none ${generatorOpen ? "invisible" : ""}`}
+      >
         <div className={`${glassBar} border-t border-white/25 pointer-events-none`}>
           <div
             className="flex items-center justify-center pointer-events-none"

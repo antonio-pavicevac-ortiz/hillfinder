@@ -148,6 +148,12 @@ export default function DownhillGenerator({
   const [fromQuery, setFromQuery] = useState("");
   const fromSuggestions = usePlaceSuggestions(fromQuery, searchField === "from");
   const viewport = useVisualViewport(open);
+  const [coarsePointer] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches
+  );
+  // Browsers that shrink the page for the keyboard (Chrome on iOS) don't show it
+  // in the visual viewport, but on a phone a focused search field means the keyboard is up
+  const keyboardUp = !!viewport?.keyboardOpen || (coarsePointer && searchField !== null);
   const suggestReqSeqRef = useRef(0);
 
   const waitTimerRef = useRef<number | null>(null);
@@ -650,10 +656,10 @@ export default function DownhillGenerator({
             paddingLeft: 12,
             paddingRight: 12,
             // Above the keyboard there's no footer to clear
-            paddingBottom: viewport?.keyboardOpen ? 8 : "calc(env(safe-area-inset-bottom) + 50px)",
+            paddingBottom: keyboardUp ? 8 : "calc(env(safe-area-inset-bottom) + 50px)",
           }}
         >
-          <div className={["max-w-[42rem] mx-auto", viewport?.keyboardOpen ? "" : "pb-3"].join(" ")}>
+          <div className={["max-w-[42rem] mx-auto", keyboardUp ? "" : "pb-3"].join(" ")}>
             <motion.div
               drag="y"
               dragControls={dragControls}
