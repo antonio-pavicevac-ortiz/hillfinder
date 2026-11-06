@@ -2,7 +2,7 @@
 
 import SheetDragHandle from "@/components/dashboard/ui/SheetDragHandle";
 
-import { AnimatePresence, motion, useDragControls, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion, useDragControls, useReducedMotion, type PanInfo } from "framer-motion";
 import {
   useEffect,
   useMemo,
@@ -583,6 +583,7 @@ export default function DownhillGenerator({
     "absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold transition-all duration-150";
 
   const dragControls = useDragControls();
+  const reducedMotion = useReducedMotion();
   const DISMISS_Y = 110;
 
   function onSheetDragEnd(_: PointerEvent, info: PanInfo) {
@@ -599,7 +600,7 @@ export default function DownhillGenerator({
       style={viewport ? { top: viewport.top, height: viewport.height } : undefined}
     >
       <div
-        className="absolute inset-0 bg-black/25 pointer-events-auto"
+        className="absolute inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto"
         onClick={() => {
           if (controlsLocked) return;
           onClose();
@@ -638,7 +639,11 @@ export default function DownhillGenerator({
         ].join(" ")}
         aria-hidden={hideSheet}
       >
-        <div
+        {/* Slide only: iOS WebKit flashes blurred cards whose opacity animates */}
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40, mass: 0.9 }}
           className={["pointer-events-auto", hideSheet ? "pointer-events-none" : ""].join(" ")}
           onPointerDown={(e) => e.stopPropagation()}
           style={{
@@ -650,10 +655,6 @@ export default function DownhillGenerator({
         >
           <div className={["max-w-[42rem] mx-auto", viewport?.keyboardOpen ? "" : "pb-3"].join(" ")}>
             <motion.div
-              initial={{ y: 80, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 80, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 520, damping: 40, mass: 0.9 }}
               drag="y"
               dragControls={dragControls}
               dragListener={false}
@@ -1091,7 +1092,7 @@ export default function DownhillGenerator({
               )}
             </motion.div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
