@@ -32,6 +32,7 @@ import {
   savedRouteExists,
 } from "@/lib/session/dashboardSession";
 import { haversineMeters } from "@/lib/geo/distance";
+import { endRideCard, showRideCard, type RideCardState } from "@/lib/native/liveActivity";
 import { canSpeak, isSpeaking, speak, stopSpeaking } from "@/lib/native/speech";
 import { formatDuration, formatStepDistance } from "@/lib/navigation/format";
 import {
@@ -40,6 +41,7 @@ import {
   type LiveNavLocation,
 } from "@/lib/navigation/navigationState";
 import { shouldAdvanceStep } from "@/lib/navigation/progress";
+import type { NavStep } from "@/lib/navigation/types";
 import {
   buildTerrainNarrations,
   findUpcomingTerrainNarration,
@@ -67,6 +69,26 @@ const QUICK_ACTIONS_HINT_STORAGE_KEY = "hf_quick_actions_hint_shown";
 const RIDE_MIN_MOVE_METERS = 8;
 
 // "350 ft" reads aloud as letters on some voices
+function rideCardManeuver(step: NavStep): RideCardState["maneuver"] {
+  if (step.maneuver.type === "arrive") return "arrive";
+  switch (step.maneuver.modifier) {
+    case "left":
+    case "sharp left":
+      return "left";
+    case "slight left":
+      return "slightLeft";
+    case "right":
+    case "sharp right":
+      return "right";
+    case "slight right":
+      return "slightRight";
+    case "uturn":
+      return "uturn";
+    default:
+      return "straight";
+  }
+}
+
 function spokenDistance(meters: number) {
   return formatStepDistance(meters).replace(/ ft$/, " feet").replace(/ mi$/, " miles");
 }
@@ -251,6 +273,50 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       distanceTargetStep.location
     );
   }
+
+  const rideTimeText = rideSummary
+    ? rideSummary.seconds < 60
+      ? "Under 1 min"
+      : formatDuration(rideSummary.seconds)
+    : undefined;
+  const rideDistanceText = rideSummary ? formatStepDistance(rideSummary.meters) : undefined;
+
+  // The ride on the lock screen and in the Dynamic Island (iPhone app), matching the
+  // navigation card
+  let rideCard: RideCardState | null = null;
+  if (navigation.status === "completed") {
+    rideCard = { phase: "arrived", instruction: "You’ve arrived", rideTime: rideTimeText, rideDistance: rideDistanceText };
+  } else if (isNavigating && currentNavStep?.instruction) {
+    rideCard = isHeadingToStart
+      ? {
+          phase: "toStart",
+          instruction: currentNavStep.instruction,
+          distance: formatStepDistance(metersToStart) || undefined,
+        }
+      : {
+          phase: isOffRoute ? "offRoute" : "riding",
+          instruction: currentNavStep.instruction,
+          distance: formatStepDistance(distanceToNextStepMeters) || undefined,
+          nextInstruction: nextNavStep?.instruction,
+          maneuver: rideCardManeuver(currentNavStep),
+        };
+  }
+  // Compared as text so a new but identical object each render doesn't re-run the effect
+  const rideCardKey = rideCard ? JSON.stringify(rideCard) : null;
+  const destinationName = destination?.name;
+
+  useEffect(() => {
+    if (!rideCardKey) {
+      endRideCard();
+      return;
+    }
+    const card = JSON.parse(rideCardKey) as RideCardState;
+    // Arriving ends the ride; the card stays on the lock screen a while to show the summary
+    if (card.phase === "arrived") endRideCard(card);
+    else showRideCard(card, destinationName);
+  }, [rideCardKey, destinationName]);
+
+  useEffect(() => () => endRideCard(), []);
 
   const TOO_FAR_KM = 30;
   const MIN_MOVE_BEFORE_AUTO_ADVANCE_METERS = 12;
@@ -1275,14 +1341,8 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
               onEnd={endNavigation}
               isArrived={navigation.status === "completed"}
               destinationName={destination?.name}
-              rideTimeText={
-                rideSummary
-                  ? rideSummary.seconds < 60
-                    ? "Under 1 min"
-                    : formatDuration(rideSummary.seconds)
-                  : undefined
-              }
-              rideDistanceText={rideSummary ? formatStepDistance(rideSummary.meters) : undefined}
+              rideTimeText={rideTimeText}
+              rideDistanceText={rideDistanceText}
               onDone={endNavigation}
               isMuted={isNavMuted}
               onToggleMute={() => {
