@@ -37,6 +37,9 @@ export default function RecentRoutesPanel({
   const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [openingRouteId, setOpeningRouteId] = useState<string | null>(null);
+  // Hold the card below the screen until routes load: swapping the taller
+  // loading placeholder for the list made the open card jump
+  const [ready, setReady] = useState(false);
   const openingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +166,21 @@ export default function RecentRoutesPanel({
   }, [refreshKey, open]);
 
   useEffect(() => {
+    if (!open) {
+      setReady(false);
+      return;
+    }
+    if (ready) return;
+    if (!isLoading) {
+      setReady(true);
+      return;
+    }
+    // Slow connection: show the placeholder rather than nothing
+    const timer = setTimeout(() => setReady(true), 400);
+    return () => clearTimeout(timer);
+  }, [open, isLoading, ready]);
+
+  useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
@@ -181,7 +199,7 @@ export default function RecentRoutesPanel({
           {/* Slide only: iOS WebKit flashes blurred cards whose opacity animates */}
           <motion.div
             initial={{ y: "100%" }}
-            animate={{ y: openingRouteId ? "100%" : 0 }}
+            animate={{ y: openingRouteId || !ready ? "100%" : 0 }}
             transition={
               reducedMotion
                 ? { duration: 0 }
