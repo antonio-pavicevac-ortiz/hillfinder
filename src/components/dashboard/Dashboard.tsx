@@ -537,7 +537,9 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     });
   }
 
+  // Toasts sit above the bottom cards; opening a card makes them stale
   function handlePlanRoute() {
+    toast.dismiss();
     endSavedRouteLoading();
     setQaOpen(false);
     setRoutesOpen(false);
@@ -927,7 +929,13 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       toast("Your location is approximate. Type a starting point in From, or drag the green marker.", {
         id: "approximate-location",
         duration: Infinity,
-        action: { label: "Set start", onClick: () => setGeneratorOpen(true) },
+        action: {
+          label: "Set start",
+          onClick: () => {
+            toast.dismiss();
+            setGeneratorOpen(true);
+          },
+        },
       });
     } else {
       toast.dismiss("approximate-location");
@@ -1029,6 +1037,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
             action: {
               label: "View saved routes",
               onClick: () => {
+                toast.dismiss();
                 setQaOpen(false);
                 setGeneratorOpen(false);
                 setRoutesOpen(true);
@@ -1308,7 +1317,12 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
             style={{ height: FOOTER_H }}
           >
             <div className="pointer-events-auto">
-              <QuickActionsTrigger onOpen={() => setQaOpen(true)} />
+              <QuickActionsTrigger
+                onOpen={() => {
+                  toast.dismiss();
+                  setQaOpen(true);
+                }}
+              />
             </div>
           </div>
           <div className="h-[env(safe-area-inset-bottom)] pointer-events-none" />
@@ -1320,6 +1334,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         onQuickRoute={handleQuickRoute}
         onStartRoute={handlePlanRoute}
         onViewSaved={() => {
+          toast.dismiss();
           setQaOpen(false);
           setGeneratorOpen(false);
           setRoutesOpen(true);
