@@ -605,8 +605,10 @@ export default function DownhillGenerator({
       className="fixed inset-x-0 top-0 h-full z-[100] pointer-events-none"
       style={viewport ? { top: viewport.top, height: viewport.height } : undefined}
     >
+      {/* Fixed to the whole page, not the visible area this container tracks: Safari still shows
+          the page between the visible area and the keyboard, and it would show unblurred */}
       <div
-        className="absolute inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto"
+        className="fixed inset-0 bg-black/25 backdrop-blur-[2px] pointer-events-auto"
         onClick={() => {
           if (controlsLocked) return;
           onClose();
