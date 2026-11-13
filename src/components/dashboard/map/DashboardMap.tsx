@@ -60,6 +60,10 @@ const REACHED_START_METERS = 25;
 const APPROXIMATE_LOCATION_METERS = 1000;
 // Before a route exists, a newer reading this far from the start moves the start to it
 const START_REFRESH_METERS = 50;
+// How long a finger rests on the map before the Start here / Go here menu opens
+const LONG_PRESS_MS = 500;
+// A press that drifts further than this is a pan, not a long press
+const LONG_PRESS_SLOP_PX = 8;
 
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -113,6 +117,7 @@ export default function DashboardMap({
   onHeadToStartChange,
   onLocationApproximateChange,
   onStartDragged,
+  onStartPicked,
   rejoinRouteNonce,
   routeOverviewNonce,
   isNavigating,
@@ -152,6 +157,8 @@ export default function DashboardMap({
   onLocationApproximateChange?: (isApproximate: boolean) => void;
   // The rider dragged the start marker, choosing the start themselves
   onStartDragged?: () => void;
+  // The rider long-pressed the map and chose Start here
+  onStartPicked?: (loc: { name: string; lat: number; lng: number }) => void;
   rejoinRouteNonce?: number;
   routeOverviewNonce?: number;
   isNavigating?: boolean;
@@ -185,10 +192,13 @@ export default function DashboardMap({
   const headingToStartRef = useRef(false);
   const onLocationApproximateChangeRef = useRef(onLocationApproximateChange);
   const onStartDraggedRef = useRef(onStartDragged);
+  const onStartPickedRef = useRef(onStartPicked);
   useEffect(() => {
     onLocationApproximateChangeRef.current = onLocationApproximateChange;
     onStartDraggedRef.current = onStartDragged;
-  }, [onLocationApproximateChange, onStartDragged]);
+    onStartPickedRef.current = onStartPicked;
+  }, [onLocationApproximateChange, onStartDragged, onStartPicked]);
+  const placeMenuRef = useRef<mapboxgl.Popup | null>(null);
   const locationApproximateRef = useRef(false);
 
   function reportLocationAccuracy(accuracyMeters: number) {
@@ -320,6 +330,16 @@ export default function DashboardMap({
     if (!onDestinationPicked) return;
     const name = await reverseGeocodeName(lngLat.lng, lngLat.lat);
     onDestinationPicked({ name, lat: lngLat.lat, lng: lngLat.lng });
+  }
+
+  async function notifyStartPicked(lngLat: mapboxgl.LngLat) {
+    const name = await reverseGeocodeName(lngLat.lng, lngLat.lat);
+    onStartPickedRef.current?.({ name, lat: lngLat.lat, lng: lngLat.lng });
+  }
+
+  function closePlaceMenu() {
+    placeMenuRef.current?.remove();
+    placeMenuRef.current = null;
   }
 
   async function notifyFromPicked(lngLat: mapboxgl.LngLat, opts?: { immediateName?: string }) {
@@ -1227,6 +1247,39 @@ export default function DashboardMap({
       .hf-map .mapboxgl-ctrl-icon { filter: saturate(0) brightness(0.15); }
 
       .hf-map .mapboxgl-ctrl-top-left { z-index: 6; }
+
+      /* A long press opens the place menu, not iOS's text selection or callout */
+      .hf-map { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+      .hf-map .hf-place-menu-popup { z-index: 10; }
+      .hf-map .hf-place-menu-popup .mapboxgl-popup-tip { display: none; }
+      .hf-map .hf-place-menu-popup .mapboxgl-popup-content {
+        padding: 4px;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+      }
+      .hf-place-menu { display: flex; flex-direction: column; min-width: 140px; }
+      .hf-place-menu button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #0f172a;
+        text-align: left;
+      }
+      .hf-place-menu button:hover, .hf-place-menu button:active { background: rgba(22,163,74,0.1); }
+      .hf-place-menu button span {
+        width: 12px;
+        height: 12px;
+        border-radius: 9999px;
+        box-shadow: 0 0 0 2px #ffffff, 0 1px 3px rgba(0,0,0,0.3);
+      }
+      .dark .hf-map .hf-place-menu-popup .mapboxgl-popup-content { background: #1e293b; }
+      .dark .hf-place-menu button { color: #f1f5f9; }
     `;
   }, []);
 
@@ -1392,9 +1445,77 @@ export default function DashboardMap({
       void notifyDestinationPicked(lngLat);
     }
 
+    // Long-pressing a spot (right-clicking with a mouse) asks whether the route starts or
+    // ends there
+    function openPlaceMenu(lngLat: mapboxgl.LngLat) {
+      if (isNavigatingRef.current) return;
+      closePlaceMenu();
+
+      const menu = document.createElement("div");
+      menu.className = "hf-place-menu";
+      const addOption = (label: string, color: string, onPick: () => void) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        const dot = document.createElement("span");
+        dot.style.background = color;
+        button.append(dot, label);
+        button.addEventListener("click", () => {
+          closePlaceMenu();
+          onPick();
+        });
+        menu.appendChild(button);
+      };
+      addOption("Start here", "#16a34a", () => void notifyStartPicked(lngLat));
+      addOption("Go here", "#2563eb", () => handlePickAt(lngLat));
+
+      placeMenuRef.current = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 14,
+        className: "hf-place-menu-popup",
+      })
+        .setLngLat(lngLat)
+        .setDOMContent(menu)
+        .addTo(map);
+    }
+
+    let pressTimer: number | null = null;
+    let pressPoint: mapboxgl.Point | null = null;
+    // The finger lifting after a long press must not also count as a tap
+    let ignoreClicksUntil = 0;
+
+    const cancelPress = () => {
+      if (pressTimer !== null) window.clearTimeout(pressTimer);
+      pressTimer = null;
+    };
+
+    map.on("touchstart", (e) => {
+      cancelPress();
+      if (e.originalEvent.touches.length !== 1) return;
+      pressPoint = e.point;
+      const lngLat = e.lngLat;
+      pressTimer = window.setTimeout(() => {
+        pressTimer = null;
+        ignoreClicksUntil = Date.now() + 600;
+        openPlaceMenu(lngLat);
+      }, LONG_PRESS_MS);
+    });
+    map.on("touchmove", (e) => {
+      if (pressPoint && e.point.dist(pressPoint) > LONG_PRESS_SLOP_PX) cancelPress();
+    });
+    map.on("touchend", cancelPress);
+    map.on("touchcancel", cancelPress);
+    map.on("contextmenu", (e) => {
+      e.preventDefault();
+      openPlaceMenu(e.lngLat);
+    });
+
     let lastTapAt = 0;
     map.on("click", (e) => {
       const now = Date.now();
+      if (now < ignoreClicksUntil) return;
+      // A tap away from the open menu just closes it
+      if (placeMenuRef.current) return closePlaceMenu();
       if (now - lastTapAt < 320) return;
       lastTapAt = now;
       if (!e?.lngLat) return;
@@ -2101,6 +2222,7 @@ export default function DashboardMap({
 
   useEffect(() => {
     isNavigatingRef.current = !!isNavigating;
+    if (isNavigating) closePlaceMenu();
 
     // Each navigation session judges off-route from scratch
     if (offRouteStateRef.current.isOffRoute) onOffRouteChangeRef.current?.(false);

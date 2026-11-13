@@ -64,7 +64,7 @@ const HEADER_H = 64;
 const FOOTER_H = 56;
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-const QUICK_ACTIONS_HINT_STORAGE_KEY = "hf_quick_actions_hint_shown";
+const LONG_PRESS_TIP_STORAGE_KEY = "hf_long_press_tip_shown";
 // GPS wanders a few metres while standing still; only count movement past this
 const RIDE_MIN_MOVE_METERS = 8;
 
@@ -137,7 +137,6 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
   const quickRouteEnabled = !!destination;
 
   const [blocked, setBlocked] = useState(false);
-  const hasShownUndoHintRef = useRef(false);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routePreparing, setRoutePreparing] = useState(false);
   const [loadingSavedRoute, setLoadingSavedRoute] = useState<SavedRouteRecord | null>(null);
@@ -349,7 +348,22 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     speak(message);
   }
 
-  function commitDestination(next: Destination, opts?: { showQuickActionsHint?: boolean }) {
+  // The toast outlives this render, so its button reaches the latest Quick Route through a ref
+  const quickRouteRef = useRef<() => void>(() => {});
+
+  // Whenever both ends are set from the map, say how to get the route between them
+  function showGetRouteToast(message: string) {
+    toast(message, {
+      id: "get-route",
+      duration: 8000,
+      action: {
+        label: "Get route",
+        onClick: () => quickRouteRef.current(),
+      },
+    });
+  }
+
+  function commitDestination(next: Destination, opts?: { showGetRouteHint?: boolean }) {
     // A guessed start says nothing about how far the destination really is
     if (fromLocation && !startIsApproximate) {
       const km = haversineMeters([fromLocation.lng, fromLocation.lat], [next.lng, next.lat]) / 1000;
@@ -371,34 +385,26 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
     setPlannerTo(next.name ?? "");
     clearRoute();
 
-    const shouldShowQuickActionsHint = opts?.showQuickActionsHint !== false;
-    const hasPersistedQuickActionsHint =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(QUICK_ACTIONS_HINT_STORAGE_KEY) === "true";
-
-    if (
-      shouldShowQuickActionsHint &&
-      !hasShownUndoHintRef.current &&
-      !hasPersistedQuickActionsHint
-    ) {
-      toast(
-        <div className="flex items-center justify-center text-center leading-snug">
-          <span className="text-lg leading-none pr-1">🌿</span>
-
-          <span className="mt-1">Tap Quick Actions to explore routes</span>
-        </div>,
-        {
-          id: "undo-destination-hint",
-          duration: 4000,
-          className: "hf-toast",
-        }
-      );
-
-      hasShownUndoHintRef.current = true;
-      window.localStorage.setItem(QUICK_ACTIONS_HINT_STORAGE_KEY, "true");
-    }
+    if (opts?.showGetRouteHint !== false) showGetRouteToast(next.name ?? "Destination set");
 
     return true;
+  }
+
+  // Pressing and holding the map has nothing on screen to point at it, so say so once, after
+  // the map has found the rider
+  function showLongPressTipOnce() {
+    try {
+      if (window.localStorage.getItem(LONG_PRESS_TIP_STORAGE_KEY) === "true") return;
+      window.localStorage.setItem(LONG_PRESS_TIP_STORAGE_KEY, "true");
+    } catch {
+      return;
+    }
+    window.setTimeout(() => {
+      toast("Tip: press and hold the map to choose a start or a destination.", {
+        id: "long-press-tip",
+        duration: 6000,
+      });
+    }, 1500);
   }
 
   function showApproximateStartError() {
@@ -582,10 +588,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       );
     }
 
-    // Quick Route starts where the rider is. Clearing moves the start marker there, once
-    // unpinned (the map reads the pin during render, before the clear runs). Where the rider is
-    // isn't known when the location is approximate, so the start they chose stays
-    if (!locationApproximate) setStartPinned(false);
+    // Quick Route keeps a start the rider chose; only a new route mid-ride starts where they
+    // are. Clearing moves the start marker there, once unpinned (the map reads the pin during
+    // render, before the clear runs). Where the rider is isn't known when the location is
+    // approximate, so the start they chose stays
+    if (fromHereMidRide && !locationApproximate) setStartPinned(false);
     clearRoute();
     startNavigationWhenPreparedRef.current = fromHereMidRide;
     setVariantsReady(false);
@@ -602,6 +609,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
       return next;
     });
   }
+
+  quickRouteRef.current = () => {
+    toast.dismiss("get-route");
+    void handleQuickRoute();
+  };
 
   // Toasts sit above the bottom cards; opening a card makes them stale
   function handlePlanRoute() {
@@ -1072,7 +1084,10 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         }}
         recenterActive={recenterActive}
         hasDestination={!!destination}
-        onUndoDestination={() => {
+        hasChosenStart={startPinned}
+        onStartOver={() => {
+          // Released before the clear below, so the start marker returns to the rider
+          setStartPinned(false);
           setClearDestinationNonce((n) => n + 1);
           setDestination(null);
           setPlannerTo("");
@@ -1161,6 +1176,11 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         onHeadToStartChange={setMetersToStart}
         onLocationApproximateChange={setLocationApproximate}
         onStartDragged={() => setStartPinned(true)}
+        onStartPicked={(loc) => {
+          if (!handleStartSelected(loc)) return;
+          if (destination) showGetRouteToast(`Start set: ${loc.name}`);
+          else toast("Start set. Now tap where you want to go.", { id: "get-route" });
+        }}
         rejoinRouteNonce={rejoinRouteNonce}
         routeOverviewNonce={routeOverviewNonce}
         onVariantsReady={() => {
@@ -1169,6 +1189,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
         onVariantSelected={(v) => setSelectedVariant(v)}
         onFromPicked={(loc) => {
           setFromLocation({ lat: loc.lat, lng: loc.lng, name: loc.name });
+          if (loc.name === "Current location") showLongPressTipOnce();
         }}
         onDestinationPicked={(loc) => {
           const next = { name: loc.name, lat: loc.lat, lng: loc.lng };
@@ -1478,7 +1499,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
             lng: Number(loc.lng),
           };
 
-          commitDestination(next, { showQuickActionsHint: false });
+          commitDestination(next, { showGetRouteHint: false });
         }}
         variantsReady={variantsReady}
         selectedVariant={selectedVariant}
@@ -1531,7 +1552,7 @@ export default function Dashboard({ user, voiceEnabled, setVoiceEnabled }: Dashb
                   lat: Number(center[1]),
                 };
 
-                const accepted = commitDestination(next, { showQuickActionsHint: false });
+                const accepted = commitDestination(next, { showGetRouteHint: false });
                 if (!accepted) {
                   setRouteBusy(false);
                   throw Object.assign(new Error("blocked destination"), { hfSilent: true });
