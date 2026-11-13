@@ -121,6 +121,29 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         </div>
 
         <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+          Help
+        </h2>
+
+        <div className="mt-3 space-y-4">
+          <Link
+            href="/dashboard/help"
+            className="flex items-center justify-between rounded-2xl border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-800/80 p-4 shadow-sm transition-colors hover:bg-white dark:hover:bg-slate-800"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-gray-900 dark:text-slate-100">
+                How to use Hillfinder
+              </span>
+              <span className="mt-1 block text-sm text-gray-500 dark:text-slate-400">
+                Routes, the lock screen and more
+              </span>
+            </span>
+            <span aria-hidden className="text-gray-400 dark:text-slate-500">
+              →
+            </span>
+          </Link>
+        </div>
+
+        <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
           Account &amp; privacy
         </h2>
 
