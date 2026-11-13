@@ -119,7 +119,7 @@ function UserMenu({ user, onOpenSettings, onOpenProfile }: UserMenuProps) {
           )}
 
           <Link
-            href="/dashboard/help"
+            href="/help"
             onClick={() => setMenuOpen(false)}
             className="touch-manipulation block px-4 py-2 text-[var(--hf-text,#374151)] hover:bg-[var(--hf-hover,rgba(17,24,39,0.06))]"
           >

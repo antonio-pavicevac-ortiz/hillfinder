@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
     ],
   },
+  // The help page moved out of the dashboard so anyone can read it
+  async redirects() {
+    return [{ source: "/dashboard/help", destination: "/help", permanent: true }];
+  },
   // experimental: { serverActions: {} }, // not needed in Next 15
 };
 
