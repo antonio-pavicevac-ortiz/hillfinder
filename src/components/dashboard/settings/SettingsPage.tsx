@@ -126,7 +126,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
 
         <div className="mt-3 space-y-4">
           <Link
-            href="/dashboard/help"
+            href="/help"
             className="flex items-center justify-between rounded-2xl border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-800/80 p-4 shadow-sm transition-colors hover:bg-white dark:hover:bg-slate-800"
           >
             <span>

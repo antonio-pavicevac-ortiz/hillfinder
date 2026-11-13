@@ -11,6 +11,7 @@ import {
   TrendingDown,
   type LucideIcon,
 } from "lucide-react";
+import { useIsNativeApp } from "@/lib/native/useIsNativeApp";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -149,15 +150,20 @@ const TOPICS: Topic[] = [
   },
 ];
 
-export default function HelpPage() {
+const APP_STORE_URL = "https://apps.apple.com/app/id6827215955";
+
+// Signed-in riders come here from the map; visitors may arrive from a link and haven't signed up
+export default function HelpPage({ signedIn }: { signedIn: boolean }) {
+  const isNativeApp = useIsNativeApp();
+
   return (
     <main className="min-h-screen bg-[#f6f7f2] dark:bg-slate-900 px-5 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] transition-colors">
       <div className="mx-auto max-w-xl mt-6">
         <Link
-          href="/dashboard"
+          href={signedIn ? "/dashboard" : "/"}
           className="text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
         >
-          ← Back to map
+          {signedIn ? "← Back to map" : "← Back to Hillfinder"}
         </Link>
 
         <h1 className="mt-5 text-2xl font-semibold text-gray-900 dark:text-slate-100">
@@ -188,6 +194,36 @@ export default function HelpPage() {
             </section>
           ))}
         </div>
+
+        {!signedIn && (
+          <section className="mt-8 rounded-2xl bg-emerald-600 p-6 text-center text-white shadow-sm dark:bg-emerald-700">
+            <h2 className="text-lg font-semibold">Ready to find your hill?</h2>
+            <p className="mt-1 text-sm text-emerald-50">Hillfinder is free.</p>
+            <div className="mt-4 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/auth/signup"
+                className="w-full rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50 sm:w-auto"
+              >
+                Get started
+              </Link>
+              {/* The app can't send people to install itself */}
+              {!isNativeApp && (
+                <a
+                  href={APP_STORE_URL}
+                  className="w-full rounded-xl border border-white/70 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 sm:w-auto"
+                >
+                  Get the iPhone app
+                </a>
+              )}
+            </div>
+            <p className="mt-4 text-sm text-emerald-50">
+              Already have an account?{" "}
+              <Link href="/auth/signin" className="font-semibold underline underline-offset-2">
+                Sign in
+              </Link>
+            </p>
+          </section>
+        )}
       </div>
     </main>
   );
