@@ -19,7 +19,10 @@ type Props = {
   recenterDisabled?: boolean;
   recenterActive?: boolean;
   hasDestination?: boolean;
-  onUndoDestination?: () => void;
+  // The rider chose where the route starts instead of starting where they are
+  hasChosenStart?: boolean;
+  // Clears the destination and any chosen start, back to starting where the rider is
+  onStartOver?: () => void;
   saveRoute?: SaveRoutePayload | null;
   onRouteSaved?: (routeId: string, route: SaveRoutePayload) => void;
   onCreateRoute?: () => void;
@@ -37,7 +40,8 @@ export default function MapControls({
   recenterDisabled = false,
   recenterActive = false,
   hasDestination = false,
-  onUndoDestination,
+  hasChosenStart = false,
+  onStartOver,
   saveRoute = null,
   onRouteSaved,
   onCreateRoute,
@@ -65,8 +69,9 @@ export default function MapControls({
 
   const legendEnabled = hasRoute || hasDestination;
   const legendDisabled = !legendEnabled;
-  const showUndoDestination = hasDestination && !hasRoute;
-  const middleDisabled = showUndoDestination ? !onUndoDestination : !hasRoute;
+  // One button steps back toward an empty map: first the route, then the chosen ends
+  const showStartOver = (hasDestination || hasChosenStart) && !hasRoute;
+  const middleDisabled = showStartOver ? !onStartOver : !hasRoute;
   const legendVisible = legendOpen && legendEnabled;
   const legendStrokeColor = legendVisible ? "#FFFFFF" : MAP_CONTROL_ICON;
 
@@ -121,21 +126,21 @@ export default function MapControls({
         </MapControlTooltip>
 
         <MapControlTooltip
-          label={showUndoDestination ? "Undo destination" : "Clear route"}
+          label={showStartOver ? "Start over" : "Clear route"}
         >
           {(descriptionId) => (
             <ClearRouteButton
               onClick={() => {
-                if (showUndoDestination) onUndoDestination?.();
+                if (showStartOver) onStartOver?.();
                 else onClearRoute();
               }}
               interacted={!middleDisabled}
               disabled={middleDisabled}
               ariaLabel={
-                showUndoDestination ? "Undo destination" : "Clear route"
+                showStartOver ? "Start over" : "Clear route"
               }
               ariaDescribedBy={descriptionId}
-              pulse={showUndoDestination}
+              pulse={showStartOver}
             />
           )}
         </MapControlTooltip>
